@@ -142,6 +142,7 @@ model User {
   memberships     Membership[]
   projectManagers ProjectManager[]
   createdReleases Release[]        @relation("ReleaseCreatedBy")
+  sessions        Session[]
 
   @@map("app_user")
 }
@@ -161,6 +162,31 @@ model Membership {
   @@unique([workspaceId, userId])
   @@index([userId])
   @@map("membership")
+}
+
+/// 登录会话：Cookie 里只放随机令牌，本表只存令牌的 SHA-256。
+///
+/// 会话落在库里而不是签名令牌里，才能「服务端可撤销」：退出登录只置 `revoked_at`，
+/// 行保留下来供排查。`active_workspace_id` 记录当前选中的工作区，切换工作区只改这一列。
+model Session {
+  id        String   @id @default(uuid(7))
+  userId    String   @map("user_id")
+  /// 令牌的 SHA-256（十六进制）。库里没有令牌本身，读走整张表也换不出可用的 Cookie。
+  tokenHash String   @unique @map("token_hash")
+  /// 当前选中的工作区；为空表示还没选过。不做外键：权威归属是 membership，越权由读取时判定。
+  activeWorkspaceId String? @map("active_workspace_id")
+  /// 过期时间，滑动续期时往后推。
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  /// 撤销时间；非空即失效。
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("session")
 }
 
 /// 项目经理：项目归属的载体，归属于一个工作区。

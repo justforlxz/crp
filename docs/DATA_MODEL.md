@@ -1,6 +1,6 @@
 # 数据模型（A5 定稿）
 
-本文是 `prisma/schema.prisma` 的说明文档，与 schema 一一对应：18 张表、8 组枚举、全部唯一索引、外键与删除策略都在这里写明。改 schema 必须同步改本文。
+本文是 `prisma/schema.prisma` 的说明文档，与 schema 一一对应：19 张表、8 组枚举、全部唯一索引、外键与删除策略都在这里写明。改 schema 必须同步改本文。
 
 数据来源是 PRD 第五节的领域模型，加上 A2（CRP）、A3（Gerrit）、A4（Shuttle）实测确认的字段。与 PRD 初稿的差异集中记在第 8 节，不在正文里夹带说明。
 
@@ -22,6 +22,7 @@
 
 ```
 workspace 1-n membership n-1 app_user
+app_user 1-n session（登录会话；active_workspace_id 不做外键，见 4.4）
 workspace 1-n project_manager（project_manager.user_id 可空，指向 app_user）
 project_manager 1-n project
 project 1-1 baseline（外键 project.baseline_id，单选）
@@ -96,7 +97,26 @@ PRD 里的 `Release 1-1 CrpTopic` 在本版没有独立表，Topic 的字段并�
 - 索引：`(workspace_id, user_id)` 唯一；`user_id` 二级索引（查「我在哪些工作区」）。
 - 外键：`workspace_id → workspace.id`，RESTRICT；`user_id → app_user.id`，RESTRICT。工作区与账号都不做物理删除，历史成员关系必须留着。
 
-### 4.4 project_manager（项目经理）
+### 4.4 session（登录会话）
+
+登录会话。Cookie 里只放随机令牌，表里只存令牌的 SHA-256，服务端可随时撤销。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | text | PK | UUID v7 |
+| `userId`（`user_id`） | text | NOT NULL | 会话所属账号 |
+| `tokenHash`（`token_hash`） | text | NOT NULL | 令牌的 SHA-256 十六进制；库里没有令牌本身 |
+| `activeWorkspaceId`（`active_workspace_id`） | text | NULL | 当前选中的工作区；为空表示还没选过 |
+| `expiresAt`（`expires_at`） | timestamptz | NOT NULL | 过期时间，滑动续期时往后推 |
+| `revokedAt`（`revoked_at`） | timestamptz | NULL | 撤销时间；非空即失效，行保留供排查 |
+| `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
+
+- 索引：`token_hash` 唯一（按 Cookie 值查会话）；`user_id` 二级索引（撤销某账号全部会话）；`expires_at` 二级索引（清理过期行）。
+- 外键：`user_id → app_user.id`，CASCADE（账号删除时会话一起删，且只有这一处允许 CASCADE）。
+- `active_workspace_id` **不建外键**：工作区归属的权威来源是 `membership`，越权读取由应用层判定成 404；会话里只是一个「上次选的工作区」标记，工作区被删时残留的值只会让下一次读取找不到成员关系，不影响安全。
+- 令牌有效期 7 天，每次读取会话时滑动续期（最多每小时写一次库）。
+
+### 4.5 project_manager（项目经理）
 
 项目归属的载体，归属于一个工作区。每个项目必须指定一位。
 
@@ -111,7 +131,7 @@ PRD 里的 `Release 1-1 CrpTopic` 在本版没有独立表，Topic 的字段并�
 - 索引：`(workspace_id, name)` 唯一（同一工作区内不重名，避免同名项目经理无法区分）；`workspace_id` 二级索引。
 - 外键：`workspace_id → workspace.id`，RESTRICT；`user_id → app_user.id`，SET NULL（账号注销时保留项目经理实体，只解除绑定）。
 
-### 4.5 baseline（CRP 基线）
+### 4.6 baseline（CRP 基线）
 
 CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做命名映射。
 
@@ -131,7 +151,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 索引：`crp_branch_id` 唯一。
 - 外键：无。
 
-### 4.6 baseline_package_version（基线内软件包版本）
+### 4.7 baseline_package_version（基线内软件包版本）
 
 数据来自 Shuttle 的基线交付仓库索引（A4 的 `listBaselinePackages`），按周期同步覆盖。
 
@@ -148,7 +168,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 外键：`baseline_id → baseline.id`，CASCADE。基线的包版本清单属于基线自身，基线删除时一并清掉。
 - 不指向 `package`：基线里存在大量平台尚未登记的软件包（`eagle-1071` 实测 124 个、`snipe-2500u2` 488 个）。需要关联时按 `package_name = package.name` 查。
 
-### 4.7 package（软件包）
+### 4.8 package（软件包）
 
 一个代码仓库，全局唯一登记。依赖只在 `package_dependency` 维护，项目清单不重复存依赖。
 
@@ -166,7 +186,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 索引：`name` 唯一；`repo_path` 唯一。
 - 外键：无。
 
-### 4.8 package_dependency（软件包上游依赖）
+### 4.9 package_dependency（软件包上游依赖）
 
 一行表示「下游包依赖上游包」：上游构建成功才允许投递下游。
 
@@ -181,7 +201,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 外键：`package_id → package.id`、`upstream_package_id → package.id`，都是 RESTRICT。删软件包前必须先清依赖，避免依赖链断在半路。
 - 依赖环（含自依赖）由应用层在保存时检测。数据库只挡得住主键与外键，环检测是图算法，不放在数据库里。
 
-### 4.9 project（项目）
+### 4.10 project（项目）
 
 一次提测的归属对象。归属只由「项目经理 + 工作区」决定，**没有任何业务类型字段**（没有「主线 / 商业项目」这类分类）。
 
@@ -201,7 +221,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 外键：`workspace_id → workspace.id`、`project_manager_id → project_manager.id`、`baseline_id → baseline.id`，全部 RESTRICT。
 - 删除策略：项目只软删（写 `deleted_at`），不物理删除。历史提测记录必须能继续查到自己的项目，所以外键不会因为「删项目」而触发任何连锁删除。
 
-### 4.10 project_software（项目软件清单）
+### 4.11 project_software（项目软件清单）
 
 项目引用了哪些软件包、各自跟踪哪个分支。
 
@@ -219,7 +239,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 外键：`project_id → project.id`、`package_id → package.id`，都是 RESTRICT。
 - `last_submitted_commit` 只在提测创建成功后更新，刷新分支不影响它。
 
-### 4.11 release（提测记录）
+### 4.12 release（提测记录）
 
 一次提测。CRP 侧对应一个 Topic，本表同时保存该 Topic 的本地状态副本。
 
@@ -254,7 +274,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 不额外建 `project_id` 单列索引：`(project_id, version)` 唯一索引的最左前缀已经覆盖按项目查询。
 - v2 的三个预留字段**不建外键**：本版没有回退流程，指向关系暂时没有写入方；等 v2 真正实现时再加约束。
 
-### 4.12 release_package_snapshot（提测快照）
+### 4.13 release_package_snapshot（提测快照）
 
 某一轮里某个软件包固化的分支、Commit 与三个版本号。
 
@@ -281,7 +301,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 外键：`release_id → release.id`，RESTRICT；`superseded_by_id → release_package_snapshot.id`（自关联），RESTRICT。
 - **可变字段只有四个**：`status`、`statusChangedAt`、`supersededById`、`supersededAt`。其余业务字段（分支、Commit、三个版本号、`attempt`）创建后不得修改，应用层不提供更新入口。
 
-### 4.13 release_repository_record（提测与 CRP 仓库记录的关联）
+### 4.14 release_repository_record（提测与 CRP 仓库记录的关联）
 
 一轮快照投递成功后，CRP 侧的 Release 与仓库地址。
 
@@ -303,7 +323,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 索引：`snapshot_id` 唯一（一轮只对应一条 CRP Release）；`crp_release_id` 唯一。
 - 外键：`release_id → release.id`、`snapshot_id → release_package_snapshot.id`，都是 RESTRICT。改包时旧的 CRP Release 在 CRP 侧被删，本地这条记录保留，用于复盘。
 
-### 4.14 build_task（构建任务）
+### 4.15 build_task（构建任务）
 
 一个软件包在**一轮快照**上的一次构建，不挂在软件包上。任务 ID 就是 CRP Release 的 `BuildID`（A4 实测：Shuttle 的 `taskid` 取这个值）。
 
@@ -322,7 +342,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 索引：`snapshot_id` 唯一（一轮快照一个任务）；`shuttle_task_id` 唯一；`release_id`、`status` 二级索引（构建队列页按提测与状态过滤）。
 - 外键：`release_id → release.id`、`snapshot_id → release_package_snapshot.id`，都是 RESTRICT。
 
-### 4.15 build_job（构建作业）
+### 4.16 build_job（构建作业）
 
 一个构建任务下某个架构的一次编译，构建日志按 `shuttle_job_id` 查。
 
@@ -339,7 +359,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 索引：`shuttle_job_id` 唯一；`build_task_id` 二级索引。
 - 外键：`build_task_id → build_task.id`，**CASCADE**。作业是任务的组成部分，没有独立含义；删任务时连带删作业。
 
-### 4.16 webhook_endpoint（Webhook 端点）
+### 4.17 webhook_endpoint（Webhook 端点）
 
 | 字段（列名） | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
@@ -355,7 +375,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 索引：`(workspace_id, url)` 唯一（同一工作区不重复注册同一地址）。
 - 外键：`workspace_id → workspace.id`，RESTRICT。
 
-### 4.17 webhook_delivery（Webhook 投递记录）
+### 4.18 webhook_delivery（Webhook 投递记录）
 
 每次投递的载荷、签名与结果，用于复算签名与排查失败。
 
@@ -375,7 +395,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 索引：`(endpoint_id, status)` 二级索引（按端点看重试队列）；`created_at` 二级索引（投递日志按时间翻页）。
 - 外键：`endpoint_id → webhook_endpoint.id`，RESTRICT。端点只停用不删除，投递日志要能一直追溯。
 
-### 4.18 sync_run（同步任务记录）
+### 4.19 sync_run（同步任务记录）
 
 一次同步的过程与结果，只记过程，同步到的数据落在各自的目标表（`baseline`、`baseline_package_version`、`release` 等）。
 
@@ -413,12 +433,14 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | 项目无业务类型字段、基线无分类字段 | `project`、`baseline` 均无此类列；归属只由 `workspace_id` 与 `project_manager_id` 决定 |
 | 删项目不删历史提测记录 | `project.deleted_at` 软删 + `release.project_id` 外键 RESTRICT |
 | 高频查询索引 | `release.status`、`release.created_at`、`build_task.release_id`（`release.project_id` 由唯一索引最左前缀覆盖） |
+| 会话令牌只存哈希、服务端可撤销 | `session.token_hash` 唯一（存 SHA-256，不存令牌本身）、`session.revoked_at` 非空即失效 |
 | 不预留回退与复盘的表 | 只有 `release.rollback_of_id`、`release.code_source_release_id`、`release.risk_flag` 三个可空字段 |
 
 ## 六、外键与删除策略总表
 
 | 子表.列 | 父表 | 可空 | onDelete | 理由 |
 | --- | --- | --- | --- | --- |
+| `session.user_id` | `app_user.id` | 否 | CASCADE | 会话只是登录凭证，账号没了就失去意义 |
 | `membership.workspace_id` | `workspace.id` | 否 | RESTRICT | 工作区不物理删除 |
 | `membership.user_id` | `app_user.id` | 否 | RESTRICT | 账号不物理删除，成员关系要留 |
 | `project_manager.workspace_id` | `workspace.id` | 否 | RESTRICT | 同上 |
@@ -446,14 +468,14 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 
 ## 七、种子数据
 
-`prisma/seed.ts` 灌入一套可重复执行的数据（重复执行靠业务唯一键 upsert，`sync_run` 与 `webhook_delivery` 两张日志表每次重建）。种子跑完会逐表核对记录数，不一致直接以非零退出码失败。
+`prisma/seed.ts` 灌入一套可重复执行的数据（不写 `session`：会话是运行时数据，由登录动作产生）（重复执行靠业务唯一键 upsert，`sync_run` 与 `webhook_delivery` 两张日志表每次重建）。种子跑完会逐表核对记录数，不一致直接以非零退出码失败。
 
 `pnpm db:reset` 是「清空数据库 → 重放迁移 → 跑种子」（`prisma migrate reset --force && prisma db seed`）。Prisma 7 的 `migrate reset` 本身不再调用种子，所以脚本里显式接上了 `db:seed`。
 
 | 表 | 记录数 | 说明 |
 | --- | --- | --- |
 | `workspace` | 3 | 桌面核心组、系统应用组、安全组 |
-| `app_user` | 5 | 1 位平台管理员 + 2 位项目经理 + 1 位开发者 + 1 位只读成员；`password_hash` 是占位串，不是可校验的哈希，这些账号只用于数据演示，不能登录（A6 实现登录时需要自己的账号数据） |
+| `app_user` | 5 | 1 位平台管理员 + 2 位项目经理 + 1 位开发者 + 1 位只读成员；`password_hash` 是占位串，不是可校验的哈希，这些账号只用于数据演示，不能登录；A6 交付后要能登录的账号走「注册」或平台管理员的「成员邀请」接口建，种子里的哈希不改成可校验的真哈希 |
 | `membership` | 7 | 平台管理员不进 membership |
 | `project_manager` | 3 | 其中刘洋没有平台账号，演示 `user_id` 为空 |
 | `baseline` | 4 | `eagle-1071`、`eagle-1076`、`snipe-2500u1`、`snipe-2500u2` |
