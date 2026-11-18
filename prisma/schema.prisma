@@ -280,6 +280,10 @@ model Package {
   defaultBranch  String   @map("default_branch")
   /// 登记时填写的当前版本。
   currentVersion String?  @map("current_version")
+  /// 最近一次同步到的当前 Commit（所跟踪分支的最新提交）。
+  currentCommit  String?  @map("current_commit")
+  /// 最近一次元数据同步成功的时间；为空表示从未同步过。
+  lastSyncedAt   DateTime? @map("last_synced_at") @db.Timestamptz(3)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 

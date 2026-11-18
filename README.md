@@ -95,6 +95,7 @@
 | `CRP_PASSWORD` | 用 CRP 写接口时必需 | 上述账号的 LDAP 密码；登录前用 CRP 的公钥加密，不落盘 |
 | `CRP_BASE_URL` | 否 | CRP 接口前缀，默认 `https://crp.uniontech.com/api` |
 | `CRP_TOKEN_PATH` | 否 | CRP token 缓存文件，默认 `~/.cache/crp/jwt`，权限 0600 |
+| `PACKAGE_API_TOKEN` | 用 `POST /api/packages` 时必需 | 外部系统提交软件包用的独立 token，与用户会话无关；没配置时该接口一律返回 401。接口细节见 [docs/API.md](docs/API.md) |
 
 Gerrit 这三项只被 `lib/integrations/gerrit/` 读取，未配置时该模块抛错，其余功能不受影响。匿名访问会被 302 跳登录页，实测行为见 `lib/integrations/gerrit/FINDINGS.md`。
 
