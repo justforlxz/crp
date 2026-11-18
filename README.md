@@ -69,6 +69,7 @@
 | `pnpm db:migrate:dev` | 开发时新建迁移（`prisma migrate dev --name <名称>`） |
 | `pnpm db:seed` | 执行 `prisma/seed.ts` 写入种子数据，使用 upsert，可重复执行 |
 | `pnpm db:studio` | 打开 Prisma Studio |
+| `pnpm tsx scripts/verify-gerrit.ts` | 用真实 Gerrit 复核分支、提交与 `debian/changelog` 读取，需要先配好 `GERRIT_*` 三项 |
 
 ## 持续集成
 
@@ -85,10 +86,15 @@
 | 变量 | 必需 | 含义 |
 | --- | --- | --- |
 | `DATABASE_URL` | 是 | PostgreSQL 连接串，Prisma CLI 与应用运行共用。格式 `postgresql://<用户>:<密码>@<主机>:<端口>/<库名>?schema=public` |
+| `GERRIT_BASE_URL` | 否 | Gerrit 服务地址，默认 `https://gerrit.uniontech.com` |
+| `GERRIT_USERNAME` | Gerrit 集成必需 | Gerrit 用户名 |
+| `GERRIT_HTTP_PASSWORD` | Gerrit 集成必需 | Gerrit HTTP 凭据密码，在 Gerrit 网页 Settings → HTTP Credentials 生成 |
 | `CRP_USERNAME` | 用 CRP 写接口时必需 | CRP 登录用的 LDAP 账号 |
 | `CRP_PASSWORD` | 用 CRP 写接口时必需 | 上述账号的 LDAP 密码；登录前用 CRP 的公钥加密，不落盘 |
 | `CRP_BASE_URL` | 否 | CRP 接口前缀，默认 `https://crp.uniontech.com/api` |
 | `CRP_TOKEN_PATH` | 否 | CRP token 缓存文件，默认 `~/.cache/crp/jwt`，权限 0600 |
+
+Gerrit 这三项只被 `lib/integrations/gerrit/` 读取，未配置时该模块抛错，其余功能不受影响。匿名访问会被 302 跳登录页，实测行为见 `lib/integrations/gerrit/FINDINGS.md`。
 
 验证脚本 `scripts/verify-crp.ts` 另需 `CRP_VERIFY_PROJECT`、`CRP_VERIFY_PROJECT_BRANCH`、`CRP_VERIFY_COMMIT`，
 说明见 `.env.example` 与 `lib/integrations/crp/FINDINGS.md`。
@@ -103,6 +109,8 @@ lib/                 领域逻辑
 lib/db.ts            Prisma Client 单例（带 pg 驱动适配器）
 lib/env.ts           环境变量读取与校验
 lib/integrations/    CRP、Shuttle、Gerrit 客户端（职责边界见其 README）
+lib/integrations/gerrit/  Gerrit 与 gitiles 客户端、changelog 解析、实测记录 FINDINGS.md
+scripts/             接真实外部系统的验证脚本，不经 CI 执行
 prisma/              schema、migrations、seed
 tests/               单元测试
 docs/                PRD 与数据模型文档
