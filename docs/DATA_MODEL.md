@@ -158,7 +158,9 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | `name` | text | NOT NULL | 源码包名，例如 `kwin` |
 | `repoPath`（`repo_path`） | text | NOT NULL | 仓库路径，例如 `deepin-kde/kwin` |
 | `defaultBranch`（`default_branch`） | text | NOT NULL | 默认跟踪分支，例如 `develop/eagle` |
-| `currentVersion`（`current_version`） | text | NULL | 登记时填写的当前版本 |
+| `currentVersion`（`current_version`） | text | NULL | 当前版本。登记时填写；元数据同步成功后更新为所跟踪分支 `debian/changelog` 的版本 |
+| `currentCommit`（`current_commit`） | text | NULL | 当前 Commit。元数据同步成功后写入所跟踪分支的最新提交；换仓库或换默认分支时清空 |
+| `lastSyncedAt`（`last_synced_at`） | timestamptz | NULL | 最近一次元数据同步成功的时间；为空表示从未同步 |
 | `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
 
 - 索引：`name` 唯一；`repo_path` 唯一。
