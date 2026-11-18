@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { readEnv } from "@/lib/env";
+import { readEnv } from "../lib/env";
 
 test("缺少 DATABASE_URL 时抛出错误并指出变量名", () => {
   assert.throws(() => readEnv({}), /DATABASE_URL/);

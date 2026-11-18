@@ -6,9 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   checks:
-    name: lint / typecheck / test
+    name: install / migrate / seed / lint / typecheck / test
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

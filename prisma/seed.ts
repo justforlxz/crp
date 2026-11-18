@@ -4,7 +4,7 @@ import { prisma } from "../lib/db";
 
 const HEALTH_CHECKS = ["迁移与种子链路验证", "示例数据行"];
 
-async function main() {
+async function seed() {
   for (const label of HEALTH_CHECKS) {
     await prisma.healthCheck.upsert({
       where: { label },
@@ -17,11 +17,16 @@ async function main() {
   console.log(`种子数据写入完成，health_check 表共 ${total} 行。`);
 }
 
-void main()
-  .catch((error: unknown) => {
-    console.error(error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
+async function main() {
+  try {
+    await seed();
+  } finally {
     await prisma.$disconnect();
-  });
+  }
+}
+
+// 种子与断开连接的任何失败都落到同一个 catch，避免出现无人处理的 Promise 拒绝。
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});

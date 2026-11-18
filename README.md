@@ -76,7 +76,7 @@
 
 `pnpm install --frozen-lockfile` → `pnpm db:migrate` → `pnpm db:seed` → `pnpm lint` → `pnpm typecheck` → `pnpm test`
 
-- Node 用 `22.x`，与 `package.json` 的 `engines.node` 同一条版本线；pnpm 由 `pnpm/action-setup` 安装 9。
+- Node 用 `22.x`，与 `package.json` 的 `engines.node` 同一条版本线；pnpm 的版本由 `package.json` 的 `packageManager` 决定（当前 `pnpm@9.15.9`），由 `pnpm/action-setup` 安装，不在 workflow 里重复写版本。
 - 数据库用 `postgres:17` 的 service container，账号、库名、`DATABASE_URL` 都写在 workflow 里，不需要任何 secret。
 - 迁移和种子在 CI 里真跑：`_prisma_migrations` 能建表、种子能写入，才说明「空库可迁移」这条在干净环境成立。
 

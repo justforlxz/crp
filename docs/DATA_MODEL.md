@@ -37,7 +37,6 @@ webhook_endpoint 1-n webhook_delivery
 | 枚举 | 取值 | 用途 |
 | --- | --- | --- |
 | `workspace_role` | `project_manager`、`developer`、`reader` | 工作区内成员角色；平台管理员是账号级标记，不占此枚举 |
-| `project_type` | `mainline`（主线）、`commercial`（商业项目） | 项目类型 |
 | `release_status` | `pending`、`submitting`、`succeeded`、`partially_failed`、`failed` | 提测状态 |
 | `build_status` | `pending`、`running`、`succeeded`、`failed`、`canceled` | 构建任务与构建作业状态 |
 | `webhook_delivery_status` | `pending`、`succeeded`、`failed` | Webhook 投递状态 |
@@ -128,7 +127,6 @@ webhook_endpoint 1-n webhook_delivery
 | `baseline_id` | uuid | NOT NULL, FK → baseline | 单选，一个项目同一时间只有一个目标基线 |
 | `key` | text | NOT NULL | 项目标识 |
 | `name` | text | NOT NULL | 项目名称 |
-| `type` | `project_type` | NOT NULL | 主线或商业项目 |
 | `created_at` / `updated_at` | timestamptz | NOT NULL | |
 
 唯一约束：`(workspace_id, key)`。
@@ -245,6 +243,21 @@ webhook_endpoint 1-n webhook_delivery
 | `last_error` | text | NULL | 最近一次失败原因 |
 | `created_at` / `delivered_at` | timestamptz | `created_at` NOT NULL；`delivered_at` NULL | |
 
+### 4.18 baseline_package_version（基线内软件包版本）
+
+数据来自 Shuttle，按周期同步；用于展示「仓库版本」，也用于判断某个基线下已有哪些软件包。
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | uuid | PK | |
+| `baseline_id` | uuid | NOT NULL, FK → baseline | 所属基线 |
+| `repo_path` | text | NOT NULL | 仓库路径，与 `package.repo_path` 同形；不强制外键，因为基线里存在尚未登记的软件包 |
+| `version` | text | NOT NULL | 该仓库在此基线下的当前版本 |
+| `fetched_at` | timestamptz | NOT NULL | 本条数据的同步时间 |
+| `created_at` / `updated_at` | timestamptz | NOT NULL | |
+
+唯一约束：`(baseline_id, repo_path)`，同步时按它做覆盖写入。
+
 ## 五、关键约束汇总
 
 1. `package` 全局唯一，依赖只在 `package_dependency` 维护，项目清单不重复存依赖。
@@ -256,5 +269,5 @@ webhook_endpoint 1-n webhook_delivery
 ## 六、留给 A5 的决定
 
 - 主键是否改用 `cuid` 或自增整数；本文按 UUID 描述。
-- `baseline_package_version` 是并入本文档的独立表（字段：`baseline_id`、`repo_path`、`version`、`fetched_at`，唯一约束 `(baseline_id, repo_path)`），A5 需要确认它与 `package` 是否建立外键：CRP 基线里存在尚未登记的软件包，因此初稿按 `repo_path` 关联而不强制外键。
+- `baseline_package_version`（见 4.18）按 `repo_path` 关联、不强制外键：CRP 基线里存在尚未登记的软件包。A5 需要确认软件包登记后是否补外键。
 - 软删除策略：第一版统一物理删除，若需要审计再加 `deleted_at`。
