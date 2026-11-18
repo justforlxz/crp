@@ -532,10 +532,12 @@ model BuildJob {
 model WebhookEndpoint {
   id          String   @id @default(uuid(7))
   workspaceId String   @map("workspace_id")
+  /// 端点名称，页面上显示用；同一工作区内不要求唯一。
+  name        String
   url         String
   /// 签名密钥，只在投递时使用，不进日志、不回显。
   secret      String
-  /// 订阅的事件类型，例如 `release.success`、`release.failed`。
+  /// 订阅的事件类型，取值见 `lib/webhook/events.ts` 的事件清单，例如 `release.created`、`build.failed`。
   eventTypes  String[] @default([]) @map("event_types")
   enabled     Boolean  @default(true)
   description String?
@@ -562,6 +564,12 @@ model WebhookDelivery {
   /// 已投递次数。
   attempts   Int                 @default(0)
   lastError  String?             @map("last_error")
+  /// 最近一次尝试收到的 HTTP 状态码；连接失败等拿不到状态码时为空。
+  httpStatus Int?                @map("http_status")
+  /// 最近一次尝试的耗时（毫秒）。
+  durationMs Int?                @map("duration_ms")
+  /// 最近一次尝试的响应体摘要，入库前截断到 500 字。
+  responseSnippet String?        @map("response_snippet")
   createdAt  DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
   deliveredAt DateTime?          @map("delivered_at") @db.Timestamptz(3)
 

@@ -18,6 +18,8 @@
 import "dotenv/config";
 
 import { prisma } from "../lib/db";
+import type { WebhookEventType } from "../lib/webhook/events";
+import { computeWebhookSignature } from "../lib/webhook/signature";
 
 /** 把 ISO 字符串换成 UTC 时间对象，种子里的时间全部写死，保证每次生成的数据一致。 */
 function at(iso: string): Date {
@@ -664,32 +666,45 @@ const RELEASES: SeedRelease[] = [
   },
 ];
 
-const WEBHOOK_ENDPOINTS = [
+/** 端点订阅必须落在 A8 的事件清单里：这里写错类型名，`pnpm typecheck` 就会失败。 */
+type WebhookEndpointSeed = {
+  workspaceSlug: string;
+  name: string;
+  url: string;
+  secret: string;
+  eventTypes: WebhookEventType[];
+  enabled: boolean;
+  description: string;
+};
+
+const WEBHOOK_ENDPOINTS: readonly WebhookEndpointSeed[] = [
   {
     workspaceSlug: "desktop-core",
+    name: "桌面核心组提测结果",
     url: "https://hooks.example.com/crp/desktop-core",
     secret: "seed-webhook-secret-desktop-core",
-    eventTypes: ["release.success", "release.failed"],
+    eventTypes: ["release.created", "build.succeeded", "build.failed"],
     enabled: true,
     description: "桌面核心组的提测结果通知",
   },
   {
     workspaceSlug: "system-apps",
+    name: "系统应用组构建失败",
     url: "https://hooks.example.com/crp/system-apps",
     secret: "seed-webhook-secret-system-apps",
-    eventTypes: ["release.failed"],
+    eventTypes: ["build.failed"],
     enabled: false,
     description: "系统应用组只订阅失败事件",
   },
-] as const;
+];
 
 /** 日志类数据每次重建：这两张表只记过程，没有业务唯一键可以 upsert。 */
+/** 投递记录：签名在写入时按 A8 的公开算法现算，库里存的就是当时发出去的那一份。 */
 const WEBHOOK_DELIVERIES = [
   {
     endpointUrl: "https://hooks.example.com/crp/desktop-core",
-    eventType: "release.success",
+    eventType: "build.succeeded",
     payload: { releaseId: "seed", version: "25.0.1", status: "success" },
-    signature: "sha256=seed-signature-1",
     status: "success" as const,
     attempts: 1,
     lastError: null,
@@ -698,9 +713,8 @@ const WEBHOOK_DELIVERIES = [
   },
   {
     endpointUrl: "https://hooks.example.com/crp/desktop-core",
-    eventType: "release.failed",
+    eventType: "build.failed",
     payload: { releaseId: "seed", version: "25.0.2", status: "failed" },
-    signature: "sha256=seed-signature-2",
     status: "failed" as const,
     attempts: 3,
     lastError: "第三次投递仍返回 502",
@@ -709,9 +723,8 @@ const WEBHOOK_DELIVERIES = [
   },
   {
     endpointUrl: "https://hooks.example.com/crp/system-apps",
-    eventType: "release.failed",
+    eventType: "build.failed",
     payload: { releaseId: "seed", version: "1.4.0", status: "failed" },
-    signature: "sha256=seed-signature-3",
     status: "pending" as const,
     attempts: 0,
     lastError: null,
@@ -1171,11 +1184,13 @@ async function seedReleases(
 
 async function seedWebhooks(workspaceIds: Map<string, string>): Promise<void> {
   const endpointIds = new Map<string, string>();
+  const secretByUrl = new Map<string, string>();
 
   for (const item of WEBHOOK_ENDPOINTS) {
     const workspaceId = requireId(workspaceIds, item.workspaceSlug);
     const fields = {
       workspaceId,
+      name: item.name,
       url: item.url,
       secret: item.secret,
       eventTypes: [...item.eventTypes],
@@ -1189,18 +1204,24 @@ async function seedWebhooks(workspaceIds: Map<string, string>): Promise<void> {
       create: fields,
     });
     endpointIds.set(item.url, row.id);
+    secretByUrl.set(item.url, item.secret);
   }
 
   // 投递记录只记过程，没有业务唯一键，每次重建。
   await prisma.webhookDelivery.deleteMany();
 
   for (const item of WEBHOOK_DELIVERIES) {
+    // 签名按 A8 的公开算法现算：时间戳取这条记录的时间，正文就是入库的那份 JSON。
+    const secret = requireId(secretByUrl, item.endpointUrl);
+    const timestamp = Math.floor(item.createdAt.getTime() / 1000).toString();
+    const signature = computeWebhookSignature(secret, timestamp, JSON.stringify(item.payload));
+
     await prisma.webhookDelivery.create({
       data: {
         endpointId: requireId(endpointIds, item.endpointUrl),
         eventType: item.eventType,
         payload: item.payload,
-        signature: item.signature,
+        signature,
         status: item.status,
         attempts: item.attempts,
         lastError: item.lastError,

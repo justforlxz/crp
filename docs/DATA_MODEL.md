@@ -343,9 +343,10 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | --- | --- | --- | --- |
 | `id` | text | PK | |
 | `workspaceId`（`workspace_id`） | text | NOT NULL | 端点归属的工作区 |
+| `name` | text | NOT NULL | 端点名称，页面显示用；同一工作区内不要求唯一 |
 | `url` | text | NOT NULL | 回调地址 |
 | `secret` | text | NOT NULL | 签名密钥；只在投递时使用，不进日志、不回显 |
-| `eventTypes`（`event_types`） | text[] | 默认空数组 | 订阅的事件类型，例如 `release.success`、`release.failed` |
+| `eventTypes`（`event_types`） | text[] | 默认空数组 | 订阅的事件类型，取值见 `lib/webhook/events.ts` 的五项清单与 `docs/WEBHOOK.md` |
 | `enabled` | boolean | NOT NULL，默认 true | 停用后不再投递，但保留记录 |
 | `description` | text | NULL | |
 | `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
@@ -365,13 +366,17 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | `payload` | jsonb | NOT NULL | 投递内容原文 |
 | `signature` | text | NOT NULL | 本次签名，用于复算校验 |
 | `status` | `webhook_delivery_status` | NOT NULL，默认 `pending` | 投递状态 |
-| `attempts` | integer | NOT NULL，默认 0 | 已投递次数 |
+| `attempts` | integer | NOT NULL，默认 0 | 已尝试次数（含首次），最多 5 次 |
 | `lastError`（`last_error`） | text | NULL | 最近一次失败原因 |
+| `httpStatus`（`http_status`） | integer | NULL | 最近一次尝试收到的 HTTP 状态码；连接失败等拿不到状态码时为空 |
+| `durationMs`（`duration_ms`） | integer | NULL | 最近一次尝试的耗时（毫秒） |
+| `responseSnippet`（`response_snippet`） | text | NULL | 最近一次尝试的响应体摘要，入库前截断到 500 字 |
 | `createdAt`（`created_at`） | timestamptz | NOT NULL | 记录创建时间 |
 | `deliveredAt`（`delivered_at`） | timestamptz | NULL | 成功投递时间 |
 
 - 索引：`(endpoint_id, status)` 二级索引（按端点看重试队列）；`created_at` 二级索引（投递日志按时间翻页）。
 - 外键：`endpoint_id → webhook_endpoint.id`，RESTRICT。端点只停用不删除，投递日志要能一直追溯。
+- 一次投递一行：`attempts` 记已尝试次数，`http_status`、`duration_ms`、`response_snippet`、`last_error` 都是最近一次尝试的结果；5 次尝试的逐次记录写进程日志，不在库里展开成 5 行。
 
 ### 4.18 sync_run（同步任务记录）
 

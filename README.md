@@ -71,6 +71,8 @@
 | `pnpm db:seed` | 执行 `prisma/seed.ts` 写入种子数据，使用 upsert，可重复执行 |
 | `pnpm db:studio` | 打开 Prisma Studio |
 | `pnpm tsx scripts/verify-gerrit.ts` | 用真实 Gerrit 复核分支、提交与 `debian/changelog` 读取，需要先配好 `GERRIT_*` 三项 |
+| `pnpm tsx scripts/verify-webhook.ts` | 本机起一个 Webhook 接收端点，验收投递、签名与重试，约 15 秒 |
+| `pnpm tsx scripts/verify-webhook-signature.ts` | 独立复算某次投递的签名，参数见 `docs/WEBHOOK.md` |
 
 ## 持续集成
 
@@ -112,10 +114,11 @@ lib/db.ts            Prisma Client 单例（带 pg 驱动适配器）
 lib/env.ts           环境变量读取与校验
 lib/integrations/    CRP、Shuttle、Gerrit 客户端（职责边界见其 README）
 lib/integrations/gerrit/  Gerrit 与 gitiles 客户端、changelog 解析、实测记录 FINDINGS.md
+lib/webhook/         Webhook 事件清单、签名、投递与端点读写（约定见 docs/WEBHOOK.md）
 scripts/             接真实外部系统的验证脚本，不经 CI 执行
 prisma/              schema、migrations、seed
 tests/               单元测试
-docs/                PRD 与数据模型文档
+docs/                PRD、数据模型与 Webhook 约定文档
 generated/           `prisma generate` 产物，不入库
 ```
 
