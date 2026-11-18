@@ -57,6 +57,11 @@ jobs:
       - name: Seed data
         run: pnpm db:seed
 
+      # AC1 要求 db:reset 可重复执行。这条命令会清空数据库，只允许在一次性环境里跑，
+      # 所以放在 CI 的服务容器上验证，而不是让本机或人工去点。
+      - name: Verify db:reset is repeatable
+        run: pnpm db:reset && pnpm db:reset
+
       - name: Lint
         run: pnpm lint
 

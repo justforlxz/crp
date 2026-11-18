@@ -67,6 +67,7 @@
 | `pnpm test` | 单元测试（Node 内置测试运行器，经 tsx 执行 TypeScript） |
 | `pnpm db:migrate` | 应用已提交的迁移（`prisma migrate deploy`），空库建表用它 |
 | `pnpm db:migrate:dev` | 开发时新建迁移（`prisma migrate dev --name <名称>`） |
+| `pnpm db:reset` | 清空数据库、重放全部迁移并跑种子（`prisma migrate reset --force && prisma db seed`）；Prisma 7 的 reset 不再自动跑种子，所以这里显式接上；会丢数据，只对本地开发库用 |
 | `pnpm db:seed` | 执行 `prisma/seed.ts` 写入种子数据，使用 upsert，可重复执行 |
 | `pnpm db:studio` | 打开 Prisma Studio |
 | `pnpm tsx scripts/verify-gerrit.ts` | 用真实 Gerrit 复核分支、提交与 `debian/changelog` 读取，需要先配好 `GERRIT_*` 三项 |
@@ -75,11 +76,12 @@
 
 `.github/workflows/ci.yml` 在 `push` 到 `main` 与向 `main` 提 PR 时触发，只有一个 job，按顺序执行：
 
-`pnpm install --frozen-lockfile` → `pnpm db:migrate` → `pnpm db:seed` → `pnpm lint` → `pnpm typecheck` → `pnpm test`
+`pnpm install --frozen-lockfile` → `pnpm db:migrate` → `pnpm db:seed` → `pnpm db:reset`（连续两次） → `pnpm lint` → `pnpm typecheck` → `pnpm test`
 
 - Node 用 `22.x`，与 `package.json` 的 `engines.node` 同一条版本线；pnpm 的版本由 `package.json` 的 `packageManager` 决定（当前 `pnpm@9.15.9`），由 `pnpm/action-setup` 安装，不在 workflow 里重复写版本。
 - 数据库用 `postgres:17` 的 service container，账号、库名、`DATABASE_URL` 都写在 workflow 里，不需要任何 secret。
 - 迁移和种子在 CI 里真跑：`_prisma_migrations` 能建表、种子能写入，才说明「空库可迁移」这条在干净环境成立。
+- `pnpm db:reset` 连跑两次：证明清库、重放迁移、灌种子这一整套可以重复执行，且每张表记录数仍与种子声明一致。这条会清空数据库，只允许放在一次性环境里跑。
 
 ## 环境变量
 

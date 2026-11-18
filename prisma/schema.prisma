@@ -1,5 +1,13 @@
-// Prisma schema。数据模型正式定义在 A5 节点，本节点只保留一个示例模型，
-// 用于验证「迁移 → 生成 Client → 种子」这条链路可以跑通。
+// CRP 提测平台数据模型（A5 定稿）。
+//
+// 与 `docs/DATA_MODEL.md` 一一对应：每张表的用途、唯一索引、外键与级联策略都写在文档里，
+// 改这里必须同步改文档。
+//
+// 全局约定：
+// - 表名单数 snake_case，Prisma 侧用 `@@map`；列名 camelCase，用 `@map` 落到 snake_case。
+// - 主键 `id`，UUID v7（按时间有序，插入局部性好）。
+// - 时间字段一律 `timestamptz`（UTC 存储），字段名后缀 `_at`。
+// - 外键删除策略在每处 `onDelete` 显式写出，默认值不用，避免读代码时要去查 Prisma 默认行为。
 
 generator client {
   provider = "prisma-client"
@@ -10,11 +18,582 @@ datasource db {
   provider = "postgresql"
 }
 
-/// 示例模型：仅用于验证迁移与种子链路，不属于业务模型。
-model HealthCheck {
-  id        Int      @id @default(autoincrement())
-  label     String   @unique
-  createdAt DateTime @default(now()) @map("created_at")
+// ---------------------------------------------------------------------------
+// 枚举
+// ---------------------------------------------------------------------------
 
-  @@map("health_check")
+/// 工作区内成员的角色。平台管理员是账号级标记（`app_user.is_platform_admin`），不进这个枚举。
+enum WorkspaceRole {
+  project_manager
+  developer
+  reader
+
+  @@map("workspace_role")
+}
+
+/// 提测记录状态。`dispatching` 表示正在按依赖顺序投递，`building` 表示已投完在等构建结果。
+enum ReleaseStatus {
+  pending
+  dispatching
+  building
+  success
+  partial_failure
+  failed
+  abandoned
+
+  @@map("release_status")
+}
+
+/// 提测快照每一轮的状态。
+///
+/// `superseded` 是「被更晚的一轮替换掉」，与 `abandoned`（被人为放弃）区分开：
+/// 前者一定指向一个替换它的新轮次（`superseded_by_id`），后者没有后继。
+enum SnapshotStatus {
+  pending
+  dispatching
+  building
+  success
+  failed
+  abandoned
+  superseded
+
+  @@map("snapshot_status")
+}
+
+/// 构建任务与构建作业的状态。
+enum BuildStatus {
+  pending
+  building
+  success
+  failed
+  canceled
+
+  @@map("build_status")
+}
+
+/// Webhook 投递状态。
+enum WebhookDeliveryStatus {
+  pending
+  success
+  failed
+
+  @@map("webhook_delivery_status")
+}
+
+/// 同步任务的种类，对应 PRD 6.4 的四类同步边界。
+enum SyncRunKind {
+  baseline_list
+  baseline_packages
+  package_metadata
+  release_status
+
+  @@map("sync_run_kind")
+}
+
+enum SyncRunStatus {
+  running
+  success
+  failed
+
+  @@map("sync_run_status")
+}
+
+/// 同步由谁触发：手动刷新或定时任务。
+enum SyncRunTrigger {
+  manual
+  schedule
+
+  @@map("sync_run_trigger")
+}
+
+// ---------------------------------------------------------------------------
+// 工作区、账号、成员
+// ---------------------------------------------------------------------------
+
+/// 工作区：项目、提测记录、成员工件的隔离边界。
+model Workspace {
+  id        String   @id @default(uuid(7))
+  /// 工作区标识，用于 URL。
+  slug      String   @unique
+  name      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  memberships     Membership[]
+  projectManagers ProjectManager[]
+  projects        Project[]
+  webhookEndpoints WebhookEndpoint[]
+
+  @@map("workspace")
+}
+
+/// 平台账号。表名用 `app_user`，避开 SQL 关键字 `user`。
+model User {
+  id              String   @id @default(uuid(7))
+  email           String   @unique
+  /// 只存哈希，不存明文。
+  passwordHash    String   @map("password_hash")
+  displayName     String   @map("display_name")
+  /// 平台管理员标记，可访问全部工作区。
+  isPlatformAdmin Boolean  @default(false) @map("is_platform_admin")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  memberships     Membership[]
+  projectManagers ProjectManager[]
+  createdReleases Release[]        @relation("ReleaseCreatedBy")
+
+  @@map("app_user")
+}
+
+/// 工作区成员：账号在工作区内的角色。
+model Membership {
+  id          String        @id @default(uuid(7))
+  workspaceId String        @map("workspace_id")
+  userId      String        @map("user_id")
+  role        WorkspaceRole
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  @@map("membership")
+}
+
+/// 项目经理：项目归属的载体，归属于一个工作区。
+///
+/// 未开通平台账号的项目经理也允许存在，所以 `user_id` 可空；账号注销时置空而不删除本行。
+model ProjectManager {
+  id          String    @id @default(uuid(7))
+  workspaceId String    @map("workspace_id")
+  userId      String?   @map("user_id")
+  name        String
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  projects  Project[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+  @@map("project_manager")
+}
+
+// ---------------------------------------------------------------------------
+// 基线
+// ---------------------------------------------------------------------------
+
+/// CRP 基线：CRP `/branches` 返回的一条交付分支，平铺清单，不分类。
+model Baseline {
+  id          String    @id @default(uuid(7))
+  /// CRP 侧分支 ID（`/branches` 响应里的 `ID`）。
+  crpBranchId String    @unique @map("crp_branch_id")
+  /// CRP 侧分支名，例如 `eagle-1071`、`snipe-2500u2`。
+  name        String
+  /// CRP 侧分支描述，原样保存。
+  description String?
+  /// CRP 侧仓库类型，例如 `deb`。
+  repoType    String?   @map("repo_type")
+  /// CRP 侧是否要求检查（`IsCheck`），1 与 true 都归一成 true。
+  isCheck     Boolean   @default(false) @map("is_check")
+  /// 最近一次同步成功的时间；为空或过旧即「基线未同步」，创建提测要被阻断。
+  syncedAt    DateTime? @map("synced_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  projects        Project[]
+  packageVersions BaselinePackageVersion[]
+
+  @@map("baseline")
+}
+
+/// 基线内软件包版本：数据来自 Shuttle 的基线交付仓库索引，按周期同步。
+///
+/// 只存源码包名，不强制外键指向 `package`：基线里存在大量平台尚未登记的软件包。
+/// `package.name` 全局唯一，需要关联时按名字查即可。
+model BaselinePackageVersion {
+  id          String   @id @default(uuid(7))
+  baselineId  String   @map("baseline_id")
+  /// 源码包名，例如 `kwin`，与 `package.name` 同一套命名。
+  packageName String   @map("package_name")
+  /// 该包在此基线交付仓库里的当前版本（Debian 版本号，原样保存）。
+  version     String
+  /// 本条数据的同步时间。
+  fetchedAt   DateTime @map("fetched_at") @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  baseline Baseline @relation(fields: [baselineId], references: [id], onDelete: Cascade)
+
+  @@unique([baselineId, packageName])
+  @@map("baseline_package_version")
+}
+
+// ---------------------------------------------------------------------------
+// 项目与软件清单
+// ---------------------------------------------------------------------------
+
+/// 项目：一次提测的归属对象。归属只由「项目经理 + 工作区」决定，没有业务类型字段。
+///
+/// 删除采用软删（`deleted_at`）：历史提测记录必须能继续查到自己的项目。
+model Project {
+  id               String    @id @default(uuid(7))
+  workspaceId      String    @map("workspace_id")
+  projectManagerId String    @map("project_manager_id")
+  /// 单选，一个项目同一时间只有一个目标基线。
+  baselineId       String    @map("baseline_id")
+  /// 项目标识，用于 URL 与外部引用。
+  key              String
+  name             String
+  description      String?
+  /// 软删时间；非空即视为已删除，列表默认过滤。
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  projectManager ProjectManager @relation(fields: [projectManagerId], references: [id], onDelete: Restrict)
+  baseline       Baseline       @relation(fields: [baselineId], references: [id], onDelete: Restrict)
+
+  software ProjectSoftware[]
+  releases Release[]
+
+  @@unique([workspaceId, name])
+  @@unique([workspaceId, key])
+  @@index([projectManagerId])
+  @@index([baselineId])
+  @@map("project")
+}
+
+/// 软件包：一个代码仓库，全局唯一登记。依赖只在 `package_dependency` 维护。
+model Package {
+  id             String   @id @default(uuid(7))
+  /// 源码包名，例如 `kwin`；与 changelog 解析结果、基线包索引同一套命名。
+  name           String   @unique
+  /// 仓库路径，例如 `deepin-kde/kwin`。
+  repoPath       String   @unique @map("repo_path")
+  /// 默认跟踪分支，例如 `develop/eagle`。
+  defaultBranch  String   @map("default_branch")
+  /// 登记时填写的当前版本。
+  currentVersion String?  @map("current_version")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  projectSoftware ProjectSoftware[]
+  dependencies    PackageDependency[] @relation("PackageDependencyDownstream")
+  dependents      PackageDependency[] @relation("PackageDependencyUpstream")
+
+  @@map("package")
+}
+
+/// 软件包上游依赖：一行表示「下游包依赖上游包」，上游构建成功才能投递下游。
+///
+/// 依赖环由应用层在保存时检测（数据库约束只能挡住自依赖）。
+model PackageDependency {
+  id               String   @id @default(uuid(7))
+  packageId        String   @map("package_id")
+  upstreamPackageId String  @map("upstream_package_id")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  package         Package @relation("PackageDependencyDownstream", fields: [packageId], references: [id], onDelete: Restrict)
+  upstreamPackage Package @relation("PackageDependencyUpstream", fields: [upstreamPackageId], references: [id], onDelete: Restrict)
+
+  @@unique([packageId, upstreamPackageId])
+  @@index([upstreamPackageId])
+  @@map("package_dependency")
+}
+
+/// 项目软件清单：项目引用了哪些软件包、各自跟踪哪个分支。
+///
+/// `last_submitted_commit` 只在提测创建成功后更新，不随刷新分支而变。
+model ProjectSoftware {
+  id                  String    @id @default(uuid(7))
+  projectId           String    @map("project_id")
+  packageId           String    @map("package_id")
+  /// 本项目默认跟踪分支，可覆盖软件包的默认分支。
+  trackedBranch       String    @map("tracked_branch")
+  /// 上次提测成功时提交的 Commit。
+  lastSubmittedCommit String?   @map("last_submitted_commit")
+  lastSubmittedAt     DateTime? @map("last_submitted_at") @db.Timestamptz(3)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  package Package @relation(fields: [packageId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, packageId])
+  @@index([packageId])
+  @@map("project_software")
+}
+
+// ---------------------------------------------------------------------------
+// 提测记录与快照
+// ---------------------------------------------------------------------------
+
+/// 提测记录：一次提测。CRP 侧对应一个 Topic，本表同时保存该 Topic 的本地状态副本。
+///
+/// Topic 状态为什么要落在库里：CRP 没有删除 Topic 的接口（`DELETE` 返回 200 但不做事），
+/// 清理只能置 `Abandoned`，「这个 Topic 还能不能再用」必须能本地查到，不能临时去问 CRP。
+///
+/// 轮次模型：`revision` 是提测轮次（从 1 开始）；每轮往快照表**追加**一批行，旧轮不删不改。
+/// `crp_work_progress >= 20` 表示已转测，此时不允许再补包换包。
+model Release {
+  id           String        @id @default(uuid(7))
+  projectId    String        @map("project_id")
+  /// Topic 版本号，提测时填写；同一项目内唯一。
+  version      String
+  /// 提测轮次，从 1 开始，每次增量更新加一。
+  revision     Int           @default(1)
+  status       ReleaseStatus @default(pending)
+  description  String?
+  createdById  String        @map("created_by_id")
+
+  /// CRP 侧 Topic ID；建 Topic 之前为空。
+  crpTopicId   String? @unique @map("crp_topic_id")
+  /// 建 Topic 时使用的 CRP 基线分支 ID。
+  crpBranchId  String? @map("crp_branch_id")
+  /// CRP Topic 的 `State` 数值，原样保存。
+  crpTopicState Int? @map("crp_topic_state")
+  /// CRP Topic 是否已放弃；放弃后不可再投递。
+  crpTopicAbandoned Boolean? @map("crp_topic_abandoned")
+  /// CRP Topic 是否已完成。
+  crpTopicCompleted Boolean? @map("crp_topic_completed")
+  /// CRP 工作流进度数值（`WorkProgress`），判断「还能不能改包」的唯一依据；>= 20 已转测。
+  crpWorkProgress Int? @map("crp_work_progress")
+  /// 进度对应的中文标签，跟着数值一起存，便于直接展示与追溯。
+  crpWorkProgressLabel String? @map("crp_work_progress_label")
+  crpWorkProgressSyncedAt DateTime? @map("crp_work_progress_synced_at") @db.Timestamptz(3)
+
+  /// 全部软件包投递完成的时间。
+  submittedAt  DateTime? @map("submitted_at") @db.Timestamptz(3)
+  /// 提测结束（成功或失败）的时间。
+  finishedAt   DateTime? @map("finished_at") @db.Timestamptz(3)
+
+  // 第二版预留（回退与复盘），本版只建字段，不写任何流程，也不建外键。
+  /// v2 预留：被回退的那次提测 ID。
+  rollbackOfId        String? @map("rollback_of_id")
+  /// v2 预留：代码来源提测 ID。
+  codeSourceReleaseId String? @map("code_source_release_id")
+  /// v2 预留：是否标记为风险提测。
+  riskFlag            Boolean? @map("risk_flag")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  createdBy User    @relation("ReleaseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  snapshots         ReleasePackageSnapshot[]
+  repositoryRecords ReleaseRepositoryRecord[]
+  buildTasks        BuildTask[]
+
+  @@unique([projectId, version])
+  @@index([status])
+  @@index([createdAt])
+  @@map("release")
+}
+
+/// 提测快照：某一轮里某个软件包固化的分支、Commit、版本。
+///
+/// 追加式建模：同一软件包再次提测时**新增一轮**（`attempt` 加一），旧轮一行不动。
+/// 除 `status` / `statusChangedAt` / `supersededById` / `supersededAt` 外，业务字段创建后不得修改。
+model ReleasePackageSnapshot {
+  id          String @id @default(uuid(7))
+  releaseId   String @map("release_id")
+  /// 源码包名，例如 `kwin`。按名字快照，不强制引用 `package`，未登记的包也能进快照。
+  packageName String @map("package_name")
+  /// 该包在这个提测里的第几轮，从 1 开始。
+  attempt     Int
+
+  /// 固化的分支。
+  branch        String
+  /// 固化的 Commit。
+  commitSha     String  @map("commit_sha")
+  /// 所选 Commit 的 `debian/changelog` 版本。
+  codeVersion   String  @map("code_version")
+  /// 该基线交付仓库里当前已有的版本，查不到时为空。
+  repoVersion   String? @map("repo_version")
+  /// 本次提交给 CRP 的版本（CRP 的 Tag）。
+  releaseVersion String @map("release_version")
+
+  status          SnapshotStatus @default(pending)
+  /// 状态最后一次变化的时间，轮询回写时更新。
+  statusChangedAt DateTime?      @map("status_changed_at") @db.Timestamptz(3)
+
+  /// 被哪一轮替换；本行被替换时指向新轮，新轮这一列为空。
+  supersededById String?    @unique @map("superseded_by_id")
+  /// 被替换的时间。
+  supersededAt   DateTime?  @map("superseded_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  release      Release                 @relation(fields: [releaseId], references: [id], onDelete: Restrict)
+  supersededBy ReleasePackageSnapshot? @relation("SnapshotSupersede", fields: [supersededById], references: [id], onDelete: Restrict)
+  supersedes   ReleasePackageSnapshot? @relation("SnapshotSupersede")
+
+  repositoryRecord ReleaseRepositoryRecord?
+  buildTask        BuildTask?
+
+  @@unique([releaseId, packageName, attempt])
+  @@index([releaseId, status])
+  @@map("release_package_snapshot")
+}
+
+/// 提测与 CRP 仓库记录的关联：一轮快照投递成功后 CRP 侧的 Release 与仓库地址。
+///
+/// 关联到具体那一轮快照：换包会删掉旧的 CRP Release 再建新的，历史轮次的记录必须留着。
+/// `release_id` 是为按提测查询冗余出来的，权威归属是 `snapshot_id`。
+model ReleaseRepositoryRecord {
+  id        String @id @default(uuid(7))
+  releaseId String @map("release_id")
+  /// 一轮快照只对应一条 CRP Release。
+  snapshotId String @unique @map("snapshot_id")
+
+  /// CRP 侧 Release ID。
+  crpReleaseId String @unique @map("crp_release_id")
+  /// CRP Release 上的 `BuildID`；查 Shuttle 构建任务用它，且必须按字符串传。
+  crpBuildId   String? @map("crp_build_id")
+  /// CRP 侧 Release 状态数值与状态名，原样保存。
+  crpReleaseState Int? @map("crp_release_state")
+  crpStatusName   String? @map("crp_status_name")
+  /// 从 `/topic_urls` 查到的仓库地址。
+  repositoryUrl String? @map("repository_url")
+  lastSyncedAt  DateTime? @map("last_synced_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  release  Release                @relation(fields: [releaseId], references: [id], onDelete: Restrict)
+  snapshot ReleasePackageSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+
+  @@map("release_repository_record")
+}
+
+// ---------------------------------------------------------------------------
+// 构建
+// ---------------------------------------------------------------------------
+
+/// 构建任务：一个软件包在一轮快照上的一次构建。挂在快照上，不挂在软件包上。
+model BuildTask {
+  id         String @id @default(uuid(7))
+  releaseId  String @map("release_id")
+  /// 权威归属：具体那一轮快照。
+  snapshotId String @unique @map("snapshot_id")
+
+  /// Shuttle 侧任务 ID，取自 CRP Release 的 `BuildID`；还没查到构建时为空。
+  shuttleTaskId String? @unique @map("shuttle_task_id")
+  status        BuildStatus @default(pending)
+  /// 最近一次向 Shuttle 查询结果的时间。
+  lastPolledAt  DateTime? @map("last_polled_at") @db.Timestamptz(3)
+  startedAt     DateTime? @map("started_at") @db.Timestamptz(3)
+  finishedAt    DateTime? @map("finished_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  release  Release                @relation(fields: [releaseId], references: [id], onDelete: Restrict)
+  snapshot ReleasePackageSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+  jobs     BuildJob[]
+
+  @@index([releaseId])
+  @@index([status])
+  @@map("build_task")
+}
+
+/// 构建作业：一个构建任务下某个架构的一次编译，日志按 `shuttle_job_id` 查。
+model BuildJob {
+  id            String      @id @default(uuid(7))
+  buildTaskId   String      @map("build_task_id")
+  shuttleJobId  String      @unique @map("shuttle_job_id")
+  /// 架构，例如 `amd64`、`arm64`。
+  arch          String
+  status        BuildStatus @default(pending)
+  startedAt     DateTime?   @map("started_at") @db.Timestamptz(3)
+  finishedAt    DateTime?   @map("finished_at") @db.Timestamptz(3)
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  buildTask BuildTask @relation(fields: [buildTaskId], references: [id], onDelete: Cascade)
+
+  @@index([buildTaskId])
+  @@map("build_job")
+}
+
+// ---------------------------------------------------------------------------
+// Webhook
+// ---------------------------------------------------------------------------
+
+/// Webhook 端点：订阅哪些事件、往哪个地址投递、用什么密钥签名。
+model WebhookEndpoint {
+  id          String   @id @default(uuid(7))
+  workspaceId String   @map("workspace_id")
+  url         String
+  /// 签名密钥，只在投递时使用，不进日志、不回显。
+  secret      String
+  /// 订阅的事件类型，例如 `release.success`、`release.failed`。
+  eventTypes  String[] @default([]) @map("event_types")
+  enabled     Boolean  @default(true)
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace  Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  deliveries WebhookDelivery[]
+
+  @@unique([workspaceId, url])
+  @@map("webhook_endpoint")
+}
+
+/// Webhook 投递记录：每次投递的载荷、签名与结果，用于复算与排查。
+model WebhookDelivery {
+  id         String              @id @default(uuid(7))
+  endpointId String              @map("endpoint_id")
+  eventType  String              @map("event_type")
+  /// 投递内容（原始 JSON）。
+  payload    Json
+  /// 本次签名，用于复算校验。
+  signature  String
+  status     WebhookDeliveryStatus @default(pending)
+  /// 已投递次数。
+  attempts   Int                 @default(0)
+  lastError  String?             @map("last_error")
+  createdAt  DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  deliveredAt DateTime?          @map("delivered_at") @db.Timestamptz(3)
+
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Restrict)
+
+  @@index([endpointId, status])
+  @@index([createdAt])
+  @@map("webhook_delivery")
+}
+
+// ---------------------------------------------------------------------------
+// 同步任务
+// ---------------------------------------------------------------------------
+
+/// 同步任务记录：一次基线 / 基线包版本 / 软件包元数据 / 提测状态的同步过程与结果。
+///
+/// 只记过程，不存同步到的数据本身（数据落在各自的目标表）。
+model SyncRun {
+  id     String         @id @default(uuid(7))
+  kind   SyncRunKind
+  status SyncRunStatus  @default(running)
+  trigger SyncRunTrigger
+  /// 同步范围。基线类同步存 `baseline.id`，提测状态同步存 `release.id`，全局同步为空。
+  targetId String?      @map("target_id")
+  /// 处理了多少条数据。
+  itemCount Int         @default(0) @map("item_count")
+  startedAt DateTime    @default(now()) @map("started_at") @db.Timestamptz(3)
+  finishedAt DateTime?  @map("finished_at") @db.Timestamptz(3)
+  errorMessage String?  @map("error_message")
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([kind, startedAt])
+  @@index([status])
+  @@map("sync_run")
 }
