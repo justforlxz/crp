@@ -1,0 +1,20 @@
+// Prisma schema。数据模型正式定义在 A5 节点，本节点只保留一个示例模型，
+// 用于验证「迁移 → 生成 Client → 种子」这条链路可以跑通。
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// 示例模型：仅用于验证迁移与种子链路，不属于业务模型。
+model HealthCheck {
+  id        Int      @id @default(autoincrement())
+  label     String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("health_check")
+}
