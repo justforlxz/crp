@@ -1,273 +1,526 @@
-# 数据模型初稿
+# 数据模型（A5 定稿）
 
-本文把 PRD 第五节的领域模型展开到表与字段，作为 A5 节点正式建模的输入。本节点不建业务表：`prisma/schema.prisma` 里只有一个示例模型 `HealthCheck`，用于验证迁移链路。
+本文是 `prisma/schema.prisma` 的说明文档，与 schema 一一对应：18 张表、8 组枚举、全部唯一索引、外键与删除策略都在这里写明。改 schema 必须同步改本文。
+
+数据来源是 PRD 第五节的领域模型，加上 A2（CRP）、A3（Gerrit）、A4（Shuttle）实测确认的字段。与 PRD 初稿的差异集中记在第 8 节，不在正文里夹带说明。
 
 ## 一、全局约定
 
 | 项 | 约定 |
 | --- | --- |
 | 数据库 | PostgreSQL |
-| 表名 | 单数 snake_case，Prisma 侧用 `@@map` 映射 |
-| 主键 | `id`，UUID 字符串，应用侧生成 |
-| 时间 | `timestamptz`，字段名后缀 `_at`；每表保留 `created_at`，可变的表加 `updated_at` |
-| 外键 | `<实体>_id`，默认 `ON DELETE RESTRICT`；确需级联时在表下单独说明 |
-| 枚举 | PostgreSQL 枚举类型，名称 `<表名>_<字段名>` |
-| 账号表名 | `app_user`，避免与 SQL 关键字 `user` 冲突 |
+| 表名 | 单数 snake_case；Prisma 侧用 `@@map` 映射 |
+| 列名 | snake_case；Prisma 字段用 camelCase，逐个 `@map` 到列名 |
+| 主键 | `id`，字符串（`text`），UUID v7，由 Prisma Client 生成。v7 按时间有序，插入时索引局部性好 |
+| 时间 | 一律 `timestamptz`（UTC 存储）；列名后缀 `_at`；可变的表带 `created_at` 与 `updated_at`，只追加的表只有 `created_at` |
+| 枚举 | PostgreSQL 枚举类型，类型名与 schema 里的枚举名一致（snake_case） |
+| 外键 | 列名 `<实体>_id`；每条 `onDelete` 在 schema 里显式写出，策略总表见第 6 节 |
+| 账号表 | 表名 `app_user`，避开 SQL 关键字 `user` |
+| 删除 | 项目统一软删（`deleted_at`）；提测记录与其快照、构建记录只做状态流转，不物理删除 |
 
 ## 二、关系总览
 
 ```
-app_user 1-n membership n-1 workspace
-workspace 1-n project_manager
+workspace 1-n membership n-1 app_user
+workspace 1-n project_manager（project_manager.user_id 可空，指向 app_user）
 project_manager 1-n project
-project 1-1 baseline（外键 project.baseline_id）
+project 1-1 baseline（外键 project.baseline_id，单选）
 project 1-n project_software n-1 package
 package 1-n package_dependency（自关联，记录上游依赖）
 baseline 1-n baseline_package_version（数据来自 Shuttle）
 project 1-n release
-release 1-1 crp_topic
-release 1-n release_package_snapshot
-release 1-n release_repository_record
-release 1-n build_task 1-n build_job
-webhook_endpoint 1-n webhook_delivery
+release 1-n release_package_snapshot（按轮次追加）
+release_package_snapshot 1-1 release_repository_record（投递后才存在）
+release_package_snapshot 1-1 build_task 1-n build_job
+workspace 1-n webhook_endpoint 1-n webhook_delivery
+sync_run 独立记录同步过程
 ```
+
+PRD 里的 `Release 1-1 CrpTopic` 在本版没有独立表，Topic 的字段并入 `release`，理由见 8.1。
 
 ## 三、枚举
 
-| 枚举 | 取值 | 用途 |
+| 枚举（类型名） | 取值 | 用途 |
 | --- | --- | --- |
-| `workspace_role` | `project_manager`、`developer`、`reader` | 工作区内成员角色；平台管理员是账号级标记，不占此枚举 |
-| `release_status` | `pending`、`submitting`、`succeeded`、`partially_failed`、`failed` | 提测状态 |
-| `build_status` | `pending`、`running`、`succeeded`、`failed`、`canceled` | 构建任务与构建作业状态 |
-| `webhook_delivery_status` | `pending`、`succeeded`、`failed` | Webhook 投递状态 |
+| `WorkspaceRole`（`workspace_role`） | `project_manager`、`developer`、`reader` | 工作区成员角色。平台管理员是账号级标记 `app_user.is_platform_admin`，不进这个枚举 |
+| `ReleaseStatus`（`release_status`） | `pending`、`dispatching`、`building`、`success`、`partial_failure`、`failed`、`abandoned` | 提测记录状态。`dispatching` = 正在按依赖顺序投递；`building` = 已投完等构建结果 |
+| `SnapshotStatus`（`snapshot_status`） | `pending`、`dispatching`、`building`、`success`、`failed`、`abandoned`、`superseded` | 提测快照每一轮的状态。`superseded` = 被更晚一轮替换，必有 `superseded_by_id`；`abandoned` = 人为放弃，没有后继 |
+| `BuildStatus`（`build_status`） | `pending`、`building`、`success`、`failed`、`canceled` | 构建任务与构建作业共用 |
+| `WebhookDeliveryStatus`（`webhook_delivery_status`） | `pending`、`success`、`failed` | Webhook 投递状态 |
+| `SyncRunKind`（`sync_run_kind`） | `baseline_list`、`baseline_packages`、`package_metadata`、`release_status` | 同步种类，对应 PRD 6.4 的四类同步边界 |
+| `SyncRunStatus`（`sync_run_status`） | `running`、`success`、`failed` | 同步结果 |
+| `SyncRunTrigger`（`sync_run_trigger`） | `manual`、`schedule` | 手动刷新或定时任务 |
 
 ## 四、表定义
 
-### 4.1 app_user（账号）
+每张表下的「索引」只列唯一索引与显式二级索引（主键索引不重复写）；「外键」写清指向、可空性与删除策略。
 
-| 字段 | 类型 | 约束 | 说明 |
+### 4.1 workspace（工作区）
+
+项目、成员、Webhook 的隔离边界。用户可属于多个工作区。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
-| `id` | uuid | PK | |
-| `email` | text | NOT NULL, UNIQUE | 登录账号 |
-| `password_hash` | text | NOT NULL | 只存哈希，不存明文 |
-| `display_name` | text | NOT NULL | 显示名 |
-| `is_platform_admin` | boolean | NOT NULL, 默认 false | 平台管理员标记，可访问全部工作区 |
-| `created_at` / `updated_at` | timestamptz | NOT NULL | |
-
-### 4.2 workspace（工作区）
-
-| 字段 | 类型 | 约束 | 说明 |
-| --- | --- | --- | --- |
-| `id` | uuid | PK | |
-| `slug` | text | NOT NULL, UNIQUE | 工作区标识，用于 URL |
+| `id` | text | PK | UUID v7 |
+| `slug` | text | NOT NULL | 工作区标识，用于 URL |
 | `name` | text | NOT NULL | 工作区名称 |
-| `created_at` / `updated_at` | timestamptz | NOT NULL | |
+| `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
+
+- 索引：`slug` 唯一。
+- 外键：无。
+
+### 4.2 app_user（平台账号）
+
+| 字段（列名） | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | text | PK | |
+| `email` | text | NOT NULL | 登录账号 |
+| `passwordHash`（`password_hash`） | text | NOT NULL | 只存哈希，不存明文 |
+| `displayName`（`display_name`） | text | NOT NULL | 显示名 |
+| `isPlatformAdmin`（`is_platform_admin`） | boolean | NOT NULL，默认 false | 平台管理员，可访问全部工作区 |
+| `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
+
+- 索引：`email` 唯一。
+- 外键：无。
 
 ### 4.3 membership（工作区成员）
 
-| 字段 | 类型 | 约束 | 说明 |
+| 字段（列名） | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
-| `id` | uuid | PK | |
-| `workspace_id` | uuid | NOT NULL, FK → workspace | |
-| `user_id` | uuid | NOT NULL, FK → app_user | |
+| `id` | text | PK | |
+| `workspaceId`（`workspace_id`） | text | NOT NULL | |
+| `userId`（`user_id`） | text | NOT NULL | |
 | `role` | `workspace_role` | NOT NULL | 该用户在此工作区的角色 |
-| `created_at` / `updated_at` | timestamptz | NOT NULL | |
+| `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
 
-唯一约束：`(workspace_id, user_id)`。
+- 索引：`(workspace_id, user_id)` 唯一；`user_id` 二级索引（查「我在哪些工作区」）。
+- 外键：`workspace_id → workspace.id`，RESTRICT；`user_id → app_user.id`，RESTRICT。工作区与账号都不做物理删除，历史成员关系必须留着。
 
 ### 4.4 project_manager（项目经理）
 
-| 字段 | 类型 | 约束 | 说明 |
+项目归属的载体，归属于一个工作区。每个项目必须指定一位。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
-| `id` | uuid | PK | |
-| `workspace_id` | uuid | NOT NULL, FK → workspace | 项目经理归属一个工作区 |
-| `user_id` | uuid | NULL, FK → app_user | 绑定的平台账号；未开通账号时为空 |
+| `id` | text | PK | |
+| `workspaceId`（`workspace_id`） | text | NOT NULL | 项目经理归属的工作区 |
+| `userId`（`user_id`） | text | NULL | 绑定的平台账号；未开通账号时为空 |
 | `name` | text | NOT NULL | 展示用姓名 |
-| `created_at` / `updated_at` | timestamptz | NOT NULL | |
+| `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
+
+- 索引：`(workspace_id, name)` 唯一（同一工作区内不重名，避免同名项目经理无法区分）；`workspace_id` 二级索引。
+- 外键：`workspace_id → workspace.id`，RESTRICT；`user_id → app_user.id`，SET NULL（账号注销时保留项目经理实体，只解除绑定）。
 
 ### 4.5 baseline（CRP 基线）
 
-| 字段 | 类型 | 约束 | 说明 |
+CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做命名映射。
+
+字段来自 A2 实测：`ID`、`Name`、`Description`、`RepoType`、`IsCheck`。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
-| `id` | uuid | PK | |
-| `crp_branch_id` | text | NOT NULL, UNIQUE | CRP `/branches` 返回的分支 ID |
-| `name` | text | NOT NULL | 例如 `eagle-1071`、`snipe-2500u2` |
-| `synced_at` | timestamptz | NULL | 最近一次同步成功时间，用于「基线未同步」阻断判断 |
-| `created_at` / `updated_at` | timestamptz | NOT NULL | |
+| `id` | text | PK | |
+| `crpBranchId`（`crp_branch_id`） | text | NOT NULL | CRP 侧分支 ID（`/branches` 的 `ID`） |
+| `name` | text | NOT NULL | 分支名，例如 `eagle-1071`、`snipe-2500u2` |
+| `description` | text | NULL | CRP 侧描述，原样保存 |
+| `repoType`（`repo_type`） | text | NULL | CRP 侧仓库类型，例如 `deb` |
+| `isCheck`（`is_check`） | boolean | NOT NULL，默认 false | CRP 的 `IsCheck`，数值 1 与布尔 true 都归一成 true |
+| `syncedAt`（`synced_at`） | timestamptz | NULL | 最近一次同步成功时间；为空或过旧即「基线未同步」 |
+| `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
 
-### 4.6 package（软件包）
+- 索引：`crp_branch_id` 唯一。
+- 外键：无。
 
-| 字段 | 类型 | 约束 | 说明 |
+### 4.6 baseline_package_version（基线内软件包版本）
+
+数据来自 Shuttle 的基线交付仓库索引（A4 的 `listBaselinePackages`），按周期同步覆盖。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
-| `id` | uuid | PK | |
-| `name` | text | NOT NULL | 软件包名称 |
-| `repo_path` | text | NOT NULL, UNIQUE | 仓库路径，例如 `deepin-kde/kwin`；全局唯一登记 |
-| `default_branch` | text | NOT NULL | 默认跟踪分支，例如 `develop/eagle` |
-| `current_version` | text | NULL | 登记时填写的当前版本 |
-| `created_at` / `updated_at` | timestamptz | NOT NULL | |
+| `id` | text | PK | |
+| `baselineId`（`baseline_id`） | text | NOT NULL | 所属基线 |
+| `packageName`（`package_name`） | text | NOT NULL | 源码包名，例如 `kwin`，与 `package.name` 同一套命名 |
+| `version` | text | NOT NULL | 该包在此基线交付仓库里的当前版本，原样保存 |
+| `fetchedAt`（`fetched_at`） | timestamptz | NOT NULL | 本条数据的同步时间 |
+| `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
 
-### 4.7 package_dependency（软件包上游依赖）
+- 索引：`(baseline_id, package_name)` 唯一，同步时按它覆盖写入。
+- 外键：`baseline_id → baseline.id`，CASCADE。基线的包版本清单属于基线自身，基线删除时一并清掉。
+- 不指向 `package`：基线里存在大量平台尚未登记的软件包（`eagle-1071` 实测 124 个、`snipe-2500u2` 488 个）。需要关联时按 `package_name = package.name` 查。
 
-| 字段 | 类型 | 约束 | 说明 |
+### 4.7 package（软件包）
+
+一个代码仓库，全局唯一登记。依赖只在 `package_dependency` 维护，项目清单不重复存依赖。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
-| `id` | uuid | PK | |
-| `package_id` | uuid | NOT NULL, FK → package | 下游包 |
-| `upstream_package_id` | uuid | NOT NULL, FK → package | 上游包，必须先构建成功 |
-| `created_at` | timestamptz | NOT NULL | |
+| `id` | text | PK | |
+| `name` | text | NOT NULL | 源码包名，例如 `kwin` |
+| `repoPath`（`repo_path`） | text | NOT NULL | 仓库路径，例如 `deepin-kde/kwin` |
+| `defaultBranch`（`default_branch`） | text | NOT NULL | 默认跟踪分支，例如 `develop/eagle` |
+| `currentVersion`（`current_version`） | text | NULL | 登记时填写的当前版本 |
+| `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
 
-唯一约束：`(package_id, upstream_package_id)`；检查约束：`package_id <> upstream_package_id`。依赖环由应用层在保存时检测，不靠数据库约束。
+- 索引：`name` 唯一；`repo_path` 唯一。
+- 外键：无。
 
-### 4.8 project（项目）
+### 4.8 package_dependency（软件包上游依赖）
 
-| 字段 | 类型 | 约束 | 说明 |
+一行表示「下游包依赖上游包」：上游构建成功才允许投递下游。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
-| `id` | uuid | PK | |
-| `workspace_id` | uuid | NOT NULL, FK → workspace | |
-| `project_manager_id` | uuid | NOT NULL, FK → project_manager | 每个项目必须指定一位 |
-| `baseline_id` | uuid | NOT NULL, FK → baseline | 单选，一个项目同一时间只有一个目标基线 |
-| `key` | text | NOT NULL | 项目标识 |
+| `id` | text | PK | |
+| `packageId`（`package_id`） | text | NOT NULL | 下游包 |
+| `upstreamPackageId`（`upstream_package_id`） | text | NOT NULL | 上游包 |
+| `createdAt` | timestamptz | NOT NULL | |
+
+- 索引：`(package_id, upstream_package_id)` 唯一；`upstream_package_id` 二级索引（查「谁依赖我」，A17 作废下游要用）。
+- 外键：`package_id → package.id`、`upstream_package_id → package.id`，都是 RESTRICT。删软件包前必须先清依赖，避免依赖链断在半路。
+- 依赖环（含自依赖）由应用层在保存时检测。数据库只挡得住主键与外键，环检测是图算法，不放在数据库里。
+
+### 4.9 project（项目）
+
+一次提测的归属对象。归属只由「项目经理 + 工作区」决定，**没有任何业务类型字段**（没有「主线 / 商业项目」这类分类）。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | text | PK | |
+| `workspaceId`（`workspace_id`） | text | NOT NULL | |
+| `projectManagerId`（`project_manager_id`） | text | NOT NULL | 每个项目必须有一位项目经理 |
+| `baselineId`（`baseline_id`） | text | NOT NULL | 单选，一个项目同一时间只有一个目标基线 |
+| `key` | text | NOT NULL | 项目标识，用于 URL 与外部引用 |
 | `name` | text | NOT NULL | 项目名称 |
-| `created_at` / `updated_at` | timestamptz | NOT NULL | |
+| `description` | text | NULL | |
+| `deletedAt`（`deleted_at`） | timestamptz | NULL | 软删时间；非空即已删除，列表默认过滤 |
+| `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
 
-唯一约束：`(workspace_id, key)`。
+- 索引：`(workspace_id, name)` 唯一；`(workspace_id, key)` 唯一；`project_manager_id`、`baseline_id` 二级索引。
+- 外键：`workspace_id → workspace.id`、`project_manager_id → project_manager.id`、`baseline_id → baseline.id`，全部 RESTRICT。
+- 删除策略：项目只软删（写 `deleted_at`），不物理删除。历史提测记录必须能继续查到自己的项目，所以外键不会因为「删项目」而触发任何连锁删除。
 
-### 4.9 project_software（项目软件清单）
+### 4.10 project_software（项目软件清单）
 
-| 字段 | 类型 | 约束 | 说明 |
+项目引用了哪些软件包、各自跟踪哪个分支。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
-| `id` | uuid | PK | |
-| `project_id` | uuid | NOT NULL, FK → project | |
-| `package_id` | uuid | NOT NULL, FK → package | |
-| `tracked_branch` | text | NOT NULL | 本项目默认跟踪分支，可覆盖软件包默认分支 |
-| `last_submitted_commit` | text | NULL | 上次提测成功的 Commit；只在提测创建成功后更新 |
-| `created_at` / `updated_at` | timestamptz | NOT NULL | |
+| `id` | text | PK | |
+| `projectId`（`project_id`） | text | NOT NULL | |
+| `packageId`（`package_id`） | text | NOT NULL | |
+| `trackedBranch`（`tracked_branch`） | text | NOT NULL | 本项目默认跟踪分支，可覆盖软件包默认分支 |
+| `lastSubmittedCommit`（`last_submitted_commit`） | text | NULL | 上次提测成功时提交的 Commit |
+| `lastSubmittedAt`（`last_submitted_at`） | timestamptz | NULL | 上次提测成功时间 |
+| `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
 
-唯一约束：`(project_id, package_id)`。项目不重复存依赖，依赖只在 `package_dependency` 维护。
+- 索引：`(project_id, package_id)` 唯一；`package_id` 二级索引。
+- 外键：`project_id → project.id`、`package_id → package.id`，都是 RESTRICT。
+- `last_submitted_commit` 只在提测创建成功后更新，刷新分支不影响它。
 
-### 4.10 release（提测记录）
+### 4.11 release（提测记录）
 
-| 字段 | 类型 | 约束 | 说明 |
+一次提测。CRP 侧对应一个 Topic，本表同时保存该 Topic 的本地状态副本。
+
+**为什么 Topic 状态要落在库里**：CRP 没有删除 Topic 的接口（`DELETE /api/topics/{id}` 返回 200 但不做事），清理只能把 Topic 置 `Abandoned`。「这个 Topic 还能不能再用」必须是本地查得到的事实，不能需要时去 CRP 现问。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
-| `id` | uuid | PK | |
-| `project_id` | uuid | NOT NULL, FK → project | 提测归属项目 |
-| `topic_version` | text | NOT NULL | 填写的 Topic 版本号 |
+| `id` | text | PK | |
+| `projectId`（`project_id`） | text | NOT NULL | 提测归属项目 |
+| `version` | text | NOT NULL | Topic 版本号，提测时填写 |
+| `revision` | integer | NOT NULL，默认 1 | 提测轮次，从 1 开始；每次增量更新加一 |
+| `status` | `release_status` | NOT NULL，默认 `pending` | 提测状态 |
 | `description` | text | NULL | 提测说明 |
-| `status` | `release_status` | NOT NULL, 默认 `pending` | 提测状态 |
-| `created_by` | uuid | NOT NULL, FK → app_user | 发起人 |
-| `created_at` / `updated_at` | timestamptz | NOT NULL | |
+| `createdById`（`created_by_id`） | text | NOT NULL | 发起人 |
+| `crpTopicId`（`crp_topic_id`） | text | NULL | CRP 侧 Topic ID；建 Topic 之前为空 |
+| `crpBranchId`（`crp_branch_id`） | text | NULL | 建 Topic 时使用的 CRP 基线分支 ID |
+| `crpTopicState`（`crp_topic_state`） | integer | NULL | CRP Topic 的 `State` 数值，原样保存 |
+| `crpTopicAbandoned`（`crp_topic_abandoned`） | boolean | NULL | Topic 是否已放弃 |
+| `crpTopicCompleted`（`crp_topic_completed`） | boolean | NULL | Topic 是否已完成 |
+| `crpWorkProgress`（`crp_work_progress`） | integer | NULL | CRP 工作流进度数值；`>= 20` 表示已转测，不允许再改包 |
+| `crpWorkProgressLabel`（`crp_work_progress_label`） | text | NULL | 进度对应的中文标签，与数值一起存 |
+| `crpWorkProgressSyncedAt`（`crp_work_progress_synced_at`） | timestamptz | NULL | 进度最近一次回写时间 |
+| `submittedAt`（`submitted_at`） | timestamptz | NULL | 全部软件包投递完成时间 |
+| `finishedAt`（`finished_at`） | timestamptz | NULL | 提测结束（成功或失败）时间 |
+| `rollbackOfId`（`rollback_of_id`） | text | NULL | **v2 预留**，本版无流程 |
+| `codeSourceReleaseId`（`code_source_release_id`） | text | NULL | **v2 预留**，本版无流程 |
+| `riskFlag`（`risk_flag`） | boolean | NULL | **v2 预留**，本版无流程 |
+| `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
 
-第二版预留（本版只留在文档里，不建字段）：`rollback_of_id`、`code_source_release_id`、`risk_flag`。
-
-### 4.11 crp_topic（提测对应的 CRP Topic）
-
-| 字段 | 类型 | 约束 | 说明 |
-| --- | --- | --- | --- |
-| `id` | uuid | PK | |
-| `release_id` | uuid | NOT NULL, UNIQUE, FK → release | 一条提测对应一个 Topic |
-| `crp_topic_id` | text | NOT NULL, UNIQUE | CRP 返回的 Topic ID |
-| `crp_branch_id` | text | NOT NULL | 建 Topic 时使用的基线分支 ID |
-| `created_at` / `updated_at` | timestamptz | NOT NULL | |
+- 索引：`(project_id, version)` 唯一；`crp_topic_id` 唯一（同一条记录只能绑一个 Topic）；`status`、`created_at` 二级索引（列表与工作台统计按状态、时间过滤）。
+- 外键：`project_id → project.id`，RESTRICT；`created_by_id → app_user.id`，RESTRICT。
+- 不额外建 `project_id` 单列索引：`(project_id, version)` 唯一索引的最左前缀已经覆盖按项目查询。
+- v2 的三个预留字段**不建外键**：本版没有回退流程，指向关系暂时没有写入方；等 v2 真正实现时再加约束。
 
 ### 4.12 release_package_snapshot（提测快照）
 
-| 字段 | 类型 | 约束 | 说明 |
-| --- | --- | --- | --- |
-| `id` | uuid | PK | |
-| `release_id` | uuid | NOT NULL, FK → release | |
-| `package_id` | uuid | NOT NULL, FK → package | |
-| `branch` | text | NOT NULL | 固化的分支 |
-| `commit_sha` | text | NOT NULL | 固化的 Commit |
-| `code_version` | text | NOT NULL | 从 `debian/changelog` 解析的版本 |
-| `repo_version` | text | NULL | 该基线仓库当前已有版本，来自 Shuttle，查不到时为空 |
-| `release_version` | text | NOT NULL | 本次提交给 CRP 的版本（Tag） |
-| `created_at` | timestamptz | NOT NULL | |
+某一轮里某个软件包固化的分支、Commit 与三个版本号。
 
-唯一约束：`(release_id, package_id)`。**创建后不可修改**：不提供更新字段的接口，修正只能新建一次提测。
+**追加式建模**：同一个软件包再次提测时新增一轮（`attempt` 加一），**旧轮一行不改、不删**。历史轮次用 `superseded_by_id`、`superseded_at` 指向替换它的新轮。修正是追加新轮，不是原地修改。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | text | PK | |
+| `releaseId`（`release_id`） | text | NOT NULL | 所属提测 |
+| `packageName`（`package_name`） | text | NOT NULL | 源码包名，例如 `kwin`；按名字快照，未登记的包也能进快照 |
+| `attempt` | integer | NOT NULL | 该包在这个提测里的第几轮，从 1 开始 |
+| `branch`（`branch`） | text | NOT NULL | 固化的分支 |
+| `commitSha`（`commit_sha`） | text | NOT NULL | 固化的 Commit |
+| `codeVersion`（`code_version`） | text | NOT NULL | 所选 Commit 的 `debian/changelog` 版本 |
+| `repoVersion`（`repo_version`） | text | NULL | 该基线交付仓库里当前已有的版本（Shuttle 取），查不到时为空 |
+| `releaseVersion`（`release_version`） | text | NOT NULL | 本次提交给 CRP 的版本（CRP 的 Tag） |
+| `status` | `snapshot_status` | NOT NULL，默认 `pending` | 本轮状态，允许流转 |
+| `statusChangedAt`（`status_changed_at`） | timestamptz | NULL | 状态最后一次变化时间，轮询回写时更新 |
+| `supersededById`（`superseded_by_id`） | text | NULL | 被哪一轮替换；被替换的旧轮指向新轮 |
+| `supersededAt`（`superseded_at`） | timestamptz | NULL | 被替换的时间 |
+| `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
+
+- 索引：`(release_id, package_name, attempt)` 唯一；`superseded_by_id` 唯一（一条新轮只接替一轮）；`(release_id, status)` 二级索引（详情页按状态分组）。
+- 外键：`release_id → release.id`，RESTRICT；`superseded_by_id → release_package_snapshot.id`（自关联），RESTRICT。
+- **可变字段只有四个**：`status`、`statusChangedAt`、`supersededById`、`supersededAt`。其余业务字段（分支、Commit、三个版本号、`attempt`）创建后不得修改，应用层不提供更新入口。
 
 ### 4.13 release_repository_record（提测与 CRP 仓库记录的关联）
 
-| 字段 | 类型 | 约束 | 说明 |
+一轮快照投递成功后，CRP 侧的 Release 与仓库地址。
+
+`release_id` 是为按提测查询冗余出来的，权威归属是 `snapshot_id`。冗余的理由：换包会删掉旧的 CRP Release 再建新的，历史轮次的记录必须能跟着提测一起查到，且每轮一行。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
-| `id` | uuid | PK | |
-| `release_id` | uuid | NOT NULL, FK → release | |
-| `package_id` | uuid | NOT NULL, FK → package | |
-| `crp_release_id` | text | NOT NULL, UNIQUE | CRP 侧 Release ID |
-| `repository_url` | text | NULL | CRP `/topic_urls` 查到的仓库地址 |
-| `created_at` / `updated_at` | timestamptz | NOT NULL | |
+| `id` | text | PK | |
+| `releaseId`（`release_id`） | text | NOT NULL | 冗余的提测归属，便于按提测查 |
+| `snapshotId`（`snapshot_id`） | text | NOT NULL | 权威归属：具体那一轮快照 |
+| `crpReleaseId`（`crp_release_id`） | text | NOT NULL | CRP 侧 Release ID |
+| `crpBuildId`（`crp_build_id`） | text | NULL | CRP Release 上的 `BuildID`；查 Shuttle 构建任务用它，**必须按字符串传**（传数字会静默返回空，A4 实测） |
+| `crpReleaseState`（`crp_release_state`） | integer | NULL | CRP 侧 Release 状态数值 |
+| `crpStatusName`（`crp_status_name`） | text | NULL | CRP 侧状态名，原样保存 |
+| `repositoryUrl`（`repository_url`） | text | NULL | 从 `/topic_urls` 查到的仓库地址；构建产出前为空 |
+| `lastSyncedAt`（`last_synced_at`） | timestamptz | NULL | 最近一次从 CRP 刷新状态的时间 |
+| `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
+
+- 索引：`snapshot_id` 唯一（一轮只对应一条 CRP Release）；`crp_release_id` 唯一。
+- 外键：`release_id → release.id`、`snapshot_id → release_package_snapshot.id`，都是 RESTRICT。改包时旧的 CRP Release 在 CRP 侧被删，本地这条记录保留，用于复盘。
 
 ### 4.14 build_task（构建任务）
 
-| 字段 | 类型 | 约束 | 说明 |
+一个软件包在**一轮快照**上的一次构建，不挂在软件包上。任务 ID 就是 CRP Release 的 `BuildID`（A4 实测：Shuttle 的 `taskid` 取这个值）。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
-| `id` | uuid | PK | |
-| `release_id` | uuid | NOT NULL, FK → release | |
-| `package_id` | uuid | NOT NULL, FK → package | |
-| `shuttle_task_id` | text | NULL, UNIQUE | Shuttle 侧任务 ID，尚未查询到时为空 |
-| `status` | `build_status` | NOT NULL, 默认 `pending` | |
-| `created_at` / `updated_at` | timestamptz | NOT NULL | |
+| `id` | text | PK | |
+| `releaseId`（`release_id`） | text | NOT NULL | 冗余的提测归属，供按提测查队列 |
+| `snapshotId`（`snapshot_id`） | text | NOT NULL | 权威归属：具体那一轮快照 |
+| `shuttleTaskId`（`shuttle_task_id`） | text | NULL | Shuttle 侧任务 ID；还没查到构建时为空 |
+| `status` | `build_status` | NOT NULL，默认 `pending` | 构建状态 |
+| `lastPolledAt`（`last_polled_at`） | timestamptz | NULL | 最近一次向 Shuttle 查询结果的时间 |
+| `startedAt`（`started_at`） | timestamptz | NULL | 构建开始时间 |
+| `finishedAt`（`finished_at`） | timestamptz | NULL | 构建结束时间 |
+| `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
+
+- 索引：`snapshot_id` 唯一（一轮快照一个任务）；`shuttle_task_id` 唯一；`release_id`、`status` 二级索引（构建队列页按提测与状态过滤）。
+- 外键：`release_id → release.id`、`snapshot_id → release_package_snapshot.id`，都是 RESTRICT。
 
 ### 4.15 build_job（构建作业）
 
-| 字段 | 类型 | 约束 | 说明 |
+一个构建任务下某个架构的一次编译，构建日志按 `shuttle_job_id` 查。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
-| `id` | uuid | PK | |
-| `build_task_id` | uuid | NOT NULL, FK → build_task | |
-| `shuttle_job_id` | text | NOT NULL, UNIQUE | Shuttle 侧 job ID，日志按它查询 |
-| `status` | `build_status` | NOT NULL, 默认 `pending` | |
-| `started_at` / `finished_at` | timestamptz | NULL | |
-| `created_at` / `updated_at` | timestamptz | NOT NULL | |
+| `id` | text | PK | |
+| `buildTaskId`（`build_task_id`） | text | NOT NULL | 所属构建任务 |
+| `shuttleJobId`（`shuttle_job_id`） | text | NOT NULL | Shuttle 侧 job ID |
+| `arch` | text | NOT NULL | 架构，例如 `amd64`、`arm64` |
+| `status` | `build_status` | NOT NULL，默认 `pending` | 作业状态 |
+| `startedAt` / `finishedAt` | timestamptz | NULL | 作业起止时间 |
+| `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
+
+- 索引：`shuttle_job_id` 唯一；`build_task_id` 二级索引。
+- 外键：`build_task_id → build_task.id`，**CASCADE**。作业是任务的组成部分，没有独立含义；删任务时连带删作业。
 
 ### 4.16 webhook_endpoint（Webhook 端点）
 
-| 字段 | 类型 | 约束 | 说明 |
+| 字段（列名） | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
-| `id` | uuid | PK | |
-| `workspace_id` | uuid | NOT NULL, FK → workspace | |
+| `id` | text | PK | |
+| `workspaceId`（`workspace_id`） | text | NOT NULL | 端点归属的工作区 |
 | `url` | text | NOT NULL | 回调地址 |
-| `secret` | text | NOT NULL | 签名密钥，来自环境变量或管理员录入，不进日志 |
-| `event_types` | text[] | NOT NULL | 订阅的事件类型 |
-| `enabled` | boolean | NOT NULL, 默认 true | |
-| `created_at` / `updated_at` | timestamptz | NOT NULL | |
+| `secret` | text | NOT NULL | 签名密钥；只在投递时使用，不进日志、不回显 |
+| `eventTypes`（`event_types`） | text[] | 默认空数组 | 订阅的事件类型，例如 `release.success`、`release.failed` |
+| `enabled` | boolean | NOT NULL，默认 true | 停用后不再投递，但保留记录 |
+| `description` | text | NULL | |
+| `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
+
+- 索引：`(workspace_id, url)` 唯一（同一工作区不重复注册同一地址）。
+- 外键：`workspace_id → workspace.id`，RESTRICT。
 
 ### 4.17 webhook_delivery（Webhook 投递记录）
 
-| 字段 | 类型 | 约束 | 说明 |
+每次投递的载荷、签名与结果，用于复算签名与排查失败。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
-| `id` | uuid | PK | |
-| `endpoint_id` | uuid | NOT NULL, FK → webhook_endpoint | |
-| `event_type` | text | NOT NULL | 事件类型 |
-| `payload` | jsonb | NOT NULL | 投递内容 |
+| `id` | text | PK | |
+| `endpointId`（`endpoint_id`） | text | NOT NULL | 目标端点 |
+| `eventType`（`event_type`） | text | NOT NULL | 事件类型 |
+| `payload` | jsonb | NOT NULL | 投递内容原文 |
 | `signature` | text | NOT NULL | 本次签名，用于复算校验 |
-| `status` | `webhook_delivery_status` | NOT NULL, 默认 `pending` | |
-| `attempts` | integer | NOT NULL, 默认 0 | 已投递次数 |
-| `last_error` | text | NULL | 最近一次失败原因 |
-| `created_at` / `delivered_at` | timestamptz | `created_at` NOT NULL；`delivered_at` NULL | |
+| `status` | `webhook_delivery_status` | NOT NULL，默认 `pending` | 投递状态 |
+| `attempts` | integer | NOT NULL，默认 0 | 已投递次数 |
+| `lastError`（`last_error`） | text | NULL | 最近一次失败原因 |
+| `createdAt`（`created_at`） | timestamptz | NOT NULL | 记录创建时间 |
+| `deliveredAt`（`delivered_at`） | timestamptz | NULL | 成功投递时间 |
 
-### 4.18 baseline_package_version（基线内软件包版本）
+- 索引：`(endpoint_id, status)` 二级索引（按端点看重试队列）；`created_at` 二级索引（投递日志按时间翻页）。
+- 外键：`endpoint_id → webhook_endpoint.id`，RESTRICT。端点只停用不删除，投递日志要能一直追溯。
 
-数据来自 Shuttle，按周期同步；用于展示「仓库版本」，也用于判断某个基线下已有哪些软件包。
+### 4.18 sync_run（同步任务记录）
 
-| 字段 | 类型 | 约束 | 说明 |
+一次同步的过程与结果，只记过程，同步到的数据落在各自的目标表（`baseline`、`baseline_package_version`、`release` 等）。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
-| `id` | uuid | PK | |
-| `baseline_id` | uuid | NOT NULL, FK → baseline | 所属基线 |
-| `repo_path` | text | NOT NULL | 仓库路径，与 `package.repo_path` 同形；不强制外键，因为基线里存在尚未登记的软件包 |
-| `version` | text | NOT NULL | 该仓库在此基线下的当前版本 |
-| `fetched_at` | timestamptz | NOT NULL | 本条数据的同步时间 |
-| `created_at` / `updated_at` | timestamptz | NOT NULL | |
+| `id` | text | PK | |
+| `kind` | `sync_run_kind` | NOT NULL | 同步种类 |
+| `status` | `sync_run_status` | NOT NULL，默认 `running` | 同步结果 |
+| `trigger` | `sync_run_trigger` | NOT NULL | 手动或定时 |
+| `targetId`（`target_id`） | text | NULL | 同步范围：基线类同步存 `baseline.id`，提测状态同步存 `release.id`，全局同步为空 |
+| `itemCount`（`item_count`） | integer | NOT NULL，默认 0 | 处理条数 |
+| `startedAt`（`started_at`） | timestamptz | NOT NULL，默认当前时间 | 开始时间 |
+| `finishedAt`（`finished_at`） | timestamptz | NULL | 结束时间 |
+| `errorMessage`（`error_message`） | text | NULL | 失败原因 |
+| `createdAt`（`created_at`） | timestamptz | NOT NULL | |
 
-唯一约束：`(baseline_id, repo_path)`，同步时按它做覆盖写入。
+- 索引：`(kind, started_at)` 二级索引（按种类看最近一次同步）；`status` 二级索引（找卡在 `running` 的任务）。
+- 外键：无。`target_id` 故意不加外键：它按 `kind` 指向不同的表，外键表达不了这种多态。
 
-## 五、关键约束汇总
+## 五、关键约束（逐条对应设计契约）
 
-1. `package` 全局唯一，依赖只在 `package_dependency` 维护，项目清单不重复存依赖。
-2. `release_package_snapshot` 创建后不可修改。
-3. `project_software.last_submitted_commit` 只在提测创建成功后更新。
-4. `project.baseline_id` 单选，一个项目同一时间只有一个目标基线。
-5. `release` 与 `crp_topic` 一对一；`release` 与快照、仓库记录、构建任务一对多。
+| 约束 | 落在哪 |
+| --- | --- |
+| `Package.name` 唯一 | `package_name_key` |
+| `Project(workspaceId, name)` 唯一 | `project_workspace_id_name_key` |
+| `Baseline.crpBranchId` 唯一 | `baseline_crp_branch_id_key` |
+| `Release(projectId, version)` 唯一 | `release_project_id_version_key` |
+| 快照按轮次唯一 | `release_package_snapshot_release_id_package_name_attempt_key` |
+| 快照有状态字段且允许流转 | `release_package_snapshot.status`（`snapshot_status`，默认 `pending`） |
+| 快照业务字段创建后不可改 | 应用层约束：除 `status`、`status_changed_at`、`superseded_by_id`、`superseded_at` 外不提供更新入口 |
+| 被替换的轮次保留、不物理删除 | `superseded_by_id`、`superseded_at`；外键全部 RESTRICT，无级联删除 |
+| `Release.revision` 与 `crpWorkProgress` | `release.revision`（默认 1）、`release.crp_work_progress` |
+| `BuildTask` 挂在快照上 | `build_task.snapshot_id`（唯一，指向 `release_package_snapshot`） |
+| 时间统一 UTC | 所有时间列都是 `timestamptz` |
+| 项目无业务类型字段、基线无分类字段 | `project`、`baseline` 均无此类列；归属只由 `workspace_id` 与 `project_manager_id` 决定 |
+| 删项目不删历史提测记录 | `project.deleted_at` 软删 + `release.project_id` 外键 RESTRICT |
+| 高频查询索引 | `release.status`、`release.created_at`、`build_task.release_id`（`release.project_id` 由唯一索引最左前缀覆盖） |
+| 不预留回退与复盘的表 | 只有 `release.rollback_of_id`、`release.code_source_release_id`、`release.risk_flag` 三个可空字段 |
 
-## 六、留给 A5 的决定
+## 六、外键与删除策略总表
 
-- 主键是否改用 `cuid` 或自增整数；本文按 UUID 描述。
-- `baseline_package_version`（见 4.18）按 `repo_path` 关联、不强制外键：CRP 基线里存在尚未登记的软件包。A5 需要确认软件包登记后是否补外键。
-- 软删除策略：第一版统一物理删除，若需要审计再加 `deleted_at`。
+| 子表.列 | 父表 | 可空 | onDelete | 理由 |
+| --- | --- | --- | --- | --- |
+| `membership.workspace_id` | `workspace.id` | 否 | RESTRICT | 工作区不物理删除 |
+| `membership.user_id` | `app_user.id` | 否 | RESTRICT | 账号不物理删除，成员关系要留 |
+| `project_manager.workspace_id` | `workspace.id` | 否 | RESTRICT | 同上 |
+| `project_manager.user_id` | `app_user.id` | 是 | SET NULL | 账号注销后项目经理实体保留，只解除账号绑定 |
+| `baseline_package_version.baseline_id` | `baseline.id` | 否 | CASCADE | 包版本清单属于基线自身，随基线一起清掉 |
+| `project.workspace_id` | `workspace.id` | 否 | RESTRICT | 项目只软删 |
+| `project.project_manager_id` | `project_manager.id` | 否 | RESTRICT | 先转移项目再换人 |
+| `project.baseline_id` | `baseline.id` | 否 | RESTRICT | 有项目在用就不能删基线 |
+| `project_software.project_id` | `project.id` | 否 | RESTRICT | 项目只软删，物理删除被拒绝 |
+| `project_software.package_id` | `package.id` | 否 | RESTRICT | 清单在用就不能删包 |
+| `package_dependency.package_id` / `upstream_package_id` | `package.id` | 否 | RESTRICT | 先清依赖再删包 |
+| `release.project_id` | `project.id` | 否 | RESTRICT | 删项目不删历史提测记录 |
+| `release.created_by_id` | `app_user.id` | 否 | RESTRICT | 发起人要一直查得到 |
+| `release_package_snapshot.release_id` | `release.id` | 否 | RESTRICT | 提测记录只流转状态，不物理删除 |
+| `release_package_snapshot.superseded_by_id` | `release_package_snapshot.id` | 是 | RESTRICT | 旧轮必须留着 |
+| `release_repository_record.release_id` | `release.id` | 否 | RESTRICT | 同上 |
+| `release_repository_record.snapshot_id` | `release_package_snapshot.id` | 否 | RESTRICT | CRP 侧删了 Release，本地记录照留 |
+| `build_task.release_id` | `release.id` | 否 | RESTRICT | 构建历史是复盘依据 |
+| `build_task.snapshot_id` | `release_package_snapshot.id` | 否 | RESTRICT | 任务挂在轮次上 |
+| `build_job.build_task_id` | `build_task.id` | 否 | CASCADE | 作业没有独立含义，随任务删除 |
+| `webhook_endpoint.workspace_id` | `workspace.id` | 否 | RESTRICT | 端点不随工作区删除 |
+| `webhook_delivery.endpoint_id` | `webhook_endpoint.id` | 否 | RESTRICT | 端点只停用，投递日志要留 |
+
+补齐「删项目」的完整语义：项目写 `deleted_at` 之后，列表与下拉框默认过滤，但 `release.project_id` 仍然指向它，所以历史提测记录、快照、构建记录全部照旧可查。
+
+## 七、种子数据
+
+`prisma/seed.ts` 灌入一套可重复执行的数据（重复执行靠业务唯一键 upsert，`sync_run` 与 `webhook_delivery` 两张日志表每次重建）。种子跑完会逐表核对记录数，不一致直接以非零退出码失败。
+
+`pnpm db:reset` 是「清空数据库 → 重放迁移 → 跑种子」（`prisma migrate reset --force && prisma db seed`）。Prisma 7 的 `migrate reset` 本身不再调用种子，所以脚本里显式接上了 `db:seed`。
+
+| 表 | 记录数 | 说明 |
+| --- | --- | --- |
+| `workspace` | 3 | 桌面核心组、系统应用组、安全组 |
+| `app_user` | 5 | 1 位平台管理员 + 2 位项目经理 + 1 位开发者 + 1 位只读成员；`password_hash` 是占位串，不是可校验的哈希，这些账号只用于数据演示，不能登录（A6 实现登录时需要自己的账号数据） |
+| `membership` | 7 | 平台管理员不进 membership |
+| `project_manager` | 3 | 其中刘洋没有平台账号，演示 `user_id` 为空 |
+| `baseline` | 4 | `eagle-1071`、`eagle-1076`、`snipe-2500u1`、`snipe-2500u2` |
+| `baseline_package_version` | 12 | 每个基线 3 条 |
+| `package` | 12 | 桌面与系统工具常用软件包 |
+| `package_dependency` | 4 | 含一条三层依赖链：`deepin-polkit-agent → dde-session-shell → dde-dock` |
+| `project` | 4 | 分布在三个工作区，各绑一个基线 |
+| `project_software` | 15 | 各项目清单合计 |
+| `release` | 5 | 含成功、失败、投递中、未提交、已放弃五种状态 |
+| `release_package_snapshot` | 15 | 含 `kwin` 两轮：第 1 轮 `superseded` 指向第 2 轮 |
+| `release_repository_record` | 8 | 已投递到 CRP 的轮次 |
+| `build_task` | 7 | 已投递且已建立构建任务的轮次；`安全组件 2.1.0` 的 polkit 刚发出，还没有构建任务 |
+| `build_job` | 12 | 每个已开工的任务 2 个架构（`amd64`、`arm64`），25.0.2 的两个任务各 1 个 |
+| `webhook_endpoint` | 2 | 一个启用、一个停用 |
+| `webhook_delivery` | 3 | 成功、失败重试三次、待投递各一条 |
+| `sync_run` | 4 | 三次成功、一次失败 |
+
+每条提测的状态、它下面各轮快照的状态、仓库记录与构建任务三处必须一致：提测整体成功的，快照、仓库记录、构建任务与作业都是 `success`；快照停在 `pending` 的，就是还没投递，也没有仓库记录与构建任务。
+
+种子刻意保留两处可读的状态：
+- `桌面专业版 V25 / 25.0.1`：整体成功。`kwin` 提了两轮，第 1 轮状态 `superseded`，`superseded_by_id` 指向第 2 轮；其余四个包各一轮，全部 `success` 且有对应仓库记录与构建任务。
+- `桌面专业版 V25 / 25.0.2`：上游 `dde-file-manager` 构建失败，下游 `dde-dock` 停在 `pending`，从未投递（因而没有仓库记录与构建任务）。
+
+## 八、与 PRD 初稿的差异与决定记录
+
+### 8.1 CrpTopic 并入 release（不单独建表）
+
+PRD 写的是 `Release 1-1 CrpTopic`。本版不建 `crp_topic` 表，Topic 的字段直接放在 `release` 上（`crp_topic_id`、`crp_branch_id`、`crp_topic_state`、`crp_topic_abandoned`、`crp_topic_completed`、`crp_work_progress` 系列）。理由：
+
+- 关系严格一对一，独立表只会多一次 join，没有任何字段可以脱离 Release 独立存在。
+- 任务书要求的表清单里没有 `CrpTopic`，且有 `Release.crpWorkProgress` 这条 MUST。
+- 判读「还能不能改包」需要和提测记录一起读，放同一条记录上更直接。
+
+### 8.2 新增 sync_run
+
+任务书的表清单包含 `SyncRun`，PRD 没有。用途是给 PRD 6.4 的四类同步留下可查的执行记录（成功、失败、条数、耗时），否则定时任务出问题只有日志可查。只记过程，不存业务数据。
+
+### 8.3 删除 A1 的示例模型 HealthCheck
+
+A1 建 `health_check` 表只为验证迁移链路。A5 定稿 schema 后该表没有业务用途，迁移里 `DROP TABLE "health_check"` 一并删除，种子不再写入它。
+
+### 8.4 保留 project.key
+
+PRD 6.1 的建项目字段里有「标识」，所以保留 `key`，并加 `(workspace_id, key)` 唯一；任务书 MUST 要求的 `(workspace_id, name)` 唯一同时存在。
+
+### 8.5 依赖环由应用层检测
+
+`package_dependency` 只加唯一约束，不加「上下游不同」的 CHECK 约束。原因：Prisma 无法在 schema 里声明 CHECK，写在迁移文件里的约束会在后续 `migrate dev` 生成差异时被当作「schema 里没有的对象」处理掉，留下隐患。自依赖与环检测统一由应用层在保存时做（A7 节点）。
+
+### 8.6 baseline_package_version 不指向 package
+
+`baseline_package_version.package_name` 与 `package.name` 同名同义，但不建外键：基线仓库里有大量平台尚未登记的软件包（实测 124 / 488 个），强制外键会让同步失败。需要关联时按名字查。
+
+### 8.7 主键选 UUID v7
+
+A1 初稿把主键方案留给 A5。选 UUID v7：不暴露递增数量、可按时间排序、插入局部性接近自增整数；字符串类型让「外部系统给的 ID」（CRP/Shuttle 的数字 ID）与内部 ID 在类型上一致，避免两套主键。
+
+### 8.8 冗余 release_id 的处理
+
+`release_repository_record`、`build_task` 同时存 `release_id` 与 `snapshot_id`。`snapshot_id` 是权威归属（唯一约束落在它上面），`release_id` 是为按提测查询冗余出来的列。理由：构建队列页与详情页都按提测分页查询，走 `release_id` 索引比每次 join 快照表便宜；而轮次一旦写入就不会改换提测，冗余不会失同步。
+
+## 九、v2 预留字段
+
+`release` 上三个可空字段，本版只建列、不建外键、不写流程：
+
+| 字段 | 含义 |
+| --- | --- |
+| `rollback_of_id` | 被回退的那次提测 ID |
+| `code_source_release_id` | 代码来源提测 ID（同一份代码复用到另一次提测） |
+| `risk_flag` | 是否标记为风险提测 |
+
+本版不建任何回退、复盘、审批相关的表。
