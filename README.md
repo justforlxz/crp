@@ -69,6 +69,7 @@
 | `pnpm db:migrate:dev` | 开发时新建迁移（`prisma migrate dev --name <名称>`） |
 | `pnpm db:seed` | 执行 `prisma/seed.ts` 写入种子数据，使用 upsert，可重复执行 |
 | `pnpm db:studio` | 打开 Prisma Studio |
+| `pnpm tsx scripts/verify-gerrit.ts` | 用真实 Gerrit 复核分支、提交与 `debian/changelog` 读取，需要先配好 `GERRIT_*` 三项 |
 
 ## 持续集成
 
@@ -85,6 +86,11 @@
 | 变量 | 必需 | 含义 |
 | --- | --- | --- |
 | `DATABASE_URL` | 是 | PostgreSQL 连接串，Prisma CLI 与应用运行共用。格式 `postgresql://<用户>:<密码>@<主机>:<端口>/<库名>?schema=public` |
+| `GERRIT_BASE_URL` | 否 | Gerrit 服务地址，默认 `https://gerrit.uniontech.com` |
+| `GERRIT_USERNAME` | Gerrit 集成必需 | Gerrit 用户名 |
+| `GERRIT_HTTP_PASSWORD` | Gerrit 集成必需 | Gerrit HTTP 凭据密码，在 Gerrit 网页 Settings → HTTP Credentials 生成 |
+
+Gerrit 这三项只被 `lib/integrations/gerrit/` 读取，未配置时该模块抛错，其余功能不受影响。匿名访问会被 302 跳登录页，实测行为见 `lib/integrations/gerrit/FINDINGS.md`。
 
 `.env` 已被 `.gitignore` 忽略，仓库里不出现任何真实凭据；新增变量时同步更新 `.env.example` 与本节表格。
 
@@ -96,6 +102,8 @@ lib/                 领域逻辑
 lib/db.ts            Prisma Client 单例（带 pg 驱动适配器）
 lib/env.ts           环境变量读取与校验
 lib/integrations/    CRP、Shuttle、Gerrit 客户端（职责边界见其 README）
+lib/integrations/gerrit/  Gerrit 与 gitiles 客户端、changelog 解析、实测记录 FINDINGS.md
+scripts/             接真实外部系统的验证脚本，不经 CI 执行
 prisma/              schema、migrations、seed
 tests/               单元测试
 docs/                PRD 与数据模型文档
