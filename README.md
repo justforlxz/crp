@@ -148,6 +148,33 @@
 - 删除项目只写 `deleted_at`：列表与下拉框不再出现，但历史提测记录、快照与构建记录仍然指向它，照常可查。
 - 项目卡片上的投递顺序由清单内部的依赖边算出（`sortByDependencies`，上游在前），出现依赖环时给出回路，不给出可用的顺序。
 - 按项目 id 直接访问详情时，账号必须有当前工作区、且项目就在那个工作区，否则与「项目不存在」同一个 404；已删除的项目只给平台管理员翻看。这条判定写在 `lib/projects/access.ts` 的 `canViewProject` 里，由单测固定。
+## 创建提测
+
+页面：`/releases/new`，三步向导。接口：`POST /api/releases`，细节见 [docs/API.md](docs/API.md)。
+
+| 步骤 | 做什么 |
+| --- | --- |
+| 第一步 项目归属 | 选项目经理 → 选其名下项目；展示目标仓库（CRP 基线）、基线同步状态、软件数；填 Topic 版本号与提测说明 |
+| 第二步 检查仓库更新 | 点「从 Gerrit 刷新」拉每个包跟踪分支的最新提交；每个包可切分支、切历史 Commit；读 `debian/changelog` 得代码版本；从基线缓存取仓库版本；按依赖拓扑排序给出投递顺序；显示「有更新 / 无变化」；可填自定义 Tag |
+| 第三步 确认 | 汇总表 + 提交 |
+
+规则都落在 `lib/releases/`，页面与接口共用同一份：
+
+- **阻断条件**（无软件清单、依赖有环、基线未同步）由 `lib/releases/plan.ts` 的 `evaluateReleaseReadiness()` 判定。
+  页面用它禁用提交按钮，`POST /api/releases` 用它再拦一次 —— 只靠前端禁用不算数，直接调接口同样被拒。
+- **清单内全部软件都进提测**，不因「无变化」排除；提交的软件包必须与项目清单完全一致（不多、不少、不重复）。
+- **依赖排序只考虑清单内部的边**，不自动扩展清单外的依赖（复用 `sortByDependencies`）。
+- **三个版本号**：代码版本来自所选 Commit 的 `debian/changelog`；仓库版本来自基线缓存
+  （`getBaselineVersion`）；提测版本 = 自定义 Tag（填了的话）否则代码版本。自定义 Tag 只有一个字段，
+  设置了它提测版本就是它本身，代码版本不受影响。格式规则来自 A2 实测的四条 CRP 限制
+  （`lib/integrations/crp/tag.ts`），不符合当场拒绝并说明规则，不等到 A12 投递时才在 CRP 侧报错。
+- **代码版本由服务端现读**，不采信请求体：快照是审计记录，客户端传什么就存什么等于把审计结论交给调用方。
+- **快照只插入**，本节点不提供任何更新入口；补包换包走 A17 的追加轮次。创建后改项目配置，
+  历史快照一行不变。
+- 创建成功后把每个软件包的 `last_submitted_commit` / `last_submitted_at` 更新为本次 Commit，
+  并发一条 `release.created` 事件（`emitEvent`）。提测状态是 `pending`（已创建、尚未投递），
+  枚举里没有 `queued`。
+
 
 ## 持续集成
 
@@ -198,6 +225,7 @@ lib/webhook/         Webhook 事件清单、签名、投递与端点读写（约
 lib/baselines/       基线读取：列表、同步记录、给其它节点用的版本查询（状态判定见 status.ts）
 lib/jobs/            定时任务的服务端逻辑，当前只有 baseline-sync.ts（基线同步）
 lib/projects/        项目经理与项目：输入校验、清单排序、读写与业务规则
+lib/releases/        创建提测：阻断条件、快照组装、输入校验与写库（Gerrit 读取见 gerrit.ts）
 scripts/             接真实外部系统的验证脚本，不经 CI 执行
 prisma/              schema、migrations、seed
 tests/               单元测试
