@@ -186,3 +186,133 @@ Authorization: Bearer <SYNC_JOB_TOKEN>
 0 * * * * curl -fsS -X POST -H "Authorization: Bearer $SYNC_JOB_TOKEN" \
   http://localhost:3000/api/jobs/baseline-sync
 ```
+
+## POST /api/releases
+
+创建一次提测：落一条 `release` 与每个软件包一条 `release_package_snapshot`，
+并把项目清单里每个软件包的 `last_submitted_commit` 更新为本次提交的 Commit。
+
+页面 `/releases/new` 的三步向导提交到这里。阻断条件、软件包清单一致性、版本号唯一
+全部在服务端判一次：只靠页面禁用按钮不算数，直接调接口同样会被拦住。
+
+### 鉴权
+
+用用户会话（httpOnly Cookie），工作区从项目归属查出，**不采信请求体里传来的工作区**：
+
+- 未登录 → `401 unauthenticated`；
+- 项目所在工作区里没有成员关系 → `404 workspace_not_found`（与「工作区不存在」同一个响应）；
+- 是成员但低于「开发者」角色 → `403 forbidden`。
+
+### 请求体
+
+```json
+{
+  "projectId": "01a1ee26-82e3-7644-ab2e-a8c9c40fe147",
+  "version": "25.0.2",
+  "description": "V25 第二个提测",
+  "packages": [
+    {
+      "packageName": "kwin",
+      "branch": "develop/eagle",
+      "commitSha": "4f0b1d2e8c9a7b6d5e4f3a2b1c0d9e8f7a6b5c4d",
+      "customTag": "5.27.12.0"
+    }
+  ]
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `projectId` | string | 是 | 提测归属项目 |
+| `version` | string | 是 | Topic 版本号，不能包含空白字符，最长 100 字符；同一项目内唯一 |
+| `description` | string | 否 | 提测说明 |
+| `packages` | array | 是 | 项目清单里的**全部**软件包，不多不少；顺序不参与判定 |
+| `packages[].packageName` | string | 是 | 源码包名，例如 `kwin` |
+| `packages[].branch` | string | 是 | 固化的分支，不能包含空白字符 |
+| `packages[].commitSha` | string | 是 | 固化的 Commit，十六进制提交号（7 位以上）；分支名不算 |
+| `packages[].customTag` | string \| null | 否 | 自定义 Tag。填了它，提测版本就是它本身；不填则等于代码版本 |
+
+**代码版本由服务端现读**：每个包都按 `repoPath` 与 `commitSha` 去 Gerrit 读
+`debian/changelog` 的首条版本，请求体里没有这个字段，也不能伪造。仓库版本取自基线缓存
+（`baseline_package_version`），查不到就是空。
+
+### 阻断条件
+
+三条都在服务端判，任一成立整次提测不写库：
+
+| 条件 | 状态码 | 提示 |
+| --- | --- | --- |
+| 项目没有软件清单 | `409` | 先去项目详情页把软件包加进来 |
+| 依赖存在环 | `409` | 带出回路，例如 `kwin → dde-dock → kwin`，去软件包管理修正 |
+| 基线未同步（已消失 / 同步失败 / 从未同步） | `409` | 基线拿不到仓库版本 |
+
+「无变化」的软件包**不是**阻断条件：清单内全部软件都进快照。
+
+### 返回体
+
+`201`：创建成功。
+
+```json
+{
+  "id": "01a1f0c0-…",
+  "version": "25.0.2",
+  "revision": 1,
+  "packageCount": 6,
+  "changedCount": 4,
+  "summary": "本次将提测 6 个软件，其中 4 个有更新。",
+  "order": ["deepin-polkit-agent", "dde-session-shell", "dde-dock", "kwin", "dde-file-manager", "dde-launchpad"],
+  "snapshots": [
+    {
+      "packageName": "deepin-polkit-agent",
+      "attempt": 1,
+      "branch": "develop/eagle",
+      "commitSha": "4f0b1d2e…",
+      "codeVersion": "0.0.12-1",
+      "repoVersion": "0.0.11-1",
+      "releaseVersion": "0.0.12-1",
+      "changed": true
+    }
+  ]
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` | 提测记录 ID |
+| `revision` | 提测轮次，本接口固定为 `1`（补包换包走 A17 的追加轮次） |
+| `packageCount` | 本次写入的快照条数 |
+| `changedCount` | 其中 Commit 与上次提测不同的条数 |
+| `summary` | 页面直接显示的一句话 |
+| `order` | 依赖拓扑排序结果（上游在前），也是快照的写入顺序 |
+| `snapshots` | 每条快照的固化内容 |
+
+### 状态码
+
+| 状态码 | `error.code` | 什么情况 |
+| --- | --- | --- |
+| `201` | — | 创建成功 |
+| `400` | `invalid_json` | 请求体不是合法 JSON |
+| `400` | `invalid_payload` | 字段校验未通过，`details` 里逐条给出字段与原因 |
+| `400` | `invalid_payload` | 提交的软件包与项目清单不一致（多包 / 少包 / 重复包） |
+| `401` | `unauthenticated` | 未登录 |
+| `403` | `forbidden` | 工作区角色低于「开发者」 |
+| `404` | `project_not_found` | 项目不存在 |
+| `404` | `workspace_not_found` | 账号不属于项目所在的工作区 |
+| `409` | `conflict` | 阻断条件成立，或同一项目里已有同版本号的提测记录 |
+| `502` | `invalid_payload` | 读 Gerrit 失败（凭据不对、仓库或提交不存在），消息里指出是哪个包 |
+| `500` | `internal_error` | 数据库写入失败，详情看服务端日志 |
+
+### 示例
+
+```bash
+# 不登录：401
+curl -i -X POST http://localhost:3000/api/releases \
+  -H "Content-Type: application/json" \
+  -d '{"projectId":"…","version":"25.0.2","packages":[]}'
+
+# 带会话 Cookie 提交
+curl -X POST http://localhost:3000/api/releases \
+  -H "Content-Type: application/json" \
+  -H "Cookie: crp_session=$SESSION" \
+  -d @release.json
+```

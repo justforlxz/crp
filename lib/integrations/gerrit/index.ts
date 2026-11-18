@@ -14,6 +14,7 @@ export {
 export {
   createGerritClient,
   encodeGitilesRef,
+  isCommitSha,
   GerritAuthError,
   GerritError,
   GerritNotFoundError,
