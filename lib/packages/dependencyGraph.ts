@@ -82,3 +82,72 @@ export function findDependencyCycle(
 export function formatCycle(cycle: readonly string[]): string {
   return cycle.join(" → ");
 }
+
+/** 排序结果。 */
+export type TopologicalSort = {
+  /**
+   * 上游在前的顺序，可以直接当投递顺序用。
+   *
+   * 有环时环上的节点排不出来，会按名字附在末尾，所以这时 `order` 的尾部**不是**可投递顺序，
+   * 调用方必须先看 `cycle`：它非空就得把问题摆给人看，不能照着 `order` 往下投。
+   */
+  order: string[];
+  /** 清单里找到的第一条环（首尾同名），没有环为 `null`。 */
+  cycle: string[] | null;
+};
+
+/**
+ * 按依赖排出投递顺序：被依赖的包（上游）排在依赖它的包（下游）前面。
+ *
+ * 只看 `nodes` 内部的边 —— 一个包依赖清单外的包时，那条边不参与排序（清单外的包不投递，
+ * 也就没有先后可言）。清单内同一层可以任意先后的节点按名字排，保证每次调用结果一致，
+ * 否则页面上「拓扑排序结果」会随数据库返回顺序抖动。
+ *
+ * 有环时返回 `cycle`，`order` 里仍然列出全部节点，页面能完整显示清单而不是少几行。
+ */
+export function sortByDependencies(
+  nodes: readonly string[],
+  edges: readonly DependencyEdge[],
+): TopologicalSort {
+  const names = [...new Set(nodes)].sort();
+  const inside = new Set(names);
+  const inList = edges.filter((edge) => inside.has(edge.from) && inside.has(edge.to));
+
+  /** 每个节点在清单内的上游。 */
+  const upstreams = new Map<string, Set<string>>();
+  for (const name of names) {
+    upstreams.set(name, new Set());
+  }
+  for (const { from, to } of inList) {
+    upstreams.get(from)?.add(to);
+  }
+
+  const order: string[] = [];
+  const emitted = new Set<string>();
+  const remaining = [...names];
+
+  for (;;) {
+    const index = remaining.findIndex((name) =>
+      [...(upstreams.get(name) ?? [])].every((upstream) => emitted.has(upstream)),
+    );
+
+    if (index === -1) {
+      break;
+    }
+
+    const [name] = remaining.splice(index, 1);
+    order.push(name);
+    emitted.add(name);
+  }
+
+  if (remaining.length === 0) {
+    return { order, cycle: null };
+  }
+
+  // 排不动的节点每个都有一条指回剩余集合的边，所以剩余节点里一定有环。
+  const cycle = findDependencyCycle(
+    inList.filter((edge) => remaining.includes(edge.from) && remaining.includes(edge.to)),
+  );
+
+  return { order: [...order, ...remaining], cycle };
+}

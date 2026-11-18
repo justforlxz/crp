@@ -1,7 +1,7 @@
 /** `lib/packages` 的公开出口。 */
 
-export { findDependencyCycle, formatCycle } from "./dependencyGraph";
-export type { DependencyEdge } from "./dependencyGraph";
+export { findDependencyCycle, formatCycle, sortByDependencies } from "./dependencyGraph";
+export type { DependencyEdge, TopologicalSort } from "./dependencyGraph";
 
 export { MAX_PAYLOAD_ITEMS, parsePackageInput, parsePackagePayload } from "./validation";
 export type { FieldError, PackageInput, ParseResult } from "./validation";

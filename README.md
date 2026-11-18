@@ -72,9 +72,10 @@
 | `pnpm db:reset` | 清空数据库、重放全部迁移并跑种子（`prisma migrate reset --force && prisma db seed`）；Prisma 7 的 reset 不再自动跑种子，所以这里显式接上；会丢数据，只对本地开发库用 |
 | `pnpm db:seed` | 执行 `prisma/seed.ts` 写入种子数据，使用 upsert，可重复执行 |
 | `pnpm db:studio` | 打开 Prisma Studio |
-| `pnpm tsx scripts/verify-gerrit.ts` | 用真实 Gerrit 复核分支、提交与 `debian/changelog` 读取，需要先配好 `GERRIT_*` 三项 |
-| `pnpm tsx scripts/verify-webhook.ts` | 本机起一个 Webhook 接收端点，验收投递、签名与重试，约 15 秒 |
 | `pnpm tsx scripts/verify-baseline-sync.ts` | 用真实 CRP 与 Shuttle 跑一次基线同步，打印分支条数对照、`eagle-1071` 里 `kwin` 的版本对照与本次请求明细，会写库 |
+| `pnpm tsx scripts/verify-gerrit.ts` | 用真实 Gerrit 复核分支、提交与 `debian/changelog` 读取，需要先配好 `GERRIT_*` 三项 |
+| `pnpm tsx scripts/verify-projects.ts` | 用真实数据库验收项目经理与项目：归属校验、共用基线、复制不带提交历史、软删后提测记录仍可查；只动自己建的临时行 |
+| `pnpm tsx scripts/verify-webhook.ts` | 本机起一个 Webhook 接收端点，验收投递、签名与重试，约 15 秒 |
 | `pnpm tsx scripts/verify-webhook-signature.ts` | 独立复算某次投递的签名，参数见 `docs/WEBHOOK.md` |
 
 ## 账号与登录
@@ -130,6 +131,24 @@
 `baseline_package_version` 一行不改，`syncedAt` 不前移 —— 失败的同步绝不会看起来像同步过。
 页面状态列据「最近一次同步的结果」显示「同步失败」，并带上原因；历史数据继续可用。
 
+## 项目与项目经理
+
+页面：`/projects`（项目卡片列表）、`/projects/new`（新建）、`/projects/[id]`（详情、清单、复制、删除）、
+`/managers`（项目经理清单与改名）。都要求登录，写操作要工作区里的「项目经理」角色，判定走 `lib/auth/server.ts`
+的 `requireRole()`。页面按 `?workspace=<slug>` 选工作区，不带就用会话里记住的那个。
+
+规则都落在 `lib/projects/service.ts`，页面与后续接口共用同一份：
+
+- 项目必须指定一位项目经理，且这位项目经理属于项目所在工作区；项目经理绑定了平台账号时，该账号还得是这个工作区的成员。
+- 项目必须绑一个状态为「已同步」的 CRP 基线。可用性直接复用 A9 的 `baselineState()`：
+  「已消失」「最近一次同步失败」「未同步」三种状态在页面上不可选，保存时也被同一条规则拒绝，
+  判定写在 `lib/projects/baselineGate.ts`。基线怎么选不限类型，两个项目也可以指向同一个基线。
+- 项目名称与项目标识在工作区内唯一；项目标识小写字母、数字与连字符，用于网址与外部引用。
+- 复制项目带走软件清单与每项的跟踪分支，`last_submitted_commit` / `last_submitted_at` 一律清空；名称、标识、项目经理、基线都可以改。
+- 删除项目只写 `deleted_at`：列表与下拉框不再出现，但历史提测记录、快照与构建记录仍然指向它，照常可查。
+- 项目卡片上的投递顺序由清单内部的依赖边算出（`sortByDependencies`，上游在前），出现依赖环时给出回路，不给出可用的顺序。
+- 按项目 id 直接访问详情时，账号必须有当前工作区、且项目就在那个工作区，否则与「项目不存在」同一个 404；已删除的项目只给平台管理员翻看。这条判定写在 `lib/projects/access.ts` 的 `canViewProject` 里，由单测固定。
+
 ## 持续集成
 
 `.github/workflows/ci.yml` 在 `push` 到 `main` 与向 `main` 提 PR 时触发，只有一个 job，按顺序执行：
@@ -178,6 +197,7 @@ lib/integrations/gerrit/  Gerrit 与 gitiles 客户端、changelog 解析、实�
 lib/webhook/         Webhook 事件清单、签名、投递与端点读写（约定见 docs/WEBHOOK.md）
 lib/baselines/       基线读取：列表、同步记录、给其它节点用的版本查询（状态判定见 status.ts）
 lib/jobs/            定时任务的服务端逻辑，当前只有 baseline-sync.ts（基线同步）
+lib/projects/        项目经理与项目：输入校验、清单排序、读写与业务规则
 scripts/             接真实外部系统的验证脚本，不经 CI 执行
 prisma/              schema、migrations、seed
 tests/               单元测试
