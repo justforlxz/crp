@@ -29,6 +29,16 @@ const TARGETS = [
 /** AC1 点名的组合，单独复核一次。 */
 const AC1_TARGET = { project: "deepin-kde/kwin", branch: "develop/eagle" };
 
+/**
+ * 按提交号读 changelog：取 `deepin-kde/kwin` 的 `develop/eagle` 分支头。
+ *
+ * 这个组合专门验证「传提交号不补 `refs/heads/`」——补了会 404。
+ */
+const COMMIT_TARGET = {
+  project: "deepin-kde/kwin",
+  sha: "9286cd554592bdcee8909f697af6a581086643b3",
+};
+
 const MISSING_PROJECT = "deepin-kde/no-such-repo-for-verification";
 
 type Check = { name: string; ok: boolean; detail: string };
@@ -69,7 +79,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // 2. 列提交、读单条提交、读 changelog：按仓库逐个跑
+  // 2. 列提交与读单条提交：按仓库逐个跑
   for (const target of TARGETS) {
     const label = `${target.project} @ ${target.branch}`;
 
@@ -106,7 +116,11 @@ async function main(): Promise<void> {
     } catch (error) {
       record(`getCommit 读 ${label} 分支头提交`, false, `请求失败：${firstLine(String(error))}`);
     }
+  }
 
+  // 3. 读 changelog：AC1 点名的分支 + 两个测试分支，三行都要写进 FINDINGS 第 6 节
+  for (const target of [AC1_TARGET, ...TARGETS]) {
+    const label = `${target.project} @ ${target.branch}`;
     try {
       const { entry, text } = await client.readChangelog(target.project, target.branch);
       const head = text.split("\n").slice(0, 3).join("\n");
@@ -121,7 +135,27 @@ async function main(): Promise<void> {
     }
   }
 
-  // 3. 不存在的仓库：AC4，必须给出可读错误
+  // 4. 按提交号读 changelog：提交号不能被补成 refs/heads/<提交号>，补了就是 404
+  try {
+    const { entry, text } = await client.readChangelog(COMMIT_TARGET.project, COMMIT_TARGET.sha);
+    const head = text.split("\n").slice(0, 3).join("\n");
+
+    record(
+      `readChangelog 按提交号读 ${COMMIT_TARGET.project} @ ${COMMIT_TARGET.sha.slice(0, 12)}`,
+      entry.version !== "" && entry.packageName !== "",
+      `请求 /a/plugins/gitiles/${COMMIT_TARGET.project}/+/${COMMIT_TARGET.sha}/debian/changelog?format=TEXT\n` +
+        `包名 ${entry.packageName}，版本 ${entry.version}，发行版 ${entry.distribution}，时间 ${entry.date}\n` +
+        `changelog 原文前 3 行：\n${head}`,
+    );
+  } catch (error) {
+    record(
+      `readChangelog 按提交号读 ${COMMIT_TARGET.project} @ ${COMMIT_TARGET.sha.slice(0, 12)}`,
+      false,
+      `解析失败：${firstLine(String(error))}`,
+    );
+  }
+
+  // 5. 不存在的仓库：AC4，必须给出可读错误
   try {
     await client.listBranches(MISSING_PROJECT);
     record(`不存在的仓库 ${MISSING_PROJECT} 返回可读错误`, false, "居然成功了，没有报错");

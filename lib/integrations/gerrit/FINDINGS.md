@@ -72,6 +72,31 @@ ref 一旦编码错就整条路径失效。
 - `normalizeRef("develop/snipe")` → `"refs/heads/develop/snipe"`
 - `encodeGitilesRef("develop/snipe")` → `"refs/heads/develop/snipe"`（分段转义，斜杠保留）
 
+### 提交号不能补 `refs/heads/`
+
+`readChangelog` 的 ref 参数既可以是分支、标签，也可以是提交号。提交号一旦被补成
+`refs/heads/<提交号>`，gitiles 会去找一个同名分支，直接 404：
+
+```console
+200  /a/plugins/gitiles/deepin-kde/kwin/+/9286cd554592bdcee8909f697af6a581086643b3/debian/changelog?format=TEXT
+404  /a/plugins/gitiles/deepin-kde/kwin/+/refs/heads/9286cd554592bdcee8909f697af6a581086643b3/debian/changelog?format=TEXT
+```
+
+短提交号同样可用（`+/9286cd5/...` 也是 200，返回 145604 字节，与完整提交号内容一致）。
+
+所以 `normalizeRef` 的规则是：
+
+| 输入 | 输出 |
+| --- | --- |
+| `9286cd554592bdcee8909f697af6a581086643b3`（40 位十六进制） | 原样返回 |
+| `9286cd5`（7 位十六进制） | 原样返回 |
+| `refs/tags/v1` | 原样返回 |
+| `develop/eagle` | `refs/heads/develop/eagle` |
+
+判定用 `/^[0-9a-f]{7,40}$/i`：七位以上十六进制才当提交号，长度按 git 短 sha 的常见下限取七。
+副作用是理论上一个纯十六进制、长度七位以上的分支名会被当成提交号；这种分支名不存在于
+本服务的实测分支清单里，暂不为此增加额外参数。
+
 ## 3. commit 列表的分页参数
 
 `+log/<ref>?format=JSON` 的响应结构：
@@ -134,17 +159,39 @@ kwin (4:6.1.57) unstable; urgency=medium
 | 项目 | 分支 | 分支数 | 分支头提交 | changelog 首条版本 | 包名 |
 | --- | --- | --- | --- | --- | --- |
 | `deepin-kde/kwin` | `develop/snipe` | 44 | `fd6b2f3f6938d2ab3e49dd962ce9a5139c44db04` | `4:6.1.57` | `kwin` |
-| `deepin-kde/kwin` | `develop/eagle` | 44 | `9286cd554592bdcee8909f697af6a581086643b3` | — | — |
+| `deepin-kde/kwin` | `develop/eagle` | 44 | `9286cd554592bdcee8909f697af6a581086643b3` | `4:5.27.2.331-deepin331-1` | `kwin` |
 | `deepin-kde/wayland` | `develop/eagle` | 4 | `2900ef291742e67e0d308df357e15028c5e262e5` | `1.26.0.6-deepin6` | `wayland` |
 
 changelog 首条原文（与人工打开 gitiles 页面看到的一致）：
 
 ```text
+# deepin-kde/kwin @ develop/eagle（分支头 9286cd554592bdcee8909f697af6a581086643b3）
+kwin (4:5.27.2.331-deepin331-1) unstable; urgency=medium
+```
+```text
+# deepin-kde/kwin @ develop/snipe
 kwin (4:6.1.57) unstable; urgency=medium
 ```
 ```text
+# deepin-kde/wayland @ develop/eagle
 wayland (1.26.0.6-deepin6) unstable; urgency=medium
 ```
+
+### 按提交号读取
+
+用上面的 `9286cd554592bdcee8909f697af6a581086643b3` 直接读该提交上的 changelog：
+
+```console
+$ curl -s -u "$AUTH" \
+    'https://gerrit.uniontech.com/a/plugins/gitiles/deepin-kde/kwin/+/9286cd554592bdcee8909f697af6a581086643b3/debian/changelog?format=TEXT' \
+  | base64 -d | head -1
+kwin (4:5.27.2.331-deepin331-1) unstable; urgency=medium
+```
+
+状态 200，145604 字节。同一提交上短提交号 `9286cd5` 返回同样内容；
+补成 `refs/heads/9286cd554592...` 则 404（对照见第 2 节）。
+
+这一条是 A11 要用的能力：按被提测的那个提交取版本号，而不是按分支当前头取。
 
 两个仓库正好构成 kwin 依赖 wayland 的一条链条，版本号格式也不同
 （kwin 带 epoch 前缀 `4:`，wayland 带 debian 修订后缀 `-deepin6`、中间还有 `~` 之外的

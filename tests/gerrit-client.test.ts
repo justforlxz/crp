@@ -53,6 +53,21 @@ test("分支名带斜杠时保持分段，不整串转义也不截断", () => {
   assert.equal(encodeGitilesRef("develop/eagle"), "refs/heads/develop/eagle");
 });
 
+test("提交号不补 refs/heads/ 前缀，分支与标签行为不变", () => {
+  const fullSha = "9286cd554592bdcee8909f697af6a581086643b3";
+
+  // 完整提交号与短提交号都原样传给 gitiles
+  assert.equal(normalizeRef(fullSha), fullSha);
+  assert.equal(normalizeRef("9286cd5"), "9286cd5");
+  assert.equal(encodeGitilesRef(fullSha), fullSha);
+  assert.equal(encodeGitilesRef("9286cd5"), "9286cd5");
+
+  // 分支与标签保持原有行为
+  assert.equal(normalizeRef("develop/eagle"), "refs/heads/develop/eagle");
+  assert.equal(normalizeRef("refs/tags/v1"), "refs/tags/v1");
+  assert.equal(encodeGitilesRef("refs/tags/v1"), "refs/tags/v1");
+});
+
 test("listBranches 解析带 XSSI 前缀的响应，并给出短分支名", async () => {
   const { fetchImpl, calls } = fakeFetch(
     () =>
@@ -154,6 +169,30 @@ test("readChangelog 解 base64 并解析首条版本号", async () => {
   assert.equal(entry.version, "1.2.3-1");
   assert.equal(entry.packageName, "demo");
   assert.equal(text, changelogText);
+});
+
+test("readChangelog 传提交号时请求路径用提交号，不补 refs/heads/ 前缀", async () => {
+  const { fetchImpl, calls } = fakeFetch(
+    () => new Response(Buffer.from(changelogText, "utf8").toString("base64"), { status: 200 }),
+  );
+
+  const client = createGerritClient(config, { fetch: fetchImpl });
+  const shortSha = await client.readChangelog("deepin-kde/kwin", "9286cd5");
+  const fullSha = await client.readChangelog(
+    "deepin-kde/kwin",
+    "9286cd554592bdcee8909f697af6a581086643b3",
+  );
+
+  assert.equal(
+    calls[0]?.url,
+    "https://gerrit.example.com/a/plugins/gitiles/deepin-kde/kwin/+/9286cd5/debian/changelog?format=TEXT",
+  );
+  assert.equal(
+    calls[1]?.url,
+    "https://gerrit.example.com/a/plugins/gitiles/deepin-kde/kwin/+/9286cd554592bdcee8909f697af6a581086643b3/debian/changelog?format=TEXT",
+  );
+  assert.equal(shortSha.entry.version, "1.2.3-1");
+  assert.equal(fullSha.entry.version, "1.2.3-1");
 });
 
 test("changelog 不存在时抛出可读的「找不到」错误，不返回空版本号", async () => {

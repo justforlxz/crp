@@ -155,12 +155,29 @@ export function stripGerritPrefix(body: string): string {
 }
 
 /**
- * 把分支名或标签名补成完整 ref。
+ * 判断一个 ref 是不是提交号（完整 40 位或短的十六进制前七位以上）。
  *
- * gitiles 的路径里没写 `refs/heads/` 时会把 `develop/eagle` 当成一条不存在的 ref。
+ * 提交号不能补 `refs/heads/`：补了以后 gitiles 会去 `refs/heads/<提交号>` 找分支，
+ * 直接 404。实测两种写法对照见 FINDINGS.md 第 2 节。
+ */
+const COMMIT_SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
+
+export function isCommitSha(ref: string): boolean {
+  return COMMIT_SHA_PATTERN.test(ref);
+}
+
+/**
+ * 把分支名或标签名补成完整 ref；提交号原样返回。
+ *
+ * gitiles 的路径里没写 `refs/heads/` 时会把 `develop/eagle` 当成一条不存在的 ref，
+ * 所以分支要补前缀；但提交号一旦补前缀就指向一个不存在的分支。
  */
 export function normalizeRef(ref: string): string {
-  return ref.startsWith("refs/") ? ref : `refs/heads/${ref}`;
+  if (ref.startsWith("refs/") || isCommitSha(ref)) {
+    return ref;
+  }
+
+  return `refs/heads/${ref}`;
 }
 
 /**
