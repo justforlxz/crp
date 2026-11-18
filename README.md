@@ -2,8 +2,9 @@
 
 统信 CRP（crp.uniontech.com）之上的提测平台：补上项目化的提测归属、按软件依赖自动排队、可审计的提测快照。产品需求见 [docs/PRD.md](docs/PRD.md)，数据模型初稿见 [docs/DATA_MODEL.md](docs/DATA_MODEL.md)。
 
-当前仓库已有项目骨架与账号体系：能安装、能迁移、能灌种子、能跑检查与测试；页面只有登录、注册、工作台三个，
-外部系统（CRP、Gerrit、Shuttle）的客户端只在其集成节点内被调用。
+当前仓库已有项目骨架与账号体系：能安装、能迁移、能灌种子、能跑检查与测试。页面有登录、注册、工作台、
+软件包（`/packages`）、Webhook 端点（`/webhooks`）与基线（`/baselines`）；外部系统（CRP、Gerrit、Shuttle）
+的客户端只被对应的领域模块与 Route Handler 调用。
 
 ## 环境要求
 
@@ -73,6 +74,7 @@
 | `pnpm db:studio` | 打开 Prisma Studio |
 | `pnpm tsx scripts/verify-gerrit.ts` | 用真实 Gerrit 复核分支、提交与 `debian/changelog` 读取，需要先配好 `GERRIT_*` 三项 |
 | `pnpm tsx scripts/verify-webhook.ts` | 本机起一个 Webhook 接收端点，验收投递、签名与重试，约 15 秒 |
+| `pnpm tsx scripts/verify-baseline-sync.ts` | 用真实 CRP 与 Shuttle 跑一次基线同步，打印分支条数对照、`eagle-1071` 里 `kwin` 的版本对照与本次请求明细，会写库 |
 | `pnpm tsx scripts/verify-webhook-signature.ts` | 独立复算某次投递的签名，参数见 `docs/WEBHOOK.md` |
 
 ## 账号与登录
@@ -88,6 +90,45 @@
 
 会话是服务端可撤销的 httpOnly Cookie（7 天、滑动续期），令牌只以 SHA-256 入库；角色判定全部在服务端，
 `requireRole()` 供后续节点复用，不要另写一套。
+
+## 基线同步与定时任务
+
+基线就是 CRP 的一条交付分支。`/baselines` 页面展示全部基线与它们的软件包版本同步状态，
+数据由同步任务写入，页面自己不拉外部接口。
+
+一次同步做两件事，分别记各自的 `sync_run`：
+
+| 动作 | 数据来源 | 请求数 |
+| --- | --- | --- |
+| 分支列表落库，标记消失的分支 | CRP `GET /branches`（**不需要认证**） | 固定 1 次 |
+| 每个基线缓存软件包版本 | Shuttle 仓库信息 + apt 源码索引 | 每个基线 2 次 |
+
+**为什么不刷全部 108 条分支**：每条基线 2 次请求，全量就是 216 次；软件包版本只在项目选了这条基线时
+才有用，所以定时任务只刷新「被项目选中、且缓存已过期（默认 1 小时）」的基线。版本一次取回整条基线的
+全部源码包（实测 `eagle-1071` 124 个、`snipe-2500u2` 488 个），不逐包查询。
+
+**手动刷新**：`/baselines` 页面的「立即同步」按钮，需要登录；强制重拉被项目选中基线的版本，不看缓存是否过期。
+
+**定时刷新**：外部定时器每小时 POST 一次接口，本仓库不引入队列或常驻调度进程。
+
+```bash
+# cron
+0 * * * * curl -fsS -X POST -H "Authorization: Bearer $SYNC_JOB_TOKEN" \
+  http://localhost:3000/api/jobs/baseline-sync
+
+# systemd timer（/etc/systemd/system/baseline-sync.service + .timer）
+# [Service]
+# ExecStart=/usr/bin/curl -fsS -X POST -H "Authorization: Bearer <token>" \
+#   http://localhost:3000/api/jobs/baseline-sync
+# [Timer]
+# OnCalendar=hourly
+```
+
+接口细节与返回体见 [docs/API.md](docs/API.md)。
+
+**失败时的行为**：同步失败只写本次 `sync_run`（状态、结束时间、错误摘要），`baseline` 与
+`baseline_package_version` 一行不改，`syncedAt` 不前移 —— 失败的同步绝不会看起来像同步过。
+页面状态列据「最近一次同步的结果」显示「同步失败」，并带上原因；历史数据继续可用。
 
 ## 持续集成
 
@@ -113,6 +154,9 @@
 | `CRP_BASE_URL` | 否 | CRP 接口前缀，默认 `https://crp.uniontech.com/api` |
 | `CRP_TOKEN_PATH` | 否 | CRP token 缓存文件，默认 `~/.cache/crp/jwt`，权限 0600 |
 | `PACKAGE_API_TOKEN` | 用 `POST /api/packages` 时必需 | 外部系统提交软件包用的独立 token，与用户会话无关；没配置时该接口一律返回 401。接口细节见 [docs/API.md](docs/API.md) |
+| `SYNC_JOB_TOKEN` | 用 `POST /api/jobs/baseline-sync` 时必需 | 定时任务触发基线同步用的独立 token，与用户会话、`PACKAGE_API_TOKEN` 都无关；没配置时该接口一律返回 401 |
+| `SHUTTLE_BASE_URL` | 否 | Shuttle 接口前缀，默认 `https://shuttle.uniontech.com/api/shuttle`；基线软件包版本从它读 |
+| `CRP_BASE_URL` | 否 | CRP 接口前缀，默认 `https://crp.uniontech.com/api`；基线分支列表从它读，**不需要认证** |
 
 Gerrit 这三项只被 `lib/integrations/gerrit/` 读取，未配置时该模块抛错，其余功能不受影响。匿名访问会被 302 跳登录页，实测行为见 `lib/integrations/gerrit/FINDINGS.md`。
 
@@ -132,6 +176,8 @@ lib/env.ts           环境变量读取与校验
 lib/integrations/    CRP、Shuttle、Gerrit 客户端（职责边界见其 README）
 lib/integrations/gerrit/  Gerrit 与 gitiles 客户端、changelog 解析、实测记录 FINDINGS.md
 lib/webhook/         Webhook 事件清单、签名、投递与端点读写（约定见 docs/WEBHOOK.md）
+lib/baselines/       基线读取：列表、同步记录、给其它节点用的版本查询（状态判定见 status.ts）
+lib/jobs/            定时任务的服务端逻辑，当前只有 baseline-sync.ts（基线同步）
 scripts/             接真实外部系统的验证脚本，不经 CI 执行
 prisma/              schema、migrations、seed
 tests/               单元测试

@@ -146,10 +146,14 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | `repoType`（`repo_type`） | text | NULL | CRP 侧仓库类型，例如 `deb` |
 | `isCheck`（`is_check`） | boolean | NOT NULL，默认 false | CRP 的 `IsCheck`，数值 1 与布尔 true 都归一成 true |
 | `syncedAt`（`synced_at`） | timestamptz | NULL | 最近一次同步成功时间；为空或过旧即「基线未同步」 |
+| `missingAt`（`missing_at`） | timestamptz | NULL | 从 CRP `/branches` 里消失的时间；为空表示这条分支目前仍在 CRP 里 |
 | `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
 
 - 索引：`crp_branch_id` 唯一。
 - 外键：无。
+- 消失不删行：项目可能还指着这条基线、历史提测记录也要查得到它，所以同步只写 `missing_at`；分支重新出现时清空。
+- 状态（已同步 / 同步失败 / 未同步 / 已消失）不单独存列，由 `missing_at`、`synced_at` 与该基线最近一次 `sync_run`（`kind = baseline_packages`）的结果算出，见 `lib/baselines/status.ts`。
+- `crp_branch_id` 必须是 CRP `/branches` 返回的真实 ID，不能拿分支名里的数字凑：CRP 的 ID 与分支名无关（`eagle-1071` 的 ID 是 108），凑出来的 ID 会让同一分支在库里出现两条。
 
 ### 4.7 baseline_package_version（基线内软件包版本）
 
