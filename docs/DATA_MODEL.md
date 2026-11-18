@@ -242,6 +242,8 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 索引：`(project_id, package_id)` 唯一；`package_id` 二级索引。
 - 外键：`project_id → project.id`、`package_id → package.id`，都是 RESTRICT。
 - `last_submitted_commit` 只在提测创建成功后更新，刷新分支不影响它。
+- 复制项目（A10）按本表逐行复制 `package_id` 与 `tracked_branch`，`last_submitted_commit` 与
+  `last_submitted_at` 写入空值：副本还没提过测，继承源项目的提交号会让「有没有更新」从一开始就判断错。
 
 ### 4.12 release（提测记录）
 
