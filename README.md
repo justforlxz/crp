@@ -8,7 +8,7 @@
 
 | 项 | 要求 |
 | --- | --- |
-| Node.js | 22 或更高（本项目在 22.23.2 上验证） |
+| Node.js | `22.x`：CI 与 `package.json` 的 `engines.node` 固定同一条版本线，本地验证于 22.23.2 |
 | pnpm | 9（`corepack enable` 后自动取 `package.json` 里的 `packageManager`） |
 | PostgreSQL | 14 或更高，需要一个可建库的账号 |
 
@@ -69,6 +69,16 @@
 | `pnpm db:migrate:dev` | 开发时新建迁移（`prisma migrate dev --name <名称>`） |
 | `pnpm db:seed` | 执行 `prisma/seed.ts` 写入种子数据，使用 upsert，可重复执行 |
 | `pnpm db:studio` | 打开 Prisma Studio |
+
+## 持续集成
+
+`.github/workflows/ci.yml` 在 `push` 到 `main` 与向 `main` 提 PR 时触发，只有一个 job，按顺序执行：
+
+`pnpm install --frozen-lockfile` → `pnpm db:migrate` → `pnpm db:seed` → `pnpm lint` → `pnpm typecheck` → `pnpm test`
+
+- Node 用 `22.x`，与 `package.json` 的 `engines.node` 同一条版本线；pnpm 由 `pnpm/action-setup` 安装 9。
+- 数据库用 `postgres:17` 的 service container，账号、库名、`DATABASE_URL` 都写在 workflow 里，不需要任何 secret。
+- 迁移和种子在 CI 里真跑：`_prisma_migrations` 能建表、种子能写入，才说明「空库可迁移」这条在干净环境成立。
 
 ## 环境变量
 

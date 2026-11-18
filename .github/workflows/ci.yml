@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  checks:
+    name: lint / typecheck / test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: crp
+          POSTGRES_PASSWORD: crp
+          POSTGRES_DB: crp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U crp"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://crp:crp@localhost:5432/crp?schema=public
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        # 不指定 version：由 package.json 的 packageManager 决定，避免两处版本冲突
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          # 与 package.json 的 engines.node 保持一致
+          node-version: 22.x
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
+        run: pnpm db:migrate
+
+      - name: Seed data
+        run: pnpm db:seed
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
