@@ -2,7 +2,8 @@
 
 统信 CRP（crp.uniontech.com）之上的提测平台：补上项目化的提测归属、按软件依赖自动排队、可审计的提测快照。产品需求见 [docs/PRD.md](docs/PRD.md)，数据模型初稿见 [docs/DATA_MODEL.md](docs/DATA_MODEL.md)。
 
-当前仓库只有项目骨架：能安装、能迁移、能灌种子、能跑检查与测试，**没有任何业务页面，也不调用任何外部接口**。
+当前仓库已有项目骨架与账号体系：能安装、能迁移、能灌种子、能跑检查与测试；页面只有登录、注册、工作台三个，
+外部系统（CRP、Gerrit、Shuttle）的客户端只在其集成节点内被调用。
 
 ## 环境要求
 
@@ -72,6 +73,20 @@
 | `pnpm db:studio` | 打开 Prisma Studio |
 | `pnpm tsx scripts/verify-gerrit.ts` | 用真实 Gerrit 复核分支、提交与 `debian/changelog` 读取，需要先配好 `GERRIT_*` 三项 |
 
+## 账号与登录
+
+页面：`/login`、`/register`、`/dashboard`（未登录会跳登录页）。接口：注册、登录、退出、当前会话、工作区清单、
+切换工作区、工作区项目清单、成员邀请，逐个见 [lib/auth/README.md](lib/auth/README.md)。
+
+种子里的 5 个账号**不能登录**（`password_hash` 只是占位串，见 `docs/DATA_MODEL.md` 第七节）。要登录：
+
+1. 打开 <http://localhost:3000/register> 注册一个账号；
+2. 需要平台管理员时，把该账号的 `app_user.is_platform_admin` 置为 `true`；
+3. 平台管理员可以在工作台直接把邮箱分配到某个工作区与角色，邮箱没有账号时顺带建号。
+
+会话是服务端可撤销的 httpOnly Cookie（7 天、滑动续期），令牌只以 SHA-256 入库；角色判定全部在服务端，
+`requireRole()` 供后续节点复用，不要另写一套。
+
 ## 持续集成
 
 `.github/workflows/ci.yml` 在 `push` 到 `main` 与向 `main` 提 PR 时触发，只有一个 job，按顺序执行：
@@ -109,6 +124,7 @@ Gerrit 这三项只被 `lib/integrations/gerrit/` 读取，未配置时该模块
 app/                 Next.js App Router：页面与将来的 Route Handler
 lib/                 领域逻辑
 lib/db.ts            Prisma Client 单例（带 pg 驱动适配器）
+lib/auth/            账号、会话与角色守卫（说明见其 README）
 lib/env.ts           环境变量读取与校验
 lib/integrations/    CRP、Shuttle、Gerrit 客户端（职责边界见其 README）
 lib/integrations/gerrit/  Gerrit 与 gitiles 客户端、changelog 解析、实测记录 FINDINGS.md
