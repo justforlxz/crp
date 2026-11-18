@@ -228,6 +228,10 @@ model Baseline {
   isCheck     Boolean   @default(false) @map("is_check")
   /// 最近一次同步成功的时间；为空或过旧即「基线未同步」，创建提测要被阻断。
   syncedAt    DateTime? @map("synced_at") @db.Timestamptz(3)
+  /// 从 CRP 分支列表里消失的时间；为空表示这条分支目前仍在 CRP 里。
+  ///
+  /// 消失不删行：项目可能还指着这条基线，历史提测记录也要查得到它。重新出现时清空。
+  missingAt   DateTime? @map("missing_at") @db.Timestamptz(3)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 

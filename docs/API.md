@@ -123,3 +123,66 @@ curl -i -X POST http://localhost:3000/api/packages \
   -H "Content-Type: application/json" \
   -d '{"name":"kwin","repoPath":"deepin-kde/kwin","defaultBranch":"develop/eagle"}'
 ```
+
+## POST /api/jobs/baseline-sync
+
+基线同步的定时入口。本仓库没有常驻调度进程，也没有队列或额外的调度服务：外部定时器
+（cron 或 systemd timer）每小时 POST 一次这个地址即可。页面上的「立即同步」按钮调的是
+同一段同步逻辑（`runBaselineSync()`），不是第二份实现。
+
+### 鉴权
+
+请求头带独立 token：
+
+```
+Authorization: Bearer <SYNC_JOB_TOKEN>
+```
+
+- token 取自服务端环境变量 `SYNC_JOB_TOKEN`，与用户会话、`PACKAGE_API_TOKEN` 都无关。
+- 服务端没配置这个变量时接口一律返回 `401`，不会退化成「谁都能触发同步」。
+
+### 请求体
+
+无。定时入口固定按「定时触发」处理：刷新分支列表，并只刷新**被项目选中、且缓存已过期
+（1 小时）**的基线的软件包版本。要强制全部重拉，用页面上的「立即同步」。
+
+### 返回
+
+`200`：本次同步的明细。
+
+```json
+{
+  "trigger": "schedule",
+  "list": { "status": "success", "itemCount": 108, "missingCount": 0, "errorMessage": null },
+  "packages": [
+    { "baselineId": "…", "name": "eagle-1071", "status": "success", "itemCount": 124, "errorMessage": null }
+  ],
+  "skippedPackageCount": 104,
+  "requests": {
+    "total": 9,
+    "crp": 1,
+    "shuttle": 8,
+    "urls": ["crp https://crp.uniontech.com/api/branches", "shuttle …"]
+  }
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `list` | 分支列表同步结果。`itemCount` 是 CRP `/branches` 返回的条数；`missingCount` 是本次新标记「已消失」的基线数 |
+| `packages` | 本次实际刷新过的基线，一条一行；`itemCount` 是该基线缓存里的软件包数 |
+| `skippedPackageCount` | 没参与刷新的基线数：没被项目选中、缓存还没过期，或已从 CRP 消失 |
+| `requests` | 本次请求明细，用来核对「分支列表 1 次、每个参与刷新的基线 2 次、逐包请求 0 次」 |
+
+`502`：分支列表同步失败（CRP 不通、返回格式不对等）。此时基线表一行未动，上一次成功的数据还在，
+失败原因见 `list.errorMessage` 与页面上的同步记录。
+
+`401`：没配置 token 或 token 不对。
+
+### 示例
+
+```bash
+# 每小时跑一次（crontab 写法）
+0 * * * * curl -fsS -X POST -H "Authorization: Bearer $SYNC_JOB_TOKEN" \
+  http://localhost:3000/api/jobs/baseline-sync
+```

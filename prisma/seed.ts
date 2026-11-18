@@ -30,9 +30,16 @@ function at(iso: string): Date {
 // 固定种子数据
 // ---------------------------------------------------------------------------
 
+/**
+ * 四条基线，`crpBranchId` 一律用 CRP `/branches` 返回的真实 ID。
+ *
+ * 不能用「分支名里的数字」凑：CRP 的 ID 与分支名无关（`eagle-1071` 的 ID 是 108），
+ * 基线同步按 `crpBranchId` 幂等写入，凑出来的 ID 会让同一分支在库里出现两条 ——
+ * 一条真的、一条被标成「已消失」的假记录。
+ */
 const BASELINES = [
   {
-    crpBranchId: "1071",
+    crpBranchId: "108",
     name: "eagle-1071",
     description: "V20 桌面交付分支",
     repoType: "deb",
@@ -40,7 +47,7 @@ const BASELINES = [
     syncedAt: at("2026-11-18T01:00:00Z"),
   },
   {
-    crpBranchId: "1076",
+    crpBranchId: "126",
     name: "eagle-1076",
     description: "V20 安全组件交付分支",
     repoType: "deb",
@@ -48,7 +55,7 @@ const BASELINES = [
     syncedAt: at("2026-11-18T01:00:00Z"),
   },
   {
-    crpBranchId: "25001",
+    crpBranchId: "123",
     name: "snipe-2500u1",
     description: "V25 首轮交付分支",
     repoType: "deb",
@@ -56,7 +63,7 @@ const BASELINES = [
     syncedAt: at("2026-11-17T22:00:00Z"),
   },
   {
-    crpBranchId: "25002",
+    crpBranchId: "128",
     name: "snipe-2500u2",
     description: "V25 第二轮交付分支",
     repoType: "deb",
@@ -268,7 +275,7 @@ const RELEASES: SeedRelease[] = [
     description: "V25 首个正式提测：kwin 换了一轮包，其余按依赖顺序投递",
     createdByEmail: "liwei@uniontech.com",
     crpTopicId: "8841",
-    crpBranchId: "25002",
+    crpBranchId: "128",
     crpTopicState: 1,
     crpTopicAbandoned: false,
     crpTopicCompleted: true,
@@ -459,7 +466,7 @@ const RELEASES: SeedRelease[] = [
     description: "上游 dde-file-manager 构建失败，下游 dde-dock 未投递",
     createdByEmail: "zhangmin@uniontech.com",
     crpTopicId: "8867",
-    crpBranchId: "25002",
+    crpBranchId: "128",
     crpTopicState: 1,
     crpTopicAbandoned: false,
     crpTopicCompleted: false,
@@ -583,7 +590,7 @@ const RELEASES: SeedRelease[] = [
     description: "正在按依赖顺序投递，polkit 已发出，其余等上游",
     createdByEmail: "zhangmin@uniontech.com",
     crpTopicId: "8901",
-    crpBranchId: "1076",
+    crpBranchId: "126",
     crpTopicState: 1,
     crpTopicAbandoned: false,
     crpTopicCompleted: false,
@@ -643,7 +650,7 @@ const RELEASES: SeedRelease[] = [
     description: "基线切错，建好 Topic 后发现并放弃",
     createdByEmail: "liwei@uniontech.com",
     crpTopicId: "8777",
-    crpBranchId: "1071",
+    crpBranchId: "108",
     crpTopicState: 2,
     crpTopicAbandoned: true,
     crpTopicCompleted: false,
