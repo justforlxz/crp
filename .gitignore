@@ -13,6 +13,9 @@
 # testing
 /coverage
 
+# 样式门禁的差异图（超阈值才生成，不入库）
+/tests/visual/diff/
+
 # next.js
 /.next/
 /out/

@@ -292,18 +292,6 @@ before(async () => {
   await prisma.releaseRepositoryRecord.create({
     data: {
       releaseId: release.id,
-      snapshotId: aNew.id,
-      crpReleaseId: "50001",
-      crpBuildId: "90001",
-      crpReleaseState: 3,
-      crpStatusName: "构建成功",
-      repositoryUrl: "https://crp.test/repo/pool/main/a/",
-      lastSyncedAt: T1,
-    },
-  });
-  await prisma.releaseRepositoryRecord.create({
-    data: {
-      releaseId: release.id,
       snapshotId: bRow.id,
       crpReleaseId: "50002",
       crpBuildId: "90002",
@@ -311,6 +299,18 @@ before(async () => {
       crpStatusName: "构建中",
       repositoryUrl: "https://crp.test/repo/pool/main/b/",
       lastSyncedAt: T2,
+    },
+  });
+  await prisma.releaseRepositoryRecord.create({
+    data: {
+      releaseId: release.id,
+      snapshotId: aNew.id,
+      crpReleaseId: "50001",
+      crpBuildId: "90001",
+      crpReleaseState: 3,
+      crpStatusName: "构建成功",
+      repositoryUrl: "https://crp.test/repo/pool/main/a/",
+      lastSyncedAt: T1,
     },
   });
 
@@ -457,13 +457,15 @@ test("更新历史按包名说清放弃了哪些包、加了哪些包", async ()
   assert.equal(row?.operatorName, `${PREFIX} 开发者`);
 });
 
-test("CRP 仓库记录带包名与最近同步时间", async () => {
+test("CRP 仓库记录按包名排出确定顺序，与插入顺序无关", async () => {
   const detail = await loadReleaseDetail(fixture.releaseId, { readCommitInfo });
 
   assert.equal(detail.repositoryRecords.length, 2);
+  // 两条记录是倒着插的（b 先、a 后）：查询不带 orderBy 时这里会反过来，
+  // 整页截图就会因为行序变化随机失败。
   assert.deepEqual(
-    detail.repositoryRecords.map((row) => row.packageName).sort(),
-    [pkgName("a"), pkgName("b")].sort(),
+    detail.repositoryRecords.map((row) => row.packageName),
+    [pkgName("a"), pkgName("b")],
   );
   assert.equal(detail.repositorySyncedAt?.toISOString(), T2.toISOString());
 });

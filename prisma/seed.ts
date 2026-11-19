@@ -225,6 +225,11 @@ type SeedSnapshot = {
 type SeedRelease = {
   projectName: string;
   version: string;
+  /**
+   * 提测创建时间。**必须写死**：详情页把它渲染成「创建时间」，默认值取播种那一刻，
+   * 换一台机、换一次播种就是另一个值，整页截图基线会带上一个与本单无关的基础差异。
+   */
+  createdAt: Date;
   revision: number;
   status: "pending" | "dispatching" | "building" | "success" | "partial_failure" | "failed" | "abandoned";
   description: string;
@@ -270,6 +275,7 @@ const RELEASES: SeedRelease[] = [
   {
     projectName: "桌面专业版 V25",
     version: "25.0.1",
+    createdAt: at("2026-11-18T02:10:00Z"),
     revision: 2,
     status: "success",
     description: "V25 首个正式提测：kwin 换了一轮包，其余按依赖顺序投递",
@@ -461,6 +467,7 @@ const RELEASES: SeedRelease[] = [
   {
     projectName: "桌面专业版 V25",
     version: "25.0.2",
+    createdAt: at("2026-11-18T06:05:00Z"),
     revision: 1,
     status: "failed",
     description: "上游 dde-file-manager 构建失败，下游 dde-dock 未投递",
@@ -555,6 +562,7 @@ const RELEASES: SeedRelease[] = [
   {
     projectName: "系统工具套件",
     version: "1.4.0",
+    createdAt: at("2026-11-18T06:45:00Z"),
     revision: 1,
     status: "pending",
     description: "配置完成，尚未提交到 CRP",
@@ -585,6 +593,7 @@ const RELEASES: SeedRelease[] = [
   {
     projectName: "安全组件",
     version: "2.1.0",
+    createdAt: at("2026-11-18T07:55:00Z"),
     revision: 1,
     status: "dispatching",
     description: "正在按依赖顺序投递，polkit 已发出，其余等上游",
@@ -645,6 +654,7 @@ const RELEASES: SeedRelease[] = [
   {
     projectName: "桌面专业版 V20",
     version: "20.9.0",
+    createdAt: at("2026-11-17T09:20:00Z"),
     revision: 1,
     status: "abandoned",
     description: "基线切错，建好 Topic 后发现并放弃",
@@ -1022,6 +1032,7 @@ async function upsertRelease(
     crpTopicAbandoned: item.crpTopicAbandoned ?? null,
     crpTopicCompleted: item.crpTopicCompleted ?? null,
     crpWorkProgress: item.crpWorkProgress ?? null,
+    createdAt: item.createdAt,
     crpWorkProgressLabel: item.crpWorkProgressLabel ?? null,
     crpWorkProgressSyncedAt: item.crpWorkProgressSyncedAt ?? null,
     submittedAt: item.submittedAt ?? null,

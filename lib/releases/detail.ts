@@ -346,7 +346,10 @@ export async function loadReleaseDetail(
           supersededById: true,
         },
       },
+      // 行序必须写死：数据库不保证无序查询的返回顺序，同一个库两次查询都可能不同。
+      // 这张表直接渲染成「CRP 仓库记录」的 5 行，行序一变整页截图就跟着变。
       repositoryRecords: {
+        orderBy: { snapshot: { packageName: "asc" } },
         select: {
           crpReleaseId: true,
           crpBuildId: true,
@@ -375,6 +378,8 @@ export async function loadReleaseDetail(
     }),
     prisma.packageDependency.findMany({
       where: { package: { name: { in: names } } },
+      // 上游列表的顺序会影响拓扑排序在并列时的取舍，同样不能依赖数据库的返回顺序。
+      orderBy: [{ package: { name: "asc" } }, { upstreamPackage: { name: "asc" } }],
       select: { package: { select: { name: true } }, upstreamPackage: { select: { name: true } } },
     }),
   ]);

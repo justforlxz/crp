@@ -13,6 +13,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test --test-concurrency=1 tests/baseline-sync.test.ts tests/build-dispatch.test.ts tests/build-poll.test.ts && tsx --test --test-concurrency=4 $(ls tests/*.test.ts | grep -vE '/(baseline-sync|build-dispatch|build-poll)\\.test\\.ts$')",
+    "test:style": "tsx scripts/style-check/index.ts",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "prisma db seed",
@@ -30,13 +31,16 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.65.1",
     "@types/node": "^22",
     "@types/pg": "^8.23.1",
+    "@types/pngjs": "6.0.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "dotenv": "^18",
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
+    "pngjs": "7.0.0",
     "prisma": "7.10.1",
     "tsx": "^4",
     "typescript": "^5"
