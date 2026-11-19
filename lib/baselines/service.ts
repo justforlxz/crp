@@ -21,6 +21,8 @@ export type BaselineListItem = {
   isCheck: boolean;
   syncedAt: Date | null;
   missingAt: Date | null;
+  /** 投递时会用的架构列表（来自 Shuttle 的 release-candidate 仓库）；空表示还没同步到。 */
+  arches: string[];
   /** 缓存里有多少个软件包的版本。 */
   packageCount: number;
   /** 有多少个项目选了这条基线。 */
@@ -84,6 +86,7 @@ export async function listBaselines(): Promise<BaselineListItem[]> {
       isCheck: item.isCheck,
       syncedAt: item.syncedAt,
       missingAt: item.missingAt,
+      arches: item.arches,
       packageCount: item._count.packageVersions,
       projectCount: item._count.projects,
       state,

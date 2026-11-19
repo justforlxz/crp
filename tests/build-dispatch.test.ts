@@ -80,6 +80,8 @@ type FakeRelease = {
   Branch: string;
   Commit: string;
   Tag: string;
+  /** 请求体里的 `Arches`：投递用的架构集合，来自基线。 */
+  Arches: string;
   BuildID: number;
   Status?: number;
   StatusName?: string;
@@ -196,6 +198,7 @@ function crpFetchOf(state: FakeCrp): typeof fetch {
         Branch: string;
         Commit: string;
         Tag: string;
+        Arches: string;
       };
 
       const jobId = state.nextJobId++;
@@ -208,6 +211,7 @@ function crpFetchOf(state: FakeCrp): typeof fetch {
         Branch: body.Branch,
         Commit: body.Commit,
         Tag: body.Tag,
+        Arches: body.Arches,
         BuildID: buildId,
         Status: 1,
         StatusName: "APPLYING",
@@ -473,6 +477,8 @@ before(async () => {
     data: {
       crpBranchId: CRP_BRANCH_ID,
       name: `${PREFIX}-baseline`,
+      // 投递用的架构集合来自基线（MKACG-912）：空数组会让投递当场被拒。
+      arches: ["amd64", "arm64"],
       syncedAt: new Date("2026-11-18T00:00:00Z"),
     },
     select: { id: true },
@@ -753,6 +759,110 @@ test("AC1 三层依赖链按 a、b、c 投递，b 只在 a 构建成功后才发
 
   for (const log of dispatchLogs) {
     assert.equal(log.statusCode, 201, "投递 Release 应记到 201");
+  }
+
+  // 架构集合来自基线，三个包用的都是同一份。
+  assert.deepEqual(
+    state.releases.map((item) => item.Arches),
+    ["amd64;arm64", "amd64;arm64", "amd64;arm64"],
+  );
+});
+
+// ---------------------------------------------------------------------------
+// MKACG-912：投递用的架构集合来自基线
+// ---------------------------------------------------------------------------
+
+test("MKACG-912 投递用的 Arches 来自基线：去掉 source、去重、顺序稳定", async () => {
+  const state = newFakeCrp();
+  const network = networkOf(state);
+  const original = await prisma.baseline.findUniqueOrThrow({
+    where: { id: fixture.baselineId },
+    select: { arches: true },
+  });
+
+  try {
+    // Shuttle 实测返回的就是这一组（`eagle-1071` 的 release-candidate）：带 source，可能重复。
+    await prisma.baseline.update({
+      where: { id: fixture.baselineId },
+      data: { arches: ["loongarch64", "source", "sw_64", "arm64", "amd64", "sw_64"] },
+    });
+
+    const releaseId = await createReleaseWithChain("arch-from-baseline");
+
+    try {
+      await advanceRelease(releaseId, { network });
+      const dispatched = await advanceRelease(releaseId, { network });
+      assert.equal(dispatched.action, "dispatched");
+
+      assert.equal(state.releases.length, 1);
+      // 去 `source`、去重、按字母排序；架构名原样发出，不改名（`sw_64` 不发成 `sw64`）。
+      assert.equal(state.releases[0].Arches, "amd64;arm64;loongarch64;sw_64");
+    } finally {
+      await cancelRelease(releaseId, { network });
+    }
+  } finally {
+    await prisma.baseline.update({
+      where: { id: fixture.baselineId },
+      data: { arches: original.arches },
+    });
+  }
+});
+
+test("MKACG-912 基线没有架构列表时投递被拒：可读错误、不发 Release、包仍是待投递", async () => {
+  const state = newFakeCrp();
+  const network = networkOf(state);
+  const original = await prisma.baseline.findUniqueOrThrow({
+    where: { id: fixture.baselineId },
+    select: { arches: true },
+  });
+
+  try {
+    await prisma.baseline.update({
+      where: { id: fixture.baselineId },
+      data: { arches: [] },
+    });
+
+    const releaseId = await createReleaseWithChain("arch-missing");
+    await advanceRelease(releaseId, { network });
+
+    const before = state.received.filter((item) => item.endsWith("/new_release")).length;
+
+    await assert.rejects(
+      () => advanceRelease(releaseId, { network }),
+      (error: unknown) => {
+        assert.ok(error instanceof BuildError);
+        assert.equal(error.status, 409);
+        assert.match(error.message, /架构列表/);
+        assert.match(error.message, new RegExp(`${PREFIX}-baseline`));
+        return true;
+      },
+    );
+
+    // 一条 Release 都没发出去，也没有留下「投递中」的假状态。
+    assert.equal(
+      state.received.filter((item) => item.endsWith("/new_release")).length,
+      before,
+    );
+
+    const snapshots = await prisma.releasePackageSnapshot.findMany({
+      where: { releaseId },
+      orderBy: { packageName: "asc" },
+      select: { packageName: true, status: true },
+    });
+
+    assert.deepEqual(
+      snapshots.map((item) => [item.packageName, item.status]),
+      [
+        [pkgName("a"), "pending"],
+        [pkgName("b"), "pending"],
+        [pkgName("c"), "pending"],
+      ],
+    );
+  } finally {
+    await prisma.baseline.update({
+      where: { id: fixture.baselineId },
+      data: { arches: original.arches },
+    });
   }
 });
 
@@ -1375,6 +1485,8 @@ function seedCrpRelease(
     Branch: input.branch,
     Commit: input.commit,
     Tag: input.tag,
+    // 这条是「CRP 侧已经存在」的记录，没经过我们的投递，架构字段用不到。
+    Arches: "",
     BuildID: state.nextBuildId++,
     Status: 1,
     StatusName: "APPLYING",

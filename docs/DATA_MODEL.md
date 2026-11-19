@@ -151,12 +151,14 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | `repoType`（`repo_type`） | text | NULL | CRP 侧仓库类型，例如 `deb` |
 | `isCheck`（`is_check`） | boolean | NOT NULL，默认 false | CRP 的 `IsCheck`，数值 1 与布尔 true 都归一成 true |
 | `syncedAt`（`synced_at`） | timestamptz | NULL | 最近一次同步成功时间；为空或过旧即「基线未同步」 |
+| `arches` | text[] | NOT NULL，默认空数组 | 这条基线对外发布的 CPU 架构列表，投递 Release 时分号拼成 `Arches` |
 | `missingAt`（`missing_at`） | timestamptz | NULL | 从 CRP `/branches` 里消失的时间；为空表示这条分支目前仍在 CRP 里 |
 | `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
 
 - 索引：`crp_branch_id` 唯一。
 - 外键：无。
 - 消失不删行：项目可能还指着这条基线、历史提测记录也要查得到它，所以同步只写 `missing_at`；分支重新出现时清空。
+- `arches` 来自 Shuttle `GET /repo/info` 的 `repoarch["release-candidate"].arches`，由基线同步与软件包版本一起写入：去掉 `source` 这类非 CPU 项、去重、按字母排序，转换只有一个入口 `toCrpArchList`（`lib/integrations/crp/arches.ts`）。空数组表示「还没同步到」，此时投递会被拒绝，**不退回任何代码里的默认架构**（MKACG-912）。架构名原样保存 Shuttle 的写法（`sw_64`、`loongarch64`），改名会让 CRP 在 apply 阶段拒绝整批投递，实测见 `lib/integrations/crp/FINDINGS.md` 第十二节。
 - 状态（已同步 / 同步失败 / 未同步 / 已消失）不单独存列，由 `missing_at`、`synced_at` 与该基线最近一次 `sync_run`（`kind = baseline_packages`）的结果算出，见 `lib/baselines/status.ts`。
 - `crp_branch_id` 必须是 CRP `/branches` 返回的真实 ID，不能拿分支名里的数字凑：CRP 的 ID 与分支名无关（`eagle-1071` 的 ID 是 108），凑出来的 ID 会让同一分支在库里出现两条。
 

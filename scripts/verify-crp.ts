@@ -1,8 +1,9 @@
 /**
  * CRP 接入的真实连通验证脚本。
  *
- * 跑一遍完整往返：登录 → 取交付分支 → 建临时 Topic → 查工作流 → 投递一个软件包 →
- * 查回 Release 与构建状态 → 删 Release → 放弃 Topic → 用错 token 换一条认证错误。
+ * 跑一遍完整往返：登录 → 取交付分支 → 取基线架构列表 → 建临时 Topic → 查工作流 →
+ * 投递一个软件包 → 查回 Release 与构建状态 → 查 Shuttle 任务与作业 → 删 Release →
+ * 放弃 Topic → 用错 token 换一条认证错误。
  *
  * 用法（凭据只从环境变量来，不要写进仓库）：
  *
@@ -25,9 +26,11 @@
 
 import "dotenv/config";
 
+import { toCrpArches } from "../lib/integrations/crp/arches";
 import { createCrpClient } from "../lib/integrations/crp/client";
 import { readCrpConfig } from "../lib/integrations/crp/config";
 import { CrpAuthError, CrpError } from "../lib/integrations/crp/errors";
+import { createShuttleClient, readShuttleEnv } from "../lib/integrations/shuttle";
 
 const DEFAULT_BRANCH = "eagle-1071";
 const DEFAULT_TAG = "9.9.9";
@@ -114,21 +117,32 @@ async function main(): Promise<void> {
   }
   console.log(`  共 ${branches.length} 条交付分支；${branch.name} = ID ${branch.id}`);
 
-  step("3. 建临时 Topic");
+  // 投递用的架构集合来自这条基线的 Shuttle 仓库信息，与基线同步取的是同一份数据。
+  step("3. 取基线架构列表（Shuttle repo/info）");
+  const shuttle = createShuttleClient(readShuttleEnv());
+  const repoInfo = await shuttle.getRepoInfo(branch.name);
+  const arches = toCrpArches(repoInfo.arches);
+  if (arches === "") {
+    throw new Error(`基线 ${branch.name} 在 Shuttle 上没有架构列表，无法投递`);
+  }
+  console.log(`  Shuttle 原始列表：${repoInfo.arches.join(", ")}`);
+  console.log(`  投递用的 Arches：${arches}`);
+
+  step("4. 建临时 Topic");
   const topicName = `${TOPIC_NAME_PREFIX}${Date.now()}`;
   const topic = await client.createTopic({ name: topicName, branchId: branch.id, owner: user.name });
   console.log(`  Topic ID：${topic.topicId}`);
   console.log(`  Topic 名称：${topic.name}`);
   console.log(`  Owner：${topic.owner}`);
 
-  step("4. 查工作流进度（getTopicWorkflow）");
+  step("5. 查工作流进度（getTopicWorkflow）");
   const before = await client.getTopicWorkflow(topic.topicId);
   console.log(`  WorkProgress = ${before.workProgress}（${before.workProgressLabel}）`);
   console.log(`  已转测？${before.workProgress >= 20 ? "是" : "否（还能改包）"}`);
 
   let releaseId: number | null = null;
   try {
-    step("5. 投递软件包（ChangeLogMode=false，Tag 用调用方给的版本号）");
+    step("6. 投递软件包（ChangeLogMode=false，Tag 用调用方给的版本号）");
     const submitted = await client.submitRelease({
       topicId: topic.topicId,
       projectName: params.project,
@@ -136,13 +150,15 @@ async function main(): Promise<void> {
       commit: params.commit,
       branchId: branch.id,
       tag: params.tag,
+      arches,
     });
     releaseId = submitted.releaseId;
     console.log(`  Release ID：${submitted.releaseId}`);
     console.log(`  ProjectID：${submitted.projectId}`);
     console.log(`  请求里的 Tag：${submitted.tag}，ChangeLogMode：${submitted.changeLogMode}`);
+    console.log(`  请求里的 Arches：${submitted.request.Arches}`);
 
-    step("6. 查回 Release");
+    step("7. 查回 Release");
     const releases = await client.listReleases(topic.topicId);
     for (const item of releases) {
       console.log(
@@ -151,15 +167,37 @@ async function main(): Promise<void> {
       );
     }
 
-    step("7. 等构建状态变化（最多 30 秒）");
+    step("8. 等构建状态变化（最多 30 秒）");
     const finalState = await waitForBuildState(() => client.listReleases(topic.topicId));
     console.log(`  最终状态：${finalState}`);
 
-    step("8. 查 Topic 仓库地址（topicUrls）");
+    step("9. 查 Shuttle 构建任务与作业");
+    const latest = (await client.listReleases(topic.topicId))[0];
+    const buildId = latest?.buildId ?? 0;
+    const page = await shuttle.listBuildTasks(buildId);
+    const task = page.tasks.find((item) => item.key === buildId);
+
+    if (task === undefined) {
+      console.log(`  Shuttle 里没有任务 ${buildId}（可能还没建出来）`);
+    } else {
+      console.log(
+        `  任务 ${task.key}：状态=${task.status} pkgver=${task.pkgver} action=${task.action}`,
+      );
+      for (const job of task.jobs) {
+        console.log(`    作业 ${job.id}：${job.arch} ${job.status}`);
+      }
+      console.log(
+        task.jobs.length === 0
+          ? "  一个作业都没有：CRP 在 apply 阶段就没通过，去看投递参数（架构、项目名、Tag）"
+          : `  共 ${task.jobs.length} 个作业`,
+      );
+    }
+
+    step("10. 查 Topic 仓库地址（topicUrls）");
     const urls = await client.topicUrls({ branchId: branch.id, topicId: topic.topicId });
     console.log(`  仓库地址：${urls.repoUrls.length === 0 ? "（构建尚未产出，空）" : urls.repoUrls.join(", ")}`);
   } finally {
-    step("9. 清理：删除本脚本投递的 Release");
+    step("11. 清理：删除本脚本投递的 Release");
     const remaining = await client.listReleases(topic.topicId);
     const own = remaining.filter((item) => releaseId === null || item.releaseId === releaseId);
     for (const item of own) {
@@ -169,12 +207,12 @@ async function main(): Promise<void> {
     const afterDelete = await client.listReleases(topic.topicId);
     console.log(`  删除后该 Topic 的 Release 数量：${afterDelete.length}`);
 
-    step("10. 清理：放弃临时 Topic（CRP 无删除 Topic 的接口）");
+    step("12. 清理：放弃临时 Topic（CRP 无删除 Topic 的接口）");
     await client.abandonTopic(topic.topicId);
     console.log(`  已放弃 Topic ${topic.topicId}（${topic.name}）`);
   }
 
-  step("11. 认证错误验证（故意用错 token）");
+  step("13. 认证错误验证（故意用错 token）");
   const badClient = createCrpClient({
     baseUrl: config.baseUrl,
     token: "deliberately-wrong-token",

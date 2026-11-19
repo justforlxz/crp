@@ -38,9 +38,6 @@ export function expandHomePath(path: string): string {
   return path;
 }
 
-/** 投递请求不带 Arches 时用的架构集合，与 CRP 前端默认值一致。 */
-export const CRP_DEFAULT_ARCHES = "amd64;mips64el;arm64;sw64;loong64";
-
 export const CRP_DEFAULT_TIMEOUT_MS = 30_000;
 
 /** 失败重试次数（不含首次请求）。 */
