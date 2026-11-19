@@ -212,3 +212,65 @@ kwin (4:5.27.2.331-deepin331-1) unstable; urgency=medium
 - `s=<next>` 只验证了「能取到下一页」，没有验证走到底之后的分页终止行为，客户端也暂不使用它。
 - Gerrit 的 `/a/` 前缀对本服务上的其他插件是否同样必需，只验证了 gitiles 这一处。
 - HTTP 凭据的有效期与轮换由 Gerrit 侧决定，客户端没做凭据过期后的自动重试。
+
+## 9. A18 追加：列全部项目、按 Tag 反查提交（2026-11-19 实测）
+
+从 CRP 导入提测时，CRP 只给包名（`ProjectName`），而读 `debian/changelog` 要仓库路径。
+这两条读接口用来把包名落到唯一仓库上，并在 CRP 没给提交号时按 Tag 找回提交。
+
+### 9.1 列全部项目：`GET /a/projects/`
+
+```
+GET /a/projects/
+→ 200，922568 字节
+{"All-Users":{"id":"All-Users","state":"ACTIVE","web_links":[…]},
+ "Code-Quality":{…}, …}
+```
+
+响应是一个「仓库路径 → 详情」的字典，键就是仓库路径。实测 6133 个仓库。
+
+**包名不等于仓库路径**，而且同名仓库可以有多个（这些都是实测结果）：
+
+| 包名 | 最后一段等于它的仓库 |
+| --- | --- |
+| `kwin` | `deepin-kde/kwin`、`smartos/app/deepin-kde/kwin`、`snipe/kwin` |
+| `dde-file-manager` | `dde-file-manager`、`smartos/app/dde-file-manager` |
+| `dde-dock` | `dde-dock`（唯一） |
+
+所以「按最后一段找候选」只能收敛到候选集合，不能直接定案；定案的办法见 9.3。
+
+### 9.2 按 Tag 读提交：gitiles `+/refs/tags/{tag}`
+
+```
+GET /a/plugins/gitiles/deepin-kde/kwin/+/refs/tags/5.2.27.29?format=JSON
+→ 200
+{"commit": "17325d43cac4a15abba58dde2136f8e20526f671", "tree": "6d58bf04…",
+ "parents": ["01b3aa65…"], "author": {"name":"zhangyu", …}, …}
+```
+
+Tag 不存在时（同一个仓库换一个不存在的版本号）：
+
+```
+GET /a/plugins/gitiles/deepin-kde/kwin/+/refs/tags/1.0.0.9-deepin1?format=JSON
+→ 404（HTML 错误页）
+客户端：GerritNotFoundError「项目 deepin-kde/kwin 上没有 Tag 1.0.0.9-deepin1。」
+```
+
+`refs/tags/` 前缀由 `normalizeRef` 原样保留、按 `/` 分段转义（与第 2 节同一个规则）。
+只有 404 才表示「这个仓库没有这个 Tag」；认证失败与网络错误照常抛出，不当成「没有」。
+
+**CRP 的 Tag 不一定是 git 标签**：CRP 里大量主题的 tag 形如 `1.0+uploadcrp`，
+这类值在仓库里没有同名 Tag。此时反查失败，导入停在预览并点名该包 —— 这是设计要的结果，
+不能用别的东西凑一个提交号。
+
+### 9.3 候选有多个时怎么定案
+
+拿 CRP Release 里的提交号逐个候选仓库去读 `debian/changelog`：
+
+- 只有一个仓库读得到 → 就是它，代码版本同时拿到了；
+- 一个都读不到 → 这条 Release 定不下来，导入停在预览；
+- 两个以上都读得到 → 也不定案（镜像仓库就是这样），要求先在软件包管理登记唯一仓库。
+
+真实例子：`kwin` 的提交 `17325d43…` 在 `deepin-kde/kwin` 与 `smartos/app/deepin-kde/kwin`
+里都能读到（都是 200，版本号同为 `4:5.27.2.29-deepin29-1`），`snipe/kwin` 里读不到。
+所以未登记的 `kwin` 会停在预览；已登记的软件包直接用登记时的仓库路径，不受这个歧义影响。

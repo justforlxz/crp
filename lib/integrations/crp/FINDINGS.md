@@ -379,3 +379,117 @@ GET /api/topics/29158            → Abandoned: true
 GET /api/topics/29158/releases   → []
 GET /api/topics/29158/workflow/info → WorkProgress: 0
 ```
+
+---
+
+## 十一、A18 追加：读主题与搜主题（2026-11-19 实测）
+
+从 CRP 导入已有提测主题需要两个能力：按 ID 读一个主题，按名称在一条交付分支下找主题。
+第二个能力原本计划走 `POST /topics/search`，实测这个部署上没有这个接口，改用 CRP 前端
+自己在走的「列分支主题」接口。以下都是真实请求，账号与分支同 A2（`eagle-1071`，分支 ID 108）。
+
+### 11.1 读单个主题：`getTopic(topicId)`
+
+`GET /api/topics/{id}`，需要登录态：
+
+```
+GET /api/topics/29158
+→ 200
+{"ID": 29158, "Name": "a2-verify-1795019998812", "NameB64": "YTItdmVyaWZ5…",
+ "Description": "a2-verify-1795019998812", "BranchID": 108, "Completed": false,
+ "Type": "test", "Abandoned": true,
+ "Owner": [{"employeeid": "…", "mail": "zhangdingyuan@uniontech.com",
+            "name": "zhangdingyuan", "namecn": "张丁元"}],
+ "Members": null, "TpcType": "public", "SyncID": 0, "State": 0, "Lock": false,
+ "RepoType": "deb", "Mail": null}
+```
+
+用客户端对另一个主题（29123）再取一次：
+
+```
+GET /api/topics/29123 → 200
+整理后：{"id":29123,"name":"【FlemingX】缩放需求实时生效联调测试_20261117",
+        "branchId":108,"type":"test","owner":"zhangcailian",
+        "abandoned":false,"completed":false,"state":0}
+```
+
+导入要用到的四个字段都在这个响应里：`Name`（显示）、`BranchID`（校验项目基线）、
+`Type`（只接 `test`）、`Owner`（显示是谁建的主题）。`Abandoned` 为真时不允许导入。
+`Owner` 仍是对象数组（与 `createTopic` / `abandonTopic` 写回的字符串形式不同，原因见 4.2）。
+
+### 11.2 `POST /topics/search` 在这个部署上不可用
+
+逐个试了五种请求体，全部 `200` + 字面量 `null`，没有报错也没有数据：
+
+```
+POST /api/topics/search  {}
+→ 200 null
+POST /api/topics/search  {"Name":""}
+→ 200 null
+POST /api/topics/search  {"BranchID":108}
+→ 200 null
+POST /api/topics/search  {"name":"","branchID":108,"type":"test"}
+→ 200 null
+POST /api/topics/search  {"Page":1,"PerPage":20,"Name":"","BranchID":108,"Type":"test"}
+→ 200 null
+```
+
+再翻 CRP 前端的打包产物（`main-es2015.*.js`）确认：全文件没有 `topics/search` 这个路径，
+主题列表用的是 `GET ${api}branches/{currentBranchId}/topics?Type=${t}`。
+
+结论：**不实现 `searchTopics` 走 `POST /topics/search`**，函数名保留，实现换成下面这条实测可用的读接口。
+
+### 11.3 列一条交付分支下的 test 类型主题（`searchTopics` 的实际实现）
+
+```
+GET /api/branches/108/topics?Type=test
+→ 200，717460 字节，916 条主题
+第一项：{"ID":29164,"Name":"a2-verify-1795023022176","BranchID":108,
+        "Completed":false,"Type":"test","Abandoned":true,
+        "Owner":[{"name":"zhangdingyuan","namecn":"张丁元"}],"State":0,"RepoType":"deb"}
+```
+
+客户端在这一条响应上做三件事，都在本地完成：
+
+1. 丢掉 `Type` 不是 `test` 的项（服务端已经按 `Type=test` 过滤，本地再筛一次，防它改行为）；
+2. 名字做「包含」匹配，比较前统一转小写（主题名里中英混排，大小写不该影响搜得到）；
+3. 最多回 50 条（`TOPIC_SEARCH_LIMIT`），整条分支 916 条不能整包塞给页面。
+
+一次真实调用（分支 108、关键字 `Fleming`）：
+
+```
+GET /api/branches/108/topics?Type=test → 200
+结果：50 条（命中上限），第一条 id=29123 「【FlemingX】缩放需求实时生效联调测试_20261117」
+```
+
+### 11.4 Release 的 `BuildState` 实测取值（导入时按它写快照状态）
+
+之前只知道 `APPLYING` / `UPLOAD_FAILED` / `UNKNOWN`。A18 又看到三个，其中 `UNKNOWN`
+在真实主题上很常见：
+
+| `BuildState.state` | 场景 | 导入时按 |
+| --- | --- | --- |
+| `UPLOAD_OK` | 已上传 CRP，构建完成 | `success` |
+| `UPLOAD_CRP` | 正在往 CRP 上传 | `building` |
+| `UPLOAD_GIVEUP` | 上传放弃 | `failed` |
+| `APPLYING` | CRP 正在处理 | `building` |
+| `UNKNOWN` | CRP 没给状态 | `pending`（并在预览里标注） |
+| 没有 `BuildState`（`null`） | 还没开始 | `pending` |
+
+真实主题 29123 的四个包全部是 `UNKNOWN`，主题 28684 的那个包是 `UPLOAD_OK`，
+主题 28724 的 `startdde` 是 `UPLOAD_GIVEUP`。所以「按 CRP 状态原样写、没见过的按待投递」
+不是理论要求，是导入实际会遇到的分布。
+
+### 11.5 `Commit` 字段可能不是提交号
+
+同一次抽样看到的真实值：
+
+```
+topic 28724  startdde        Commit "c163701600…"（正常提交号）
+topic 28947  hw-version      Commit "uploadcrp"   ← 预置 deb，没有源码提交
+topic 28866  kernel          Commit "uploadcrp"
+```
+
+所以导入时先判断 `Commit` 是不是 7–40 位十六进制；不是就当作「CRP 没有给提交号」，
+转去按 `Tag` 在 Gerrit 反查（见 `lib/integrations/gerrit/FINDINGS.md` 第 9 节）。
+两条都拿不到就停在预览，绝不把 `uploadcrp` 之类写进快照。

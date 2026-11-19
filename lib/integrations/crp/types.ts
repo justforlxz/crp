@@ -101,6 +101,28 @@ export type CrpCreatedTopic = {
 };
 
 /**
+ * `GET /topics/{topic_id}` 整理后的结构。
+ *
+ * 读回来的 Owner/Members 是对象数组，这里只用 Owner 的账号名；写回时的字符串形式见
+ * `namesToString()`，两个方向不能混用。
+ */
+export type CrpTopic = {
+  id: number;
+  name: string;
+  /** 所属交付分支 ID。主题只能属于一条基线，导入时据它校验项目基线。 */
+  branchId: number;
+  /** 主题类型，只有 `test` 能承接待投递的 Release。 */
+  type: string;
+  abandoned: boolean;
+  completed: boolean;
+  /** CRP 的 `State` 数值，原样保存。 */
+  state: number;
+  /** Owner 的 LDAP 账号；多人时用 `;` 连接；没有 Owner 时为空串。 */
+  owner: string;
+  raw: CrpRawTopic;
+};
+
+/**
  * `POST /topics/{topic_id}/new_release` 的请求体。
  *
  * 字段名与 CRP 原生一致。`BranchID` 要字符串，`ChangeLogMode` 决定 Tag 由谁决定，

@@ -217,6 +217,10 @@ function fakeClient(overrides: Partial<GerritClient> = {}): GerritClient {
       },
       text: "",
     }),
+    listProjects: async () => [],
+    resolveTag: async (project, tag) => {
+      throw new GerritNotFoundError(`项目 ${project} 上没有 Tag ${tag}。`);
+    },
     ...overrides,
   };
 }
@@ -279,6 +283,14 @@ function fakeReader(): GerritReader {
 
     async readCodeVersion(repoPath, commitSha) {
       return `${repoPath.split("/").pop()}-${commitSha.slice(0, 4)}`;
+    },
+
+    async listProjects() {
+      return [`${PREFIX}/a`, `${PREFIX}/b`, `${PREFIX}/fallback`];
+    },
+
+    async resolveTagCommit() {
+      return null;
     },
   };
 }

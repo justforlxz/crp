@@ -44,6 +44,17 @@ enum ReleaseStatus {
   @@map("release_status")
 }
 
+/// 提测记录的来源。
+///
+/// `platform` 是在本平台按「创建提测」流程建出来的；`imported` 是把 CRP 上已有的
+/// 主题接管进来（A18）。接管之后改包、补包走同一套更新能力，行为没有差别。
+enum ReleaseSource {
+  platform
+  imported
+
+  @@map("release_source")
+}
+
 /// 提测快照每一轮的状态。
 ///
 /// `superseded` 是「被更晚的一轮替换掉」，与 `abandoned`（被人为放弃）区分开：
@@ -384,6 +395,8 @@ model Release {
   /// 提测轮次，从 1 开始，每次增量更新加一。
   revision     Int           @default(1)
   status       ReleaseStatus @default(pending)
+  /// 来源：平台创建，或从 CRP 已有主题导入（A18）。
+  source       ReleaseSource @default(platform)
   description  String?
   createdById  String        @map("created_by_id")
 

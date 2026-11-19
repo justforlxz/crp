@@ -42,5 +42,14 @@ export default async function NewReleasePage({ searchParams }: NewReleasePagePro
     );
   }
 
-  return <ReleaseWizard projects={projects} />;
+  return (
+    <>
+      {/* 提测记录列表页属 A13（阶段 10），在那之前「从 CRP 导入」的入口挂在这里。 */}
+      <nav style={{ maxWidth: 760, margin: "24px auto 0", textAlign: "right", fontSize: 13 }}>
+        <Link href={`/releases/import${scope.query}`}>从 CRP 导入已有提测主题</Link>
+      </nav>
+      <ReleaseWizard projects={projects} />
+    </>
+  );
 }
+

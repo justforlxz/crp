@@ -6,7 +6,7 @@
  * | 文件 | 职责 |
  * | --- | --- |
  * | `request.ts` | 带登录态的请求层：超时、重试、错误分类、401 续期 |
- * | `topics.ts` | 建 Topic、放弃 Topic、仓库地址 |
+ * | `topics.ts` | 建 Topic、读主题、按名称搜主题、放弃 Topic、仓库地址 |
  * | `releases.ts` | 投递、查询、删除、重试 Release |
  * | `projects.ts` | 按软件包名解析 `ProjectID` |
  * | `workflow.ts` | `WorkProgress` 数值与标签 |
@@ -37,6 +37,7 @@ import {
   submitRelease,
 } from "./releases";
 import { searchProjects } from "./projects";
+import { getTopic, searchTopics } from "./topics";
 import {
   createCrpTransport,
   type CrpTransport,
@@ -58,6 +59,7 @@ import type {
   CrpTopicUrls,
   CrpTopicUrlsInput,
   CrpTopicWorkflow,
+  CrpTopic,
 } from "./types";
 
 /** 客户端的构造参数就是请求层的参数，没有额外项。 */
@@ -69,6 +71,15 @@ export type CrpClient = {
   listBranches(): Promise<CrpBranch[]>;
   getCurrentUser(): Promise<CrpCurrentUser>;
   searchProjects(input: { name: string; branchId: number }): Promise<CrpProject[]>;
+  /** 读主题详情（名称、基线分支、Owner、状态）。从 CRP 导入的第一步用它。 */
+  getTopic(topicId: number): Promise<CrpTopic>;
+  /**
+   * 按名称搜索某条交付分支下的 `test` 类型主题。
+   *
+   * 走 `GET /branches/{id}/topics?Type=test` 再本地按名称过滤：`POST /topics/search`
+   * 在这个部署上对任何请求体都返回 `null`，实测见 FINDINGS.md 第 4.4 节。
+   */
+  searchTopics(input: { branchId: number; name: string }): Promise<CrpTopic[]>;
   createTopic(input: CrpCreateTopicInput): Promise<CrpCreatedTopic>;
   submitRelease(input: CrpSubmitReleaseInput): Promise<CrpSubmittedRelease>;
   listReleases(topicId: number): Promise<CrpRelease[]>;
@@ -143,6 +154,8 @@ export function createCrpClient(options: CrpClientOptions = {}): CrpClient {
     listBranches: () => listBranches(transport),
     getCurrentUser: () => getCurrentUser(transport),
     searchProjects: (input) => searchProjects(transport, input),
+    getTopic: (topicId) => getTopic(transport, topicId),
+    searchTopics: (input) => searchTopics(transport, input),
     createTopic: (input) =>
       createTopic(transport, input, async () => (await getCurrentUser(transport)).name),
     submitRelease: (input) => submitRelease(transport, input),
