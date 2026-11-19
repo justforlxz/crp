@@ -1,6 +1,8 @@
 # 数据模型（A5 定稿）
 
-本文是 `prisma/schema.prisma` 的说明文档，与 schema 一一对应：19 张表、8 组枚举、全部唯一索引、外键与删除策略都在这里写明。改 schema 必须同步改本文。
+本文是 `prisma/schema.prisma` 的说明文档，与 schema 一一对应：21 张表、9 组枚举、全部唯一索引、外键与删除策略都在这里写明。改 schema 必须同步改本文。
+
+其中 4.20（`crp_call_log`）是 A12 追加、4.21（`release_update_record`）是 A17 追加；两张都是只追加的旁证表，不改 A5 已定的字段与索引。
 
 数据来源是 PRD 第五节的领域模型，加上 A2（CRP）、A3（Gerrit）、A4（Shuttle）实测确认的字段。与 PRD 初稿的差异集中记在第 8 节，不在正文里夹带说明。
 
@@ -51,6 +53,7 @@ PRD 里的 `Release 1-1 CrpTopic` 在本版没有独立表，Topic 的字段并�
 | `SyncRunKind`（`sync_run_kind`） | `baseline_list`、`baseline_packages`、`package_metadata`、`release_status` | 同步种类，对应 PRD 6.4 的四类同步边界 |
 | `SyncRunStatus`（`sync_run_status`） | `running`、`success`、`failed` | 同步结果 |
 | `SyncRunTrigger`（`sync_run_trigger`） | `manual`、`schedule` | 手动刷新或定时任务 |
+| `ReleaseUpdateAction`（`release_update_action`） | `append`、`replace` | 提测增量更新的动作：`append` = 补包，`replace` = 换包（含连带重投的下游） |
 
 ## 四、表定义
 
@@ -460,6 +463,35 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 外键：无。`release_id`、`snapshot_id` 故意不加外键，与 `session.active_workspace_id` 同一处理方式：
   这是排查用的旁证，不该被提测记录、快照的清理策略牵住；按值查询已经够用。
 
+### 4.21 release_update_record（提测增量更新留痕）
+
+「每轮变更留痕：谁、什么时候、加了什么、放弃了什么、重投了什么」（A17 追加）。
+现有表里没有能承载人工操作的落点：`sync_run` 是同步类记录（基线、软件包元数据、提测状态），
+语义不同，所以单独建一张。
+
+一次更新请求最多写两行：有补包就写一行 `append`，有换包就写一行 `replace`，一行只描述一类动作，
+页面按时间倒序列出即可。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | text | PK | |
+| `releaseId`（`release_id`） | text | NOT NULL | 所属提测 |
+| `operatorId`（`operator_id`） | text | NOT NULL | 发起这次更新的账号 |
+| `action` | `release_update_action` | NOT NULL | `append`（补包）或 `replace`（换包） |
+| `packageNames`（`package_names`） | text[] | NOT NULL | 本次涉及的包名：补包是新加的包，换包是被换版本的包 |
+| `revisionBefore`（`revision_before`） | integer | NOT NULL | 更新前的提测轮次 |
+| `revisionAfter`（`revision_after`） | integer | NOT NULL | 更新后的提测轮次（当前实现是加一） |
+| `abandonedCrpReleaseIds`（`abandoned_crp_release_ids`） | text[] | NOT NULL | 本次在 CRP 侧放弃（删除）的 Release ID |
+| `redispatchedPackageNames`（`redispatched_package_names`） | text[] | NOT NULL | 本次重投的包名：补包是新加的那些，换包是被换的包加全部传递下游 |
+| `createdAt`（`created_at`） | timestamptz | NOT NULL | 记录时间 |
+
+- 索引：`(release_id, created_at)` 二级索引（按提测看更新历史）。
+- 外键：`release_id → release.id`、`operator_id → app_user.id`，都是 RESTRICT。
+- 两个列表列存包名与 Release ID 的原文，不指向 `package`、也不指向 `release_repository_record`：
+  留痕是复盘用的旁证，后来改名的包与被删掉的 CRP Release 不该让这行失效。
+- 与 4.13 的分工：快照记「每一轮固化了什么」，本表记「人为改了哪些轮、放弃了什么、重投了什么」。
+  旧轮在快照表里标 `superseded` 并指向新轮，物理行永远保留；本表不参与快照状态流转。
+
 ## 五、关键约束（逐条对应设计契约）
 
 | 约束 | 落在哪 |
@@ -508,6 +540,8 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | `build_task.release_id` | `release.id` | 否 | RESTRICT | 构建历史是复盘依据 |
 | `build_task.snapshot_id` | `release_package_snapshot.id` | 否 | RESTRICT | 任务挂在轮次上 |
 | `build_job.build_task_id` | `build_task.id` | 否 | CASCADE | 作业没有独立含义，随任务删除 |
+| `release_update_record.release_id` | `release.id` | 否 | RESTRICT | 提测记录不物理删除，留痕要一直查得到 |
+| `release_update_record.operator_id` | `app_user.id` | 否 | RESTRICT | 要知道是谁改的，账号不物理删除 |
 | `webhook_endpoint.workspace_id` | `workspace.id` | 否 | RESTRICT | 端点不随工作区删除 |
 | `webhook_delivery.endpoint_id` | `webhook_endpoint.id` | 否 | RESTRICT | 端点只停用，投递日志要留 |
 

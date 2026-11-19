@@ -15,8 +15,11 @@ export type { SnapshotPlan, SnapshotPlanInput } from "./snapshot";
 export {
   comparePackageSet,
   parseReleaseInput,
+  parseReleaseUpdateInput,
   type ReleaseInput,
   type ReleasePackageInput,
+  type ReleaseUpdateInput,
+  type ReleaseUpdateOperationInput,
 } from "./validation";
 
 export {
@@ -42,3 +45,25 @@ export {
   type PackageRefresh,
   type SelectionResult,
 } from "./refresh";
+
+export { canViewRelease, type ReleaseAccessQuery } from "./access";
+
+export { collectDownstream } from "./downstream";
+
+export {
+  applyReleaseUpdate,
+  loadReleaseUpdateView,
+  previewReleaseUpdate,
+  type AbandonedCrpRelease,
+  type PlannedRound,
+  type PlannedRoundReason,
+  type PlannedSnapshot,
+  type ReleaseUpdateCandidate,
+  type ReleaseUpdateHistoryRow,
+  type ReleaseUpdateOptions,
+  type ReleaseUpdatePlan,
+  type ReleaseUpdatePreviewOptions,
+  type ReleaseUpdateResult,
+  type ReleaseUpdateView,
+  type ReleaseUpdateViewOptions,
+} from "./update";

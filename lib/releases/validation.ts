@@ -103,9 +103,11 @@ function parsePackage(
   raw: unknown,
   index: number,
   errors: FieldError[],
+  /** 这组包在请求体里的字段名：建提测是 `packages`，更新提测是 `append` / `replace`。 */
+  listField = "packages",
 ): ReleasePackageInput | null {
   const record = asRecord(raw);
-  const prefix = `packages[${index}]`;
+  const prefix = `${listField}[${index}]`;
 
   if (record === null) {
     errors.push({ field: prefix, message: `第 ${index + 1} 个软件包的输入必须是一组字段。` });
@@ -287,4 +289,113 @@ export function comparePackageSet(
   const missing = expected.filter((name) => !seen.has(name));
 
   return { missing, unexpected, duplicated };
+}
+
+// ---------------------------------------------------------------------------
+// 增量更新（A17）
+// ---------------------------------------------------------------------------
+
+/** 更新提测时对一个软件包做的改动：与建提测的包输入同形。 */
+export type ReleaseUpdateOperationInput = ReleasePackageInput;
+
+/** 更新提测的输入：补包与换包两组，至少填一组。 */
+export type ReleaseUpdateInput = {
+  /** 追加的软件包：此刻还不在提测里的包。 */
+  append: ReleasePackageInput[];
+  /** 换包的软件包：此刻已经在提测里的包，改它的分支 / Commit / 提测版本。 */
+  replace: ReleasePackageInput[];
+};
+
+/**
+ * 校验更新提测的请求体。
+ *
+ * 这里只校验「字段填得对不对」；「包在不在项目清单里」「包在不在这次提测里」
+ * 要查库，在 `update.ts` 里判定。
+ *
+ * 两组都空要拒绝：一次什么都不改的更新没有意义，也不该占用一次轮次。
+ */
+export function parseReleaseUpdateInput(raw: unknown): ParseResult<ReleaseUpdateInput> {
+  const record = asRecord(raw);
+
+  if (record === null) {
+    return NOT_AN_OBJECT;
+  }
+
+  const errors: FieldError[] = [];
+
+  const append = parsePackageList(record, "append", errors);
+  const replace = parsePackageList(record, "replace", errors);
+
+  if (append.length === 0 && replace.length === 0 && errors.length === 0) {
+    errors.push({
+      field: "",
+      message: "这次更新没有任何改动：至少要在「补包」或「换包」里填一项。",
+    });
+  }
+
+  const replaced = new Set(replace.map((item) => item.packageName));
+
+  for (const item of append) {
+    if (replaced.has(item.packageName)) {
+      errors.push({
+        field: "append",
+        message: `软件包「${item.packageName}」同时出现在补包与换包里，只能选一种。`,
+      });
+    }
+  }
+
+  // 同一个包在一组里出现两次会写出两轮同号的快照，撞唯一索引；这里先挡住，给一句能看懂的话。
+  for (const [field, list] of [
+    ["append", append],
+    ["replace", replace],
+  ] as const) {
+    const seen = new Set<string>();
+
+    for (const item of list) {
+      if (seen.has(item.packageName)) {
+        errors.push({
+          field,
+          message: `软件包「${item.packageName}」在这一组里重复了，每个包只能提交一次。`,
+        });
+      }
+
+      seen.add(item.packageName);
+    }
+  }
+
+  if (errors.length > 0) {
+    return { ok: false, errors };
+  }
+
+  return { ok: true, value: { append, replace } };
+}
+
+/** 解析 `append` / `replace` 这一组包；字段缺省当空数组，写了不是数组才算错。 */
+function parsePackageList(
+  record: Record<string, unknown>,
+  field: "append" | "replace",
+  errors: FieldError[],
+): ReleasePackageInput[] {
+  const rawList = record[field];
+
+  if (rawList === undefined || rawList === null) {
+    return [];
+  }
+
+  if (!Array.isArray(rawList)) {
+    errors.push({ field, message: `${field} 必须是软件包数组。` });
+    return [];
+  }
+
+  const parsed: ReleasePackageInput[] = [];
+
+  rawList.forEach((item, index) => {
+    const one = parsePackage(item, index, errors, field);
+
+    if (one !== null) {
+      parsed.push(one);
+    }
+  });
+
+  return parsed;
 }
