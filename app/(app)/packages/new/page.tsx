@@ -37,6 +37,16 @@ export default function NewPackagePage() {
             <input name="currentVersion" placeholder="5.27.10.2-1" />
           </label>
         </p>
+        <p>
+          <label>
+            CRP 项目名（可不填）
+            <input name="crpProjectName" placeholder="deepin-kde_kwin" />
+          </label>
+        </p>
+        <p className="hint">
+          留空表示与包名相同；填了就必须是 CRP 里那个软件包的项目名。两者不一定相同：
+          CRP 的项目名允许下划线，包名不允许。
+        </p>
       </ActionForm>
     </PageShell>
   );

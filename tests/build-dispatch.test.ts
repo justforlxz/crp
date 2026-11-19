@@ -30,6 +30,8 @@ import {
   pruneCrpCallLogs,
   retryFailedTasks,
 } from "../lib/build";
+import { BuildError } from "../lib/build";
+import { CrpBusinessError } from "../lib/integrations/crp";
 import { runBuildDispatch } from "../lib/jobs/build-dispatch";
 import { prisma } from "../lib/db";
 import { createRelease } from "../lib/releases";
@@ -101,6 +103,8 @@ type FakeCrp = {
   received: string[];
   /** 这些 Release ID 的删除请求会失败，用来验重试时的逐项容错。 */
   failDelete: Set<number>;
+  /** 非空时 `POST /project` 按这个 HTTP 状态码失败（响应体带 message），用来验 5xx 与 4xx 的区别。 */
+  projectFailureStatus: number | null;
 };
 
 /**
@@ -111,10 +115,7 @@ type FakeCrp = {
  */
 let fakeIdBase = 100_000;
 
-function newFakeCrp(): FakeCrp {
-  const base = fakeIdBase;
-  fakeIdBase += 1_000;
-
+function makeFakeCrp(base: number): FakeCrp {
   return {
     nextTopicId: base,
     nextReleaseId: base * 10 + 1,
@@ -125,7 +126,15 @@ function newFakeCrp(): FakeCrp {
     builds: new Map(),
     received: [],
     failDelete: new Set(),
+    projectFailureStatus: null,
   };
+}
+
+function newFakeCrp(): FakeCrp {
+  const base = fakeIdBase;
+  fakeIdBase += 1_000;
+
+  return makeFakeCrp(base);
 }
 
 function json(body: string, status = 200): Response {
@@ -164,6 +173,14 @@ function crpFetchOf(state: FakeCrp): typeof fetch {
 
     if (method === "POST" && path === "/project") {
       const body = JSON.parse(String(init?.body)) as { name: string };
+
+      if (state.projectFailureStatus !== null) {
+        // 带 message 的失败响应：请求层会把它归成 CrpBusinessError，不论状态码是 4xx 还是 5xx。
+        return json(
+          JSON.stringify({ message: `查询项目 ${body.name} 失败` }),
+          state.projectFailureStatus,
+        );
+      }
 
       // 实测：按名字模糊匹配，这里只回完全同名的一条。
       return json(JSON.stringify({ Projects: [{ ID: 800, Name: body.name }] }));
@@ -1300,6 +1317,185 @@ test("投递中断且 CRP 侧没有这条 Release 时，接手会重新投递", 
 // 后续整理（MKACG-898）：只进不出的状态、认领写库失败、旧轮次认领、定时投递饿死
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// MKACG-910：投递与认领都用登记的 CRP 项目名，不用包名
+// ---------------------------------------------------------------------------
+/**
+ * 本组用例专用的假 CRP：ID 区间固定从 900_000 起，与上面的 `fakeIdBase` 分开。
+ *
+ * 为什么不共用 `newFakeCrp`：那一段的分配顺序被本文件既有用例的断言依赖（每个用例拿一段），
+ * 在这里多插几个 state 会把后面所有用例的区间整体前移，与上一次运行留在库里的投递记录
+ * 撞上 `crp_release_id` 唯一约束 —— 同一台机器连跑两遍就失败，与本次改动无关。
+ */
+let projectNameIdBase = 900_000;
+
+function newProjectNameFakeCrp(): FakeCrp {
+  const base = projectNameIdBase;
+  projectNameIdBase += 1_000;
+
+  return makeFakeCrp(base);
+}
+
+/**
+ * 临时把某个包的 CRP 项目名改掉，跑完必须还原。
+ *
+ * 这个文件里其余用例都按「包名等于 CRP 项目名」断言投递结果，共用夹具不能永久改。
+ * 文件内的测试是顺序执行的，所以这里改完再还原是安全的。
+ */
+async function withCrpProjectName<T>(
+  packageName: string,
+  crpProjectName: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  await prisma.package.update({
+    where: { name: packageName },
+    data: { crpProjectName },
+  });
+
+  try {
+    return await run();
+  } finally {
+    await prisma.package.update({
+      where: { name: packageName },
+      data: { crpProjectName: null },
+    });
+  }
+}
+
+/** 在假 CRP 的某个 Topic 里塞一条「CRP 侧已经存在」的 Release。 */
+function seedCrpRelease(
+  state: FakeCrp,
+  input: { topicId: number; projectName: string; branch: string; commit: string; tag: string },
+): FakeRelease {
+  const release: FakeRelease = {
+    ID: state.nextReleaseId++,
+    TopicID: input.topicId,
+    ProjectID: 800,
+    ProjectName: input.projectName,
+    Branch: input.branch,
+    Commit: input.commit,
+    Tag: input.tag,
+    BuildID: state.nextBuildId++,
+    Status: 1,
+    StatusName: "APPLYING",
+  };
+
+  state.releases.push(release);
+
+  return release;
+}
+
+test("AC2 投递用登记好的 CRP 项目名，不用包名", async () => {
+  const crpProjectName = `${PREFIX}-crp-a`;
+  const state = newProjectNameFakeCrp();
+  const network = networkOf(state);
+
+  await withCrpProjectName(pkgName("a"), crpProjectName, async () => {
+    const releaseId = await createReleaseWithChain("ac2-project-name");
+
+    assert.equal((await advanceRelease(releaseId, { network })).action, "topic_created");
+
+    const dispatched = await advanceRelease(releaseId, { network });
+
+    assert.equal(dispatched.action, "dispatched");
+    // 推进结果对外仍然报包名：页面、Webhook 事件用的都是本地包名。
+    assert.equal(dispatched.packageName, pkgName("a"));
+
+    // CRP 收到的 ProjectName 是登记的 CRP 项目名，不是包名。
+    assert.deepEqual(dispatchOrder(state), [crpProjectName]);
+    assert.equal(state.releases[0]?.ProjectName, crpProjectName);
+    // 查 ProjectID 也是按这个名字查的（假 CRP 按请求里的名字原样回一条）。
+    assert.ok(
+      state.received.includes("POST /project"),
+      "投递前要按 CRP 项目名查 ProjectID",
+    );
+  });
+});
+
+test("AC2 认领比对同源：CRP 侧已有同一条投递时不再发第二条", async () => {
+  const crpProjectName = `${PREFIX}-crp-a`;
+  const state = newProjectNameFakeCrp();
+  const network = networkOf(state);
+
+  await withCrpProjectName(pkgName("a"), crpProjectName, async () => {
+    const releaseId = await createReleaseWithChain("ac2-adopt");
+    const topic = await advanceRelease(releaseId, { network });
+    const topicId = Number(topic.topicId);
+
+    const snapshot = await prisma.releasePackageSnapshot.findFirstOrThrow({
+      where: { releaseId, packageName: pkgName("a") },
+      select: { branch: true, commitSha: true, releaseVersion: true },
+    });
+
+    // 上一次投递发出去之后、写本地记录之前被打断了：CRP 侧已经有一条，名字是 CRP 项目名。
+    const seeded = seedCrpRelease(state, {
+      topicId,
+      projectName: crpProjectName,
+      branch: snapshot.branch,
+      commit: snapshot.commitSha,
+      tag: snapshot.releaseVersion,
+    });
+
+    const dispatched = await advanceRelease(releaseId, { network });
+
+    assert.equal(dispatched.action, "dispatched");
+    assert.equal(
+      state.received.filter((item) => item.endsWith("/new_release")).length,
+      0,
+      "认出 CRP 侧已有这一条之后不能再发一条",
+    );
+    assert.equal(state.releases.length, 1);
+
+    const record = await prisma.releaseRepositoryRecord.findFirstOrThrow({
+      where: { release: { id: releaseId }, snapshot: { packageName: pkgName("a") } },
+      select: { crpReleaseId: true },
+    });
+    assert.equal(record.crpReleaseId, String(seeded.ID));
+  });
+});
+
+test("AC2 认领只认 CRP 项目名：CRP 侧叫包名的那一条不算这一次的投递", async () => {
+  const crpProjectName = `${PREFIX}-crp-a`;
+  const state = newProjectNameFakeCrp();
+  const network = networkOf(state);
+
+  await withCrpProjectName(pkgName("a"), crpProjectName, async () => {
+    const releaseId = await createReleaseWithChain("ac2-adopt-foreign");
+    const topic = await advanceRelease(releaseId, { network });
+    const topicId = Number(topic.topicId);
+
+    const snapshot = await prisma.releasePackageSnapshot.findFirstOrThrow({
+      where: { releaseId, packageName: pkgName("a") },
+      select: { branch: true, commitSha: true, releaseVersion: true },
+    });
+
+    // 分支、提交、版本都对，只有名字是包名：那是同一个仓库在 CRP 里叫别的项目时留下的投递，
+    // 认领它就等于把构建挂到了错误的项目上。
+    const foreign = seedCrpRelease(state, {
+      topicId,
+      projectName: pkgName("a"),
+      branch: snapshot.branch,
+      commit: snapshot.commitSha,
+      tag: snapshot.releaseVersion,
+    });
+
+    await advanceRelease(releaseId, { network });
+
+    assert.equal(
+      state.received.filter((item) => item.endsWith("/new_release")).length,
+      1,
+      "名字不对就不算这一次的投递，要自己发一条",
+    );
+    assert.equal(state.releases.length, 2);
+
+    const record = await prisma.releaseRepositoryRecord.findFirstOrThrow({
+      where: { release: { id: releaseId }, snapshot: { packageName: pkgName("a") } },
+      select: { crpReleaseId: true },
+    });
+    assert.notEqual(record.crpReleaseId, String(foreign.ID));
+  });
+});
+
 test("Shuttle 任务成功但作业列表为空，超过等待期限后给出失败结论", async () => {
   const state = newFakeCrp();
   const network = networkOf(state);
@@ -1652,4 +1848,85 @@ test("crp_call_log 按保留期清理，表不会无限增长", async () => {
   );
 
   await prisma.crpCallLog.deleteMany({ where: { id: fresh.id } });
+});
+
+// ---------------------------------------------------------------------------
+// A16 评审修复：投递入口的错误分类
+// ---------------------------------------------------------------------------
+
+test("库里登记的 CRP 项目名不合法时，投递回 409 并点名是哪个包，不是 500", async () => {
+  const state = newFakeCrp();
+  const network = networkOf(state);
+  const releaseId = await createReleaseWithChain("bad-crp-project-name");
+
+  // 绕过接口校验直接写库：模拟历史数据 / 手工改库留下的非法值。
+  await prisma.package.update({
+    where: { name: pkgName("a") },
+    data: { crpProjectName: "  " },
+  });
+
+  try {
+    await advanceRelease(releaseId, { network });
+
+    await assert.rejects(advanceRelease(releaseId, { network }), (error: unknown) => {
+      assert.ok(error instanceof BuildError, "应当是可读的业务错误，而不是 500");
+      assert.equal(error.status, 409);
+      // 要说清是哪个包的那一列不合法，否则运维不知道去改哪一行。
+      assert.match(error.message, new RegExp(pkgName("a")));
+      assert.match(error.message, /CRP 项目名/);
+
+      return true;
+    });
+
+    // 解析失败发生在抢占之前：这个包仍然停在待投递，不会被卡在「投递中」。
+    const snapshot = await prisma.releasePackageSnapshot.findFirstOrThrow({
+      where: { releaseId, packageName: pkgName("a") },
+      select: { status: true },
+    });
+    assert.equal(snapshot.status, "pending");
+    assert.equal(state.releases.length, 0, "一个 Release 都不该发出去");
+  } finally {
+    await prisma.package.update({
+      where: { name: pkgName("a") },
+      data: { crpProjectName: null },
+    });
+  }
+});
+
+test("CRP 返回 5xx 时按服务端失败上报，不描述成「配置被拒绝」", async () => {
+  const state = newFakeCrp();
+  const network = networkOf(state);
+  const releaseId = await createReleaseWithChain("crp-5xx");
+
+  await advanceRelease(releaseId, { network });
+
+  state.projectFailureStatus = 503;
+
+  await assert.rejects(advanceRelease(releaseId, { network }), (error: unknown) => {
+    assert.ok(error instanceof CrpBusinessError, "5xx 仍然是 CRP 侧失败，不该包装成 409");
+    assert.equal(error.status, 503);
+    // 原话带出去，同时说清这次投的是哪个包、哪个 CRP 项目名。
+    assert.match(error.message, new RegExp(pkgName("a")));
+
+    return true;
+  });
+});
+
+test("CRP 返回 4xx 时按「拒绝」上报，重试也没用", async () => {
+  const state = newFakeCrp();
+  const network = networkOf(state);
+  const releaseId = await createReleaseWithChain("crp-4xx");
+
+  await advanceRelease(releaseId, { network });
+
+  state.projectFailureStatus = 400;
+
+  await assert.rejects(advanceRelease(releaseId, { network }), (error: unknown) => {
+    assert.ok(error instanceof BuildError, "4xx 是可读的拒绝");
+    assert.equal(error.status, 409);
+    assert.match(error.message, /拒绝/);
+    assert.match(error.message, new RegExp(pkgName("a")));
+
+    return true;
+  });
 });

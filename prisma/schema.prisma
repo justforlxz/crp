@@ -318,6 +318,11 @@ model Package {
   name           String   @unique
   /// 仓库路径，例如 `deepin-kde/kwin`。
   repoPath       String   @unique @map("repo_path")
+  /// CRP 里这个软件包的项目名。为空表示与 `name` 相同。
+  ///
+  /// 二者不是一回事：CRP 的项目名带下划线，而 `name` 必须是 Debian 源码包名（不允许下划线）。
+  /// 投递 Release 与从 CRP 导入提测都按这一列落到正确的 CRP 项目上。
+  crpProjectName String?  @map("crp_project_name")
   /// 默认跟踪分支，例如 `develop/eagle`。
   defaultBranch  String   @map("default_branch")
   /// 登记时填写的当前版本。

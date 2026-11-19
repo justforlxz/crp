@@ -133,6 +133,9 @@ async function assertNoConflict(input: PackageInput, excludeId?: string) {
  *
  * 换了仓库或默认分支，旧的 Commit 与版本就不属于新分支了：清空它们与同步时间，
  * 让页面显示「未同步」，而不是继续展示上一分支的数据骗人。
+ *
+ * `crpProjectName` 是纯配置：改它只影响投递时查哪个 CRP 项目，不碰已同步的 Commit 与版本，
+ * 也不影响已经投出去的 Release。
  */
 function fieldsForUpdate(
   input: PackageInput,
@@ -147,6 +150,7 @@ function fieldsForUpdate(
     repoPath: input.repoPath,
     defaultBranch: input.defaultBranch,
     currentVersion: input.currentVersion,
+    crpProjectName: input.crpProjectName,
   };
 
   if (branchChanged) {

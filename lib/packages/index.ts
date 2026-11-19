@@ -3,6 +3,14 @@
 export { findDependencyCycle, formatCycle, sortByDependencies } from "./dependencyGraph";
 export type { DependencyEdge, TopologicalSort } from "./dependencyGraph";
 
+export {
+  CRP_PROJECT_NAME_MAX_LENGTH,
+  CrpProjectNameError,
+  describeCrpProjectName,
+  isValidCrpProjectName,
+  resolveCrpProjectName,
+} from "./crpProject";
+export type { CrpProjectNameSource } from "./crpProject";
 export { MAX_PAYLOAD_ITEMS, parsePackageInput, parsePackagePayload } from "./validation";
 export type { FieldError, PackageInput, ParseResult } from "./validation";
 

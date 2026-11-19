@@ -189,11 +189,26 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | `defaultBranch`（`default_branch`） | text | NOT NULL | 默认跟踪分支，例如 `develop/eagle` |
 | `currentVersion`（`current_version`） | text | NULL | 当前版本。登记时填写；元数据同步成功后更新为所跟踪分支 `debian/changelog` 的版本 |
 | `currentCommit`（`current_commit`） | text | NULL | 当前 Commit。元数据同步成功后写入所跟踪分支的最新提交；换仓库或换默认分支时清空 |
+| `crpProjectName`（`crp_project_name`） | text | NULL | 这个软件包在 CRP 里的**项目名**。为空表示与 `name` 相同（这一列出现之前的行为） |
 | `lastSyncedAt`（`last_synced_at`） | timestamptz | NULL | 最近一次元数据同步成功的时间；为空表示从未同步 |
 | `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
 
-- 索引：`name` 唯一；`repo_path` 唯一。
+- 索引：`name` 唯一；`repo_path` 唯一。`crp_project_name` 不唯一：一个 CRP 项目名重复登记在两个包上属于配置错误，
+  由导入时按「映射歧义」拦下（见下），不在数据库上加约束（加了会让历史数据无法写入）。
 - 外键：无。
+
+`name` 与 `crp_project_name` 是两个概念，不要混用：
+
+| 名字 | 含义 | 用在哪 |
+| --- | --- | --- |
+| `name` | Debian 源码包名，例如 `kwin` | `baseline_package_version.package_name`、`debian/changelog` 解析、`release_package_snapshot.package_name` |
+| `crp_project_name` | CRP 自己给这个软件包起的项目名，实测带下划线 | 投递 Release 时查 `ProjectID`；从 CRP 导入提测时把 `project_name` 落回本地包 |
+
+- 解析只有一份实现：`lib/packages/crpProject.ts` 的 `resolveCrpProjectName(pkg)` 返回 `crp_project_name ?? name`，
+  投递（`lib/build/service.ts`）与认领已投递的 Release 都调它。留空即保持旧行为，所以这一列可空、不需要回填。
+- 入站只有一个方向：导入时先按 `crp_project_name` 精确匹配、再按 `name` 精确匹配；两种匹配落到**不同的**包上时
+  按映射歧义停手，一个都不挑（`lib/releases/import.ts` 的 `mapCrpProjectNames`）。
+- 不参与基线版本查询：`baseline_package_version` 的行来自 Shuttle 的 Debian 源码包索引，与 CRP 项目名无关。
 
 ### 4.9 package_dependency（软件包上游依赖）
 
@@ -560,6 +575,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | 约束 | 落在哪 |
 | --- | --- |
 | `Package.name` 唯一 | `package_name_key` |
+| `Package.crpProjectName` 可空、不唯一（空表示与包名相同） | `package.crp_project_name`；歧义在导入时按业务规则拦下 |
 | `Project(workspaceId, name)` 唯一 | `project_workspace_id_name_key` |
 | `Baseline.crpBranchId` 唯一 | `baseline_crp_branch_id_key` |
 | `Release(projectId, version)` 唯一 | `release_project_id_version_key` |

@@ -1,10 +1,18 @@
 /**
  * 软件包登记的输入校验。
  *
- * 只校验「登记软件包」这一件事需要的四个字段，不猜别的业务 —— 依赖关系与版本怎么用
+ * 只校验「登记软件包」这一件事需要的五个字段，不猜别的业务 —— 依赖关系与版本怎么用
  * 是后续节点的事。纯函数：把任意 JSON 变成结构化结果，或给出逐个字段的错误，
  * 好让 `POST /api/packages` 把错误原样放进 400 响应里。
+ *
+ * 其中 `crpProjectName` 的规则与 Debian 包名不同，实现在 `crpProject.ts`：
+ * 前者是 CRP 侧的名字（允许下划线），后者是源码包名（不允许下划线），不要混用。
  */
+
+import {
+  CRP_PROJECT_NAME_MAX_LENGTH,
+  isValidCrpProjectName,
+} from "./crpProject";
 
 export type PackageInput = {
   /** 源码包名，例如 `kwin`。 */
@@ -15,6 +23,12 @@ export type PackageInput = {
   defaultBranch: string;
   /** 当前版本；没填就是 `null`。 */
   currentVersion: string | null;
+  /**
+   * CRP 里这个软件包的项目名；没填就是 `null`，表示与 `name` 相同。
+   *
+   * 校验规则与 Debian 包名不同（CRP 项目名允许下划线），见 `crpProject.ts`。
+   */
+  crpProjectName: string | null;
 };
 
 export type FieldError = {
@@ -107,6 +121,38 @@ function parseOne(raw: unknown): ParseResult<PackageInput> {
     hint: "版本号不能包含空白字符。",
   });
 
+  // CRP 项目名与包名不是一套规则：允许下划线，只要求非空、无空白、不超长。
+  //
+  // 这里不能直接交给 readText 收尾：它把空白串当成「没填」，而只填了空白字符是填错了 ——
+  // 静默当成「与包名相同」，就会在投递时按包名去 CRP 找一个（可能根本不存在的）项目。
+  const rawCrpProjectName = record.crpProjectName;
+  const crpProjectName = readText(record, "crpProjectName", errors, {
+    required: false,
+    hint: "留空表示与包名相同；填了就必须是 CRP 里那个软件包的项目名。",
+  });
+
+  const blanksOnly =
+    typeof rawCrpProjectName === "string" &&
+    rawCrpProjectName.trim() === "" &&
+    rawCrpProjectName !== "";
+
+  if (blanksOnly) {
+    errors.push({
+      field: "crpProjectName",
+      message:
+        "crpProjectName 只填了空白字符。留空表示与包名相同；" +
+        "要填就填 CRP 里那个软件包的项目名。",
+    });
+  } else if (crpProjectName !== null && !isValidCrpProjectName(crpProjectName)) {
+    errors.push({
+      field: "crpProjectName",
+      message:
+        `crpProjectName 格式不对（${crpProjectName}）。` +
+        `不能包含空白字符，长度不超过 ${CRP_PROJECT_NAME_MAX_LENGTH} 个字符；` +
+        "留空表示与包名相同。",
+    });
+  }
+
   if (defaultBranch !== null && /\s/.test(defaultBranch)) {
     errors.push({
       field: "defaultBranch",
@@ -132,6 +178,7 @@ function parseOne(raw: unknown): ParseResult<PackageInput> {
       repoPath: repoPath as string,
       defaultBranch: defaultBranch as string,
       currentVersion,
+      crpProjectName,
     },
   };
 }

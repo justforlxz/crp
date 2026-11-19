@@ -62,6 +62,9 @@ export default async function PackageDetailPage({
       <dl>
         <dt>仓库路径</dt>
         <dd>{detail.repoPath}</dd>
+        <dt>CRP 项目名</dt>
+        {/* 空着不是「没有」：它表示投递与导入都按包名去 CRP 里找，页面要说清，不能留一块空白。 */}
+        <dd>{detail.crpProjectName ?? "与包名相同"}</dd>
         <dt>默认分支</dt>
         <dd>{detail.defaultBranch}</dd>
         <dt>当前版本</dt>
@@ -107,6 +110,16 @@ export default async function PackageDetailPage({
             当前版本（可不填）
             <input name="currentVersion" defaultValue={detail.currentVersion ?? ""} />
           </label>
+        </p>
+        <p>
+          <label>
+            CRP 项目名（可不填）
+            <input name="crpProjectName" defaultValue={detail.crpProjectName ?? ""} />
+          </label>
+        </p>
+        <p className="hint">
+          留空表示与包名相同；填了就必须是 CRP 里那个软件包的项目名。投递 Release 与从 CRP
+          导入提测都按这个名字落到 CRP 项目上。
         </p>
       </ActionForm>
 
