@@ -13,8 +13,10 @@
  * 3. **Commit 必须有着落**：先取 CRP Release 里的 `Commit`（要能当提交号用，CRP 对预置
  *    deb 会填 `uploadcrp` 这种占位值）；取不到就按 `tag` 去 Gerrit 反查该 Tag 指向的提交；
  *    两条都拿不到，整次导入停在预览步骤并点名是哪几个包，绝不留空 Commit 进快照。
- * 4. **仓库路径不许猜**：CRP 给的 `ProjectName` 是包名，不是仓库路径。只有「已登记软件包」
- *    或「Gerrit 上恰好只有一个同名仓库且提交确实在里面」时才认；否则停手，让人先去登记。
+ * 4. **映射不许猜**：CRP 给的 `ProjectName` 是**CRP 项目名**，既不是本地包名也不是仓库路径。
+ *    先按软件包的 `crpProjectName` 精确匹配、再按包名兜底（`mapCrpProjectNames`）；
+ *    命中不止一个包按映射歧义停手，一个都没命中才去 Gerrit 找「最后一段同名且提交确实在里面」
+ *    的唯一仓库，否则停手，让人先去登记。
  * 5. **幂等**：`release.crp_topic_id` 唯一，同一主题只能导入一次；重复导入提示并跳到已有记录。
  *
  * 判定与落库分开：`previewReleaseImport()` 与 `importReleaseFromTopic()` 走同一个计划函数，
@@ -49,7 +51,13 @@ type ImportCrpApis = Pick<CrpClient, "getTopic" | "listReleases" | "getTopicWork
 /** 只有 `test` 类型的主题能承接待投递的 Release。 */
 const IMPORTABLE_TOPIC_TYPE = "test";
 
-/** 软件包名与 `package.name` 同一套规则：小写字母开头，只允许小写字母、数字与 `+` `-` `.`。 */
+/**
+ * **本地**软件包名与 `package.name` 同一套规则：小写字母开头，只允许小写字母、数字与 `+` `-` `.`。
+ *
+ * 只用来校验「要写进 `package.name` 的名字」。**不要**拿它去套 CRP 的 `project_name`：
+ * CRP 的项目名允许下划线（`deepin-kde/kwin`、`deepin-kde/wayland` 在 CRP 上就只有带下划线的项目名），
+ * 套上去会把合法的项目名判成非法。CRP 项目名怎么落回本地包，见 `mapCrpProjectNames`。
+ */
 const PACKAGE_NAME_PATTERN = /^[a-z0-9][a-z0-9+.-]*$/;
 
 // ---------------------------------------------------------------------------
@@ -76,6 +84,10 @@ export type ImportReleaseFromTopicOptions = ReleaseImportOptions & {
 
 /** 预览里的一行：一个 CRP Release 对应的本地快照该怎么写。 */
 export type ImportedPackagePlan = {
+  /**
+   * 落回本地的包名，也是写进快照的 `packageName`：命中登记的软件包时是它的 `name`（Debian 源码包名），
+   * 未登记时等于 CRP 的 `project_name`。投递时再由 `crpProjectName` 解析出 CRP 项目名。
+   */
   packageName: string;
   /** 已登记软件包的 ID；`null` 表示这次导入会顺手建一条软件包记录。 */
   packageId: string | null;
@@ -330,7 +342,13 @@ type ImportPlan = {
   existing: ReleaseImportPreview["existing"];
 };
 
-/** 仓库路径的最后一段就是 CRP 里的包名，例如 `deepin-kde/kwin` → `kwin`。 */
+/**
+ * `deepin-kde/kwin` → `kwin`。
+ *
+ * 只用来给**还没登记**的包找候选仓库（「Gerrit 上最后一段同名」），不是「CRP 项目名就是包名」的断言：
+ * CRP 的项目名与仓库路径的最后一段不一定相同（`deepin-kde/kwin` 在 CRP 上就不叫 `kwin`），
+ * 所以已登记的包一律走 `crpProjectName` 映射，不靠这个后缀猜。
+ */
 function lastSegment(repoPath: string): string {
   const parts = repoPath.split("/");
   return parts.at(-1) ?? "";
@@ -400,42 +418,116 @@ function toGerritError(error: unknown, repoPath: string): ReleaseError {
   return new ReleaseError(`读取仓库「${repoPath}」的代码版本失败，请稍后重试。`, 502);
 }
 
-/** 一个包在哪个仓库里，候选集合怎么来。已登记的拿现成的，未登记的去 Gerrit 按名字找。 */
-async function loadRepoCandidates(
-  packageNames: readonly string[],
-  reader: GerritReader,
-): Promise<{
-  registered: Map<string, { id: string; repoPath: string }>;
-  candidates: Map<string, string[]>;
-}> {
+/** 落回本地之后的样子：登记过的软件包行。 */
+type LocalPackage = { id: string; name: string; repoPath: string };
+
+/**
+ * CRP 项目名落回本地软件包的结果。
+ *
+ * `resolved` 是唯一命中的包；`ambiguous` 是命中不止一个包的 CRP 项目名 ——
+ * 此时「该落回哪个包」没有唯一答案，导入必须停手，不许挑一个用。
+ */
+type CrpProjectMapping = {
+  resolved: Map<string, LocalPackage>;
+  ambiguous: Map<string, string[]>;
+};
+
+/**
+ * 把 CRP 的 `project_name` 映射成本地软件包：**CRP 项目名优先、包名兜底**。
+ *
+ * 两个方向都要对，所以这一条规则只有一份实现：
+ * - CRP 项目名（`package.crp_project_name`）是为了「包名与 CRP 项目名不同」的情况（本缺陷的由来）；
+ * - 包名兜底是为了「没填这一列」的历史数据：留空表示与包名相同，行为与本列出现之前一致。
+ *
+ * 两种匹配落到**不同的**包上时按映射歧义处理：同一份数据同时说「这个项目是 A」和「这个项目是 B」，
+ * 挑一个用会把提测挂到错误的包上，而 CRP 侧的 Release 是对的，问题只能靠人比对发现。
+ */
+async function mapCrpProjectNames(
+  projectNames: readonly string[],
+): Promise<CrpProjectMapping> {
+  const resolved: CrpProjectMapping["resolved"] = new Map();
+  const ambiguous: CrpProjectMapping["ambiguous"] = new Map();
+
+  if (projectNames.length === 0) {
+    return { resolved, ambiguous };
+  }
+
   const rows = await prisma.package.findMany({
-    where: { name: { in: [...packageNames] } },
-    select: { id: true, name: true, repoPath: true },
+    where: {
+      OR: [
+        { crpProjectName: { in: [...projectNames] } },
+        { name: { in: [...projectNames] } },
+      ],
+    },
+    select: { id: true, name: true, repoPath: true, crpProjectName: true },
   });
 
-  const registered = new Map(rows.map((row) => [row.name, { id: row.id, repoPath: row.repoPath }]));
-  const needProjects = packageNames.some((name) => !registered.has(name));
+  for (const projectName of projectNames) {
+    const hits = new Map<string, LocalPackage>();
+
+    for (const row of rows) {
+      if (row.crpProjectName === projectName || row.name === projectName) {
+        hits.set(row.id, { id: row.id, name: row.name, repoPath: row.repoPath });
+      }
+    }
+
+    if (hits.size === 1) {
+      const only = [...hits.values()][0];
+      resolved.set(projectName, only);
+      continue;
+    }
+
+    if (hits.size > 1) {
+      ambiguous.set(
+        projectName,
+        [...hits.values()].map((row) => row.name).sort(),
+      );
+    }
+  }
+
+  return { resolved, ambiguous };
+}
+
+/**
+ * 一个 CRP 项目名在本地叫什么包名：命中登记的包就是它的 `name`，否则只能是 CRP 项目名本身。
+ *
+ * 快照存的是本地包名（投递时再解析成 CRP 项目名），所以先用它算「快照会写下的包名」。
+ */
+function localPackageNameOf(projectName: string, mapping: CrpProjectMapping): string {
+  return mapping.resolved.get(projectName)?.name ?? projectName;
+}
+
+/** 一个包在哪个仓库里，候选集合怎么来。已登记的拿现成的，未登记的去 Gerrit 按名字找。 */
+async function loadRepoCandidates(
+  projectNames: readonly string[],
+  mapping: CrpProjectMapping,
+  reader: GerritReader,
+): Promise<{
+  registered: Map<string, LocalPackage>;
+  candidates: Map<string, string[]>;
+}> {
+  const needProjects = projectNames.some((name) => !mapping.resolved.has(name));
 
   // 只有真遇到未登记的包才去列项目：已登记的情况下这份清单没有用处。
   const projects = needProjects ? await listGerritProjects(reader) : [];
 
   const candidates = new Map<string, string[]>();
 
-  for (const name of packageNames) {
-    const known = registered.get(name);
+  for (const projectName of projectNames) {
+    const known = mapping.resolved.get(projectName);
 
     if (known !== undefined) {
-      candidates.set(name, [known.repoPath]);
+      candidates.set(projectName, [known.repoPath]);
       continue;
     }
 
     candidates.set(
-      name,
-      projects.filter((repoPath) => lastSegment(repoPath) === name),
+      projectName,
+      projects.filter((repoPath) => lastSegment(repoPath) === projectName),
     );
   }
 
-  return { registered, candidates };
+  return { registered: mapping.resolved, candidates };
 }
 
 /** 列全部项目路径；失败就抛错，不拿空清单当真。 */
@@ -451,14 +543,17 @@ async function listGerritProjects(reader: GerritReader): Promise<string[]> {
 async function planPackage(
   input: {
     release: CrpRelease;
-    registered: { id: string; repoPath: string } | undefined;
+    /**
+     * 落回本地时用的包名：命中登记的软件包就是它的 `name`，否则等于 CRP 项目名（未登记，可能自动登记）。
+     */
+    packageName: string;
+    registered: LocalPackage | undefined;
     candidates: readonly string[];
     repoVersion: string | null;
   },
   reader: GerritReader,
 ): Promise<{ plan: ImportedPackagePlan } | { blocked: ImportedBlockedPackage }> {
-  const { release, registered, candidates, repoVersion } = input;
-  const packageName = release.projectName.trim();
+  const { release, packageName, registered, candidates, repoVersion } = input;
 
   const blocked = (reason: string): { blocked: ImportedBlockedPackage } => ({
     blocked: { packageName: packageName === "" ? `Release ${release.releaseId}` : packageName, reason },
@@ -468,10 +563,12 @@ async function planPackage(
     return blocked("CRP Release 没有软件包名（project_name 为空），无法对应到仓库。");
   }
 
-  if (!PACKAGE_NAME_PATTERN.test(packageName)) {
+  // 只有「要写进 package.name 的名字」才套 Debian 包名规则：
+  // 已登记的包名早就校验过，未登记的才会拿 CRP 项目名当包名建记录，那一步必须拦下不合规的名字。
+  if (registered === undefined && !PACKAGE_NAME_PATTERN.test(packageName)) {
     return blocked(
-      `包名「${packageName}」不符合软件包命名规则（小写字母开头，只允许小写字母、数字与 + - .），` +
-        "请在软件包管理里登记正确的包名后再导入。",
+      `CRP 项目名「${packageName}」不是合法的 Debian 包名（小写字母开头，只允许小写字母、数字与 + - .），` +
+        "无法自动登记成本地软件包。请先在软件包管理里登记这个包，并在「CRP 项目名」里填上它。",
     );
   }
 
@@ -555,13 +652,19 @@ async function buildImportPlan(
   }
 
   const existing = await findExistingImport(topic.id);
-  const packageNames = [...new Set(releases.map((item) => item.projectName.trim()))].filter(
+  // 先去重，再映射：同一个 CRP 项目名在主题里出现多次时，映射与候选只需要算一次。
+  const crpProjectNames = [...new Set(releases.map((item) => item.projectName.trim()))].filter(
     (name) => name !== "",
   );
-  const { registered, candidates } = await loadRepoCandidates(packageNames, reader);
+  const mapping = await mapCrpProjectNames(crpProjectNames);
+  const { registered, candidates } = await loadRepoCandidates(crpProjectNames, mapping, reader);
+
+  // 基线里的仓库版本按「本地包名」查：`baseline_package_version.package_name` 是 Debian 源码包名，
+  // 与 CRP 项目名无关，拿 CRP 项目名去查一个也查不到。
+  const localNames = [...new Set(crpProjectNames.map((name) => localPackageNameOf(name, mapping)))];
 
   const versions = await prisma.baselinePackageVersion.findMany({
-    where: { baselineId: project.baseline.id, packageName: { in: packageNames } },
+    where: { baselineId: project.baseline.id, packageName: { in: localNames } },
     select: { packageName: true, version: true },
   });
   const repoVersionByName = new Map(versions.map((row) => [row.packageName, row.version]));
@@ -571,14 +674,30 @@ async function buildImportPlan(
   const plannedNames = new Set<string>();
 
   for (const release of releases) {
-    const packageName = release.projectName.trim();
+    const crpProjectName = release.projectName.trim();
+    const packageName = localPackageNameOf(crpProjectName, mapping);
 
+    // 同一个 CRP 项目在主题里出现两次（不同分支各一条），或两个 CRP 项目落到同一个本地包上时，
+    // 本地一条提测里只能有一轮，硬塞会撞上 `(releaseId, packageName, attempt)` 唯一约束，所以当场停手。
     if (plannedNames.has(packageName)) {
-      // 同一个包在主题里出现两次（不同分支各一条）时，本地一条提测里只能有一轮，
-      // 硬塞会撞上 `(releaseId, packageName, attempt)` 唯一约束，所以当场停手。
       blocked.push({
         packageName,
-        reason: "主题里同一个软件包有多条 Release（分支不同），本平台的提测里一个包只能有一轮，请先在 CRP 清理。",
+        reason:
+          "主题里同一个软件包有多条 Release（分支或 CRP 项目不同），" +
+          "本平台的提测里一个包只能有一轮，请先在 CRP 清理。",
+      });
+      continue;
+    }
+
+    const ambiguousHits = mapping.ambiguous.get(crpProjectName);
+
+    // 映射歧义：这个 CRP 项目名同时对上了不止一个本地软件包，挑一个用会把提测挂到错误的包上。
+    if (ambiguousHits !== undefined) {
+      blocked.push({
+        packageName: packageName === "" ? `Release ${release.releaseId}` : packageName,
+        reason:
+          `CRP 项目名「${crpProjectName}」映射歧义：同时对上了本地软件包 ${ambiguousHits.join("、")}。` +
+          "请在软件包管理里核对「CRP 项目名」这一列，只留一个包填它。",
       });
       continue;
     }
@@ -586,8 +705,9 @@ async function buildImportPlan(
     const outcome = await planPackage(
       {
         release,
-        registered: registered.get(packageName),
-        candidates: candidates.get(packageName) ?? [],
+        packageName,
+        registered: registered.get(crpProjectName),
+        candidates: candidates.get(crpProjectName) ?? [],
         repoVersion: repoVersionByName.get(packageName) ?? null,
       },
       reader,

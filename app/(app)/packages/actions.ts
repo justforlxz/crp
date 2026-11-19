@@ -42,6 +42,8 @@ function readForm(formData: FormData) {
     repoPath: String(formData.get("repoPath") ?? ""),
     defaultBranch: String(formData.get("defaultBranch") ?? ""),
     currentVersion: String(formData.get("currentVersion") ?? ""),
+    // 留空表示与包名相同（表单里那个「CRP 项目名（可不填）」的输入框）。
+    crpProjectName: String(formData.get("crpProjectName") ?? ""),
   };
 }
 

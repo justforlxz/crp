@@ -31,6 +31,7 @@ import {
   createCrpClient,
   createCrpClientFromEnv,
   CRP_DEFAULT_BASE_URL,
+  CrpBusinessError,
   CrpInvalidParameterError,
   type CrpClient,
 } from "../integrations/crp";
@@ -41,6 +42,11 @@ import {
   type ShuttleClient,
   type ShuttleBuildTask,
 } from "../integrations/shuttle";
+import {
+  CrpProjectNameError,
+  describeCrpProjectName,
+  resolveCrpProjectName,
+} from "../packages/crpProject";
 import { emitEvent } from "../webhook";
 import {
   evaluateChain,
@@ -288,6 +294,35 @@ export async function loadUpstreamNames(
         .filter((name) => inside.has(name)),
     ]),
   );
+}
+
+/**
+ * 快照里的包名 → 投递时该用的 CRP 项目名。
+ *
+ * 快照存的是 Debian 源码包名，CRP 的项目名另有一列（`crpProjectName`），两者不一定相同。
+ * 未登记的包按包名兜底：快照允许出现还没登记进软件包管理的包，这一列出现之前它们就是按包名投的。
+ */
+async function resolveSnapshotCrpProjectName(packageName: string): Promise<string> {
+  const pkg = await prisma.package.findUnique({
+    where: { name: packageName },
+    select: { name: true, crpProjectName: true },
+  });
+
+  if (pkg === null) {
+    return packageName;
+  }
+
+  try {
+    return resolveCrpProjectName(pkg);
+  } catch (error) {
+    // 库里的 CRP 项目名不合法属于配置错误：翻成 409 并把原话带出去，
+    // 否则路由只认 BuildError，人会看到 500「请查看服务端日志」，不知道去改哪个包的哪一列。
+    if (error instanceof CrpProjectNameError) {
+      throw new BuildError(`${error.message} 请在软件包管理里订正后再投递。`, 409);
+    }
+
+    throw error;
+  }
 }
 
 /** 把一条提测当前轮的快照翻成依赖链上的一环。 */
@@ -801,6 +836,10 @@ async function createTopicStep(loaded: LoadedRelease, resolved: Resolved): Promi
  * 参数全部来自快照：`branch`、`commitSha`、`releaseVersion`（即 CRP 的 Tag）三样都按快照原样传，
  * 不回查仓库当前状态（MUST）。`changeLogMode` 固定为 `false`，让 CRP 用我们给的版本号，
  * 而不是它自己生成（见 `lib/integrations/crp/FINDINGS.md`）。
+ *
+ * 唯一例外是「这个包在 CRP 里叫什么名字」：快照存的是 Debian 源码包名，投递要用 CRP 项目名，
+ * 两者不一定相同（`crpProjectName`），所以按包名读一次登记的软件包来解析。
+ * 投递与认领用同一个解析结果，不各查一遍。
  */
 async function dispatchSnapshot(
   release: LoadedRelease,
@@ -812,6 +851,10 @@ async function dispatchSnapshot(
   if (snapshot === undefined) {
     throw new BuildError("这一轮快照已经不存在，请刷新后重试。", 409);
   }
+
+  // 投递出去的名字是 CRP 项目名，不是包名。解析要放在抢占之前：登记的 CRP 项目名不合法时
+  // 直接失败，不把快照留在「投递中」等抢占超时。
+  const crpProjectName = await resolveSnapshotCrpProjectName(snapshot.packageName);
 
   // 抢占这个包：并发推进时只有一方能把它从「待投递」改成「投递中」，另一方什么也不投，
   // 否则同一个包会向 CRP 发出两条 Release（本地却只记得后一条）。
@@ -831,7 +874,7 @@ async function dispatchSnapshot(
   // 投递之前先问一趟 CRP：这个包是不是已经投出去过。
   // 两种情况下会有：上一次投递发出去之后、写本地记录之前被打断；或者请求超时但其实 CRP 已经收下。
   // 认出同一条就补写本地记录，不再发第二条 —— CRP 同一个 Topic 里同一分支只允许一条 Release。
-  const adopted = await adoptExistingRelease(release, snapshot, resolved, topicId);
+  const adopted = await adoptExistingRelease(release, snapshot, resolved, topicId, crpProjectName);
 
   if (adopted) {
     return snapshot.packageName;
@@ -845,7 +888,7 @@ async function dispatchSnapshot(
   try {
     submitted = await resolved.clients.crp.submitRelease({
       topicId,
-      projectName: snapshot.packageName,
+      projectName: crpProjectName,
       branch: snapshot.branch,
       commit: snapshot.commitSha,
       branchId,
@@ -860,12 +903,28 @@ async function dispatchSnapshot(
       data: { status: "pending" },
     });
 
+    // 投递失败时，错误信息里带上「这次用的是哪个 CRP 项目名」：名字与包名不同时，
+    // 只看到 `kwin` 或只看到 CRP 那个陌生的项目名，都判断不出是配置错了还是 CRP 改了名。
+    const target = `投递「${snapshot.packageName}」，CRP 项目名${describeCrpProjectName(snapshot.packageName, crpProjectName)}`;
+
     // 本地校验就判定参数非法（例如快照里的 Tag 格式不对）时，不要当成「CRP 挂了」报 502。
     if (error instanceof CrpInvalidParameterError) {
-      throw new BuildError(
-        `投递「${snapshot.packageName}」的参数不合法：${error.message}`,
-        409,
-      );
+      throw new BuildError(`${target}的参数不合法：${error.message}`, 409);
+    }
+
+    if (error instanceof CrpBusinessError) {
+      // 5xx 是 CRP 服务端自己的异常（响应体恰好带了 message 也会走到这个类），不能描述成
+      // 「配置被拒绝」；补上目标信息后按原状态抛出，路由那边仍然回 502，让调用方稍后重试。
+      if (error.status !== undefined && error.status >= 500) {
+        throw new CrpBusinessError(`${target}失败：${error.message}`, {
+          status: error.status,
+          responseSnippet: error.responseSnippet,
+        });
+      }
+
+      // 4xx 才是 CRP 明确拒绝（最常见的是按名字找不到项目、已经有一条同样的 Release）：
+      // 原话带出去并说明目标，重试也没用。
+      throw new BuildError(`${target}被 CRP 拒绝：${error.message}`, 409);
     }
 
     throw error;
@@ -902,6 +961,8 @@ async function dispatchSnapshot(
  * 认领 CRP 侧已经存在的投递：同一个包、同一个分支、同一个 Commit、同一个提测版本才算同一条。
  *
  * 四个条件都要对：只按包名认，会把上一次不同 Commit 的 Release 错认成这一次的。
+ * 「包名」这里指 CRP 项目名 —— 与投递用的是同一个解析结果（由调用方算好传进来），
+ * 否则认领会拿 Debian 包名去比 CRP 的项目名，永远认不出来，同一个包会被投第二遍。
  *
  * 另外还要确认这条 Release 没有已经挂在本地**别的**那一轮快照上：A17 换包、补包之后，
  * 旧轮次的 Release 可能还留在 CRP 侧，参数与新轮逐字相同。只看四个字段会把它认领成这一轮的，
@@ -918,11 +979,13 @@ async function adoptExistingRelease(
   snapshot: LoadedRelease["snapshots"][number],
   resolved: Resolved,
   topicId: number,
+  /** 这个包在 CRP 里的项目名，由调用方按 `crpProjectName` 解析好传进来。 */
+  crpProjectName: string,
 ): Promise<boolean> {
   const topicReleases = await resolved.clients.crp.listReleases(topicId);
   const existing = topicReleases.find(
     (item) =>
-      item.projectName === snapshot.packageName &&
+      item.projectName === crpProjectName &&
       item.branch === snapshot.branch &&
       item.commit === snapshot.commitSha &&
       item.tag === snapshot.releaseVersion,

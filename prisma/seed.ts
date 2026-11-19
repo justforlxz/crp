@@ -130,7 +130,8 @@ const MEMBERSHIPS = [
 ] as const;
 
 const PACKAGES = [
-  { name: "kwin", repoPath: "deepin-kde/kwin", defaultBranch: "develop/eagle", currentVersion: "5.27.11.1" },
+  // kwin 在 CRP 里的项目名不是包名（带下划线），显式登记；其余包留空走「与包名相同」。
+  { name: "kwin", repoPath: "deepin-kde/kwin", defaultBranch: "develop/eagle", currentVersion: "5.27.11.1", crpProjectName: "v25_kwin" },
   { name: "dde-file-manager", repoPath: "dde-file-manager/dde-file-manager", defaultBranch: "develop/eagle", currentVersion: "6.5.12" },
   { name: "dde-dock", repoPath: "dde-dock/dde-dock", defaultBranch: "develop/eagle", currentVersion: "5.12.0" },
   { name: "dde-launchpad", repoPath: "dde-launchpad/dde-launchpad", defaultBranch: "develop/eagle", currentVersion: "1.2.0" },
