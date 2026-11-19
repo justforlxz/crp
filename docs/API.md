@@ -556,6 +556,87 @@ Authorization: Bearer <BUILD_DISPATCH_JOB_TOKEN>
   http://localhost:3000/api/jobs/build-dispatch
 ```
 
+## POST /api/jobs/build-poll
+
+构建状态轮询的定时入口。本仓库没有常驻调度进程，也没有队列：外部定时器每隔几分钟 POST 一次，
+把在跑的提测（`pending`、`dispatching`、`building`）各轮询一遍 —— 回写 Shuttle 的构建结果与
+CRP 的工作流进度（`release.crpWorkProgress`），并把这一轮做的事记进调度事件流水。
+
+**已完结的提测（`success`、`partial_failure`、`failed`、`abandoned`）不再被轮询**：一条请求都不发。
+队列页的「立即轮询」按钮调的是同一段服务端函数，没有第二份轮询逻辑。
+
+### 鉴权
+
+```
+Authorization: Bearer <BUILD_POLL_JOB_TOKEN>
+```
+
+- token 取自服务端环境变量 `BUILD_POLL_JOB_TOKEN`，与用户会话、`SYNC_JOB_TOKEN`、
+  `BUILD_DISPATCH_JOB_TOKEN`、`PACKAGE_API_TOKEN` 都无关。
+- 没配置这个变量时接口一律返回 `401`：轮询会改 `crp_work_progress`，而 A17 拿它判断能不能改包，
+  入口同样要认人。
+
+### 请求体
+
+无。
+
+### 一次轮询做什么
+
+| 步骤 | 做什么 |
+| --- | --- |
+| 1 | 按 `build_task` / `build_job` 回写 Shuttle 的构建结果（复用 A12 的 `pollReleaseBuilds`） |
+| 2 | 调 `getTopicWorkflow` 把 Topic 的工作流进度写回 `release.crp_work_progress` 与标签 |
+| 3 | 把这一轮写进 `build_poll_event`：轮询结果、状态变化、进度同步 |
+
+单轮最多处理 50 条提测，挑活按 `release.last_polled_at` 从旧到新（为空的最先）：
+活跃提测多于 50 条时是**轮流轮到**，最新投递的提测下一轮就会被轮到。
+这部分不是「只轮询前 50 条」——较早的提测不会饿死，较晚的也不会永远排不上。
+
+两条硬约束：
+
+- **轮询失败不改状态**：Shuttle 超时、CRP 认证失败都只记一条同步错误，`release.status` 与
+  `build_task.status` 保持原样 —— 查不到不等于构建失败。
+- **取不到工作流进度时保留旧值**：网络错误、认证失败、CRP 回全零对象（`TopicID: 0`、`WorkProgress: 0`）
+  都不写 `crp_work_progress`，只记同步错误；绝不写 0，否则 A17 会误以为这条提测还能随意改包。
+
+### 返回
+
+`200`：本轮每条提测的轮询结果。
+
+```json
+{
+  "trigger": "schedule",
+  "releaseCount": 2,
+  "polled": 2,
+  "failed": 0,
+  "items": [
+    {
+      "releaseId": "01a1f0c0-…",
+      "version": "25.0.2",
+      "status": "building",
+      "checked": 2,
+      "succeeded": ["dde-dock"],
+      "failed": [],
+      "building": ["dde-file-manager"],
+      "workProgress": 10,
+      "workProgressLabel": "更新",
+      "error": null
+    }
+  ]
+}
+```
+
+单条提测出错不影响整轮，仍是 `200`：失败原因在 `items[].error` 里，那一提测的状态保持原样，
+下一轮会再试同一条。只有整轮都跑不起来（数据库异常）才回 `500`。
+
+### 示例
+
+```bash
+# 每 5 分钟轮询一次（crontab 写法）
+*/5 * * * * curl -fsS -X POST -H "Authorization: Bearer $BUILD_POLL_JOB_TOKEN" \
+  http://localhost:3000/api/jobs/build-poll
+```
+
 ## GET /api/releases/{id}/update
 
 看这条提测现在能不能改：CRP 工作流进度（现读）、当前每个软件包固化的参数、项目清单里还能补进来的

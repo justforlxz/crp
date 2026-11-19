@@ -35,6 +35,7 @@ project 1-n release
 release 1-n release_package_snapshot（按轮次追加）
 release_package_snapshot 1-1 release_repository_record（投递后才存在）
 release_package_snapshot 1-1 build_task 1-n build_job
+release 1-n build_poll_event（调度事件流水，只追加）
 workspace 1-n webhook_endpoint 1-n webhook_delivery
 sync_run 独立记录同步过程
 ```
@@ -275,6 +276,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | `crpWorkProgressSyncedAt`（`crp_work_progress_synced_at`） | timestamptz | NULL | 进度最近一次回写时间 |
 | `submittedAt`（`submitted_at`） | timestamptz | NULL | 全部软件包投递完成时间 |
 | `finishedAt`（`finished_at`） | timestamptz | NULL | 提测结束（成功或失败）时间 |
+| `lastPolledAt`（`last_polled_at`） | timestamptz | NULL | 最近一次被构建轮询看到的时间（A14 追加）；轮询按它从旧到新挑活，为空的最先 |
 | `rollbackOfId`（`rollback_of_id`） | text | NULL | **v2 预留**，本版无流程 |
 | `codeSourceReleaseId`（`code_source_release_id`） | text | NULL | **v2 预留**，本版无流程 |
 | `riskFlag`（`risk_flag`） | boolean | NULL | **v2 预留**，本版无流程 |
@@ -284,6 +286,9 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 外键：`project_id → project.id`，RESTRICT；`created_by_id → app_user.id`，RESTRICT。
 - 不额外建 `project_id` 单列索引：`(project_id, version)` 唯一索引的最左前缀已经覆盖按项目查询。
 - v2 的三个预留字段**不建外键**：本版没有回退流程，指向关系暂时没有写入方；等 v2 真正实现时再加约束。
+- `last_polled_at` 只加一列、不加索引：轮询先按 `status`（已有索引）过滤到在跑的少量提测，再排序，
+  开销可以忽略；它的作用是让「单轮只处理固定条数」不至于变成「最新投递的永远轮不到」。
+  轮询失败也会写这一列（表示这一轮看过它了），否则一条一直失败的提测会占住队首。
 
 ### 4.13 release_package_snapshot（提测快照）
 
@@ -494,6 +499,32 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 与 4.13 的分工：快照记「每一轮固化了什么」，本表记「人为改了哪些轮、放弃了什么、重投了什么」。
   旧轮在快照表里标 `superseded` 并指向新轮，物理行永远保留；本表不参与快照状态流转。
 
+### 4.22 build_poll_event（构建调度事件流水）
+
+轮询这一轮做了什么（A14 追加）。设计契约 MUST 要求「调度事件流水记录：时间、软件包、事件、
+触发条件、结果」，现有表都放不下：`crp_call_log` 记的是单个 CRP 请求，`sync_run` 记的是一整批同步，
+`build_task` 只保留最新状态 —— 谁也说不清「什么时候、因为哪个条件、对哪个包做了什么」。
+
+只追加、不改：写进去的行就是那一轮的事实。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | text | PK | |
+| `releaseId`（`release_id`） | text | NOT NULL | 所属提测 |
+| `snapshotId`（`snapshot_id`） | text | NULL | 针对哪一轮快照；整条提测级别的事件（轮询、进度同步）为空 |
+| `packageName`（`package_name`） | text | NULL | 软件包名，冗余存一份：快照可能被替换或清理，流水本身要能独立读懂 |
+| `event` | text | NOT NULL | `poll`（轮询一轮）、`status`（某个包的状态变了）、`progress`（工作流进度回写） |
+| `condition` | text | NOT NULL | 触发条件，例如「周期到期」「手动刷新」「轮询取到 Shuttle 的构建结论」 |
+| `result` | text | NOT NULL | 结果，例如「查询 3 个包：成功 1、失败 0、构建中 2」；失败时是错误摘要 |
+| `createdAt`（`created_at`） | timestamptz | NOT NULL | 记录时间 |
+
+- 索引：`(release_id, created_at)`（按提测看流水）、`created_at`（队列页取最近若干条）。
+- 外键：`release_id → release.id`，CASCADE。流水属于提测，提测清理时一起走；
+  队列页按工作区查流水正是靠这条外键做关联查询。
+- 状态类事件只在状态**真的变了**时写：轮询是反复跑的，每次都写会把流水刷满，
+  而这张表要回答的是「谁在什么时候从哪一步走到哪一步」。
+- 种子数据不写这张表：它是运行时记录，由轮询产生，与 `crp_call_log`、`release_update_record` 同一处理。
+
 ## 五、关键约束（逐条对应设计契约）
 
 | 约束 | 落在哪 |
@@ -514,6 +545,9 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | 高频查询索引 | `release.status`、`release.created_at`、`build_task.release_id`（`release.project_id` 由唯一索引最左前缀覆盖） |
 | 每次 CRP 调用都有请求记录 | `crp_call_log`（URL、耗时、状态码、响应摘要），记录点在请求层而不是调用点 |
 | 阻断可解释 | `build_task.blocked_by_snapshot_id` 指向造成阻断的上游快照，`build_task.status_reason` 给人看 |
+| 每次轮询都回写工作流进度 | `release.crp_work_progress`、`crp_work_progress_label`、`crp_work_progress_synced_at`；取不到时保留旧值，绝不写 0 |
+| 活跃提测多于单轮上限时轮流轮到 | `release.last_polled_at`（为空的最先），单轮上限只限「这一轮处理几条」，不限「哪些提测永远不处理」 |
+| 调度事件流水五列齐全 | `build_poll_event`（`created_at`、`package_name`、`event`、`condition`、`result`） |
 | 会话令牌只存哈希、服务端可撤销 | `session.token_hash` 唯一（存 SHA-256，不存令牌本身）、`session.revoked_at` 非空即失效 |
 | 不预留回退与复盘的表 | 只有 `release.rollback_of_id`、`release.code_source_release_id`、`release.risk_flag` 三个可空字段 |
 
@@ -544,6 +578,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | `build_job.build_task_id` | `build_task.id` | 否 | CASCADE | 作业没有独立含义，随任务删除 |
 | `release_update_record.release_id` | `release.id` | 否 | RESTRICT | 提测记录不物理删除，留痕要一直查得到 |
 | `release_update_record.operator_id` | `app_user.id` | 否 | RESTRICT | 要知道是谁改的，账号不物理删除 |
+| `build_poll_event.release_id` | `release.id` | 否 | CASCADE | 流水属于提测，提测清理时一起走 |
 | `webhook_endpoint.workspace_id` | `workspace.id` | 否 | RESTRICT | 端点不随工作区删除 |
 | `webhook_delivery.endpoint_id` | `webhook_endpoint.id` | 否 | RESTRICT | 端点只停用，投递日志要留 |
 

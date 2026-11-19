@@ -109,11 +109,21 @@ export type BuildOptions = {
   network?: BuildNetwork;
 };
 
-/** 推进用到的那几个 CRP 与 Shuttle 能力。 */
+/**
+ * 投递与轮询用到的那几个 CRP 与 Shuttle 能力。
+ *
+ * `getTopicWorkflow` 是 A14 轮询层同步 `crp_work_progress` 用的：建客户端的方式与投递层
+ * 完全相同（同样挂 CRP 调用记录），所以两处共用这一份。
+ */
 type DispatchApis = {
   crp: Pick<
     CrpClient,
-    "createTopic" | "submitRelease" | "listReleases" | "deleteRelease" | "abandonTopic"
+    | "createTopic"
+    | "submitRelease"
+    | "listReleases"
+    | "deleteRelease"
+    | "abandonTopic"
+    | "getTopicWorkflow"
   >;
   shuttle: Pick<ShuttleClient, "listBuildTasks">;
 };
@@ -129,8 +139,11 @@ type Resolved = {
  *
  * 调用记录接在请求层而不是各个调用点：重试的每一次、登录请求、404 都会留下记录，
  * 逐个调用点手工记一定会漏。
+ *
+ * 导出给 `lib/build` 内的轮询层（A14）复用：它只多需要一项 `getTopicWorkflow`，
+ * 不该为此再写一份建客户端的代码，也不该绕开调用记录。
  */
-function resolveClients(releaseId: string, options: BuildOptions): Resolved {
+export function resolveClients(releaseId: string, options: BuildOptions): Resolved {
   const recorder = createCrpCallRecorder(releaseId);
   const network = options.network;
 
@@ -246,8 +259,13 @@ export const ACTIVE_RELEASE_STATES: readonly ReleaseStateName[] = [
  *
  * 依赖边只有一份（`package_dependency`），按包名反查。清单外的上游不参与：那些包不在这次
  * 提测里，构不成先后关系。
+ *
+ * 导出给队列页（A14）复用：页面上「在等哪些上游」与投递判定必须用同一份口径，
+ * 否则页面说「可以投了」而投递层说「还要等」，两边都没法解释。
  */
-async function loadUpstreamNames(packageNames: readonly string[]): Promise<Map<string, string[]>> {
+export async function loadUpstreamNames(
+  packageNames: readonly string[],
+): Promise<Map<string, string[]>> {
   if (packageNames.length === 0) {
     return new Map();
   }
