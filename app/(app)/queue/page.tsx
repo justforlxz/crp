@@ -10,6 +10,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { PageShell } from "@/components/page-shell";
 import { formatDuration, loadBuildQueue } from "@/lib/build";
 import type { BuildPollEventRow, QueueReleaseView, QueueTaskRow } from "@/lib/build";
 
@@ -89,31 +90,37 @@ export default async function QueuePage({ searchParams }: QueuePageProps) {
 
   if (scope.active === null) {
     return (
-      <main>
-        <h1>构建队列</h1>
+      <PageShell title="构建队列">
         <p>
           这个账号还不属于任何工作区，先请平台管理员把账号加入工作区。当前登录：
           {scope.account.displayName}
         </p>
-      </main>
+      </PageShell>
     );
   }
 
   const view = await loadBuildQueue(scope.active.id);
 
   return (
-    <main>
-      <h1>构建队列</h1>
-      <p>
+    <PageShell title="构建队列">
+      <p data-style-anchor="queue.intro">
         这里回答三个问题：哪些包还在排队、各自卡在哪个上游、这一轮调度做了什么。
         提测按创建时间从新到旧列出，刚投递的排在最前。页面只读库里的状态，状态由服务端定时轮询写入；
         「立即轮询」会真的去问一次 CRP 与 Shuttle。
       </p>
 
-      {query.error === undefined ? null : <p role="alert">操作失败：{query.error}</p>}
-      {query.notice === undefined ? null : <p role="status">{query.notice}</p>}
+      {query.error === undefined ? null : (
+        <p className="alert alert--error" role="alert">
+          操作失败：{query.error}
+        </p>
+      )}
+      {query.notice === undefined ? null : (
+        <p className="alert alert--info" role="status">
+          {query.notice}
+        </p>
+      )}
 
-      <p>
+      <p className="row" data-style-anchor="queue.workspace-switcher">
         工作区：
         {scope.workspaces.map((workspace) => (
           <span key={workspace.id}>
@@ -126,51 +133,45 @@ export default async function QueuePage({ searchParams }: QueuePageProps) {
       </p>
 
       <h2>概览</h2>
-      <table>
-        <tbody>
-          <tr>
-            <td>
-              <strong>{view.stats.queued}</strong>
-              <br />
-              队列任务数
-              <br />
-              还没到终态的包
-            </td>
-            <td>
-              <strong>{view.stats.building}</strong>
-              <br />
-              构建中
-              <br />
-              含投递中
-            </td>
-            <td>
-              <strong>{view.stats.waiting}</strong>
-              <br />
-              等待依赖
-              <br />
-              卡在上游没成功
-            </td>
-            <td>
-              <strong>{view.stats.finishedToday}</strong>
-              <br />
-              今日完成
-              <br />
-              今天（UTC）拿到终态的构建
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div className="stat-grid" data-style-anchor="queue.stats">
+        <div className="stat-card">
+          <strong>{view.stats.queued}</strong>
+          队列任务数
+          <br />
+          <small>还没到终态的包</small>
+        </div>
+        <div className="stat-card">
+          <strong>{view.stats.building}</strong>
+          构建中
+          <br />
+          <small>含投递中</small>
+        </div>
+        <div className="stat-card">
+          <strong>{view.stats.waiting}</strong>
+          等待依赖
+          <br />
+          <small>卡在上游没成功</small>
+        </div>
+        <div className="stat-card">
+          <strong>{view.stats.finishedToday}</strong>
+          今日完成
+          <br />
+          <small>今天（UTC）拿到终态的构建</small>
+        </div>
+      </div>
       <p>数据截至：{formatTime(view.generatedAt)}</p>
 
-      <form action={refreshQueueAction.bind(null, scope.active.slug)}>
-        <button type="submit">立即轮询</button>
+      <form action={refreshQueueAction.bind(null, scope.active.slug)} data-style-anchor="queue.refresh">
+        <button type="submit" className="btn btn-primary">
+          立即轮询
+        </button>
       </form>
       <p>
         手动轮询与定时轮询走同一段代码：回写 Shuttle 的构建结果、CRP 的工作流进度，
         并把这一轮做的事记进调度事件流水。轮询失败不会把构建状态改成失败，只记一条同步错误。
       </p>
 
-      <h2>依赖拓扑</h2>
+      <h2 data-style-anchor="queue.topo">依赖拓扑</h2>
       {view.releases.length === 0 ? (
         <p>当前没有未完结的提测。已完结的提测不再轮询，也不再占队列。</p>
       ) : (
@@ -187,7 +188,7 @@ export default async function QueuePage({ searchParams }: QueuePageProps) {
               （最近同步：{formatTime(release.workProgressSyncedAt)}）
             </p>
             {release.tasks.length === 0 ? (
-              <p>这条提测还没有软件包。</p>
+              <p className="empty">这条提测还没有软件包。</p>
             ) : (
               <ul>
                 {release.tasks.map((task) => {
@@ -210,46 +211,50 @@ export default async function QueuePage({ searchParams }: QueuePageProps) {
 
       <h2>任务列表</h2>
       {view.releases.length === 0 ? (
-        <p>没有要展示的任务。</p>
+        <p className="empty">没有要展示的任务。</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>提测</th>
-              <th>软件包</th>
-              <th>阶段</th>
-              <th>进度</th>
-              <th>耗时</th>
-              <th>等待的上游</th>
-              <th>原因</th>
-            </tr>
-          </thead>
-          <tbody>
-            {view.releases.flatMap((release) =>
-              release.tasks.map((task) => taskRow(release, task)),
-            )}
-          </tbody>
-        </table>
+        <div className="table-scroll">
+          <table className="data-table" data-style-anchor="queue.task-table">
+            <thead>
+              <tr>
+                <th>提测</th>
+                <th>软件包</th>
+                <th>阶段</th>
+                <th>进度</th>
+                <th>耗时</th>
+                <th>等待的上游</th>
+                <th>原因</th>
+              </tr>
+            </thead>
+            <tbody>
+              {view.releases.flatMap((release) =>
+                release.tasks.map((task) => taskRow(release, task)),
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <h2>调度事件流水（最近 30 条）</h2>
       {view.events.length === 0 ? (
-        <p>还没有调度记录。定时轮询跑过一轮之后，这里会记下每一轮做了什么。</p>
+        <p className="empty">还没有调度记录。定时轮询跑过一轮之后，这里会记下每一轮做了什么。</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>时间</th>
-              <th>提测</th>
-              <th>软件包</th>
-              <th>事件</th>
-              <th>触发条件</th>
-              <th>结果</th>
-            </tr>
-          </thead>
-          <tbody>{view.events.map((event) => eventRow(event))}</tbody>
-        </table>
+        <div className="table-scroll">
+          <table className="data-table" data-style-anchor="queue.event-table">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>提测</th>
+                <th>软件包</th>
+                <th>事件</th>
+                <th>触发条件</th>
+                <th>结果</th>
+              </tr>
+            </thead>
+            <tbody>{view.events.map((event) => eventRow(event))}</tbody>
+          </table>
+        </div>
       )}
-    </main>
+    </PageShell>
   );
 }

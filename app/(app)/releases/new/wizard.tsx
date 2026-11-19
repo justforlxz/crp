@@ -334,8 +334,7 @@ export function ReleaseWizard({ projects }: { projects: ReleaseProjectChoice[] }
   }
 
   return (
-    <main>
-      <h1>创建提测</h1>
+    <>
       <p>
         三步：选项目 → 检查仓库更新 → 确认提交。提交后每个软件包的分支、Commit 与三个版本号
         会固化成快照，之后改项目配置也不会改变这次提测的记录。
@@ -344,8 +343,8 @@ export function ReleaseWizard({ projects }: { projects: ReleaseProjectChoice[] }
         <Link href="/projects">返回项目列表</Link>
       </p>
 
-      {error === null ? null : <p role="alert">操作失败：{error}</p>}
-      {notice === null ? null : <p role="status">{notice}</p>}
+      {error === null ? null : <p className="alert alert--error" role="alert">操作失败：{error}</p>}
+      {notice === null ? null : <p className="alert alert--info" role="status">{notice}</p>}
 
       <StepProject
         active={step === 1}
@@ -404,6 +403,6 @@ export function ReleaseWizard({ projects }: { projects: ReleaseProjectChoice[] }
           onSubmit={() => void submit()}
         />
       ) : null}
-    </main>
+    </>
   );
 }

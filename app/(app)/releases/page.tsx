@@ -10,6 +10,7 @@
  */
 import Link from "next/link";
 
+import { PageShell } from "@/components/page-shell";
 import {
   loadReleaseList,
   loadReleaseProjectOptions,
@@ -45,6 +46,28 @@ function formatTime(value: Date): string {
   return `${value.toISOString().replace("T", " ").slice(0, 19)} UTC`;
 }
 
+/** 状态徽标的颜色档位：只决定颜色，不改任何文案。 */
+function statusBadgeClass(status: string): string {
+  if (status === "success") {
+    return "badge badge--success";
+  }
+
+  if (status === "failed" || status === "partial_failure") {
+    return "badge badge--danger";
+  }
+
+  if (status === "abandoned") {
+    return "badge badge--warn";
+  }
+
+  return "badge badge--info";
+}
+
+/** 来源徽标：从 CRP 导入的用另一种颜色，一眼能和平台创建的分开。 */
+function sourceBadgeClass(source: string): string {
+  return source === "imported" ? "badge badge--info" : "badge";
+}
+
 /** 当前筛选拼成链接；切换页签或翻筛选都不丢掉其余条件。 */
 function listHref(filters: ListFilters, patch: Partial<ListFilters> = {}): string {
   const merged = { ...filters, ...patch };
@@ -77,13 +100,12 @@ export default async function ReleasesPage({ searchParams }: ReleasesPageProps) 
 
   if (scope.active === null) {
     return (
-      <main>
-        <h1>提测记录</h1>
+      <PageShell title="提测记录">
         <p>
           这个账号还不属于任何工作区，先请平台管理员把账号加入工作区。当前登录：
           {scope.account.displayName}
         </p>
-      </main>
+      </PageShell>
     );
   }
 
@@ -105,9 +127,8 @@ export default async function ReleasesPage({ searchParams }: ReleasesPageProps) 
   ]);
 
   return (
-    <main>
-      <h1>提测记录</h1>
-      <p>
+    <PageShell title="提测记录">
+      <p data-style-anchor="releases.intro">
         一次提测对应 CRP 的一个 Topic。列表里能按状态、项目与关键字找，点进详情能看这次提测固化了
         哪些软件包的哪个 Commit；快照只追加不改写，唯一的变更入口是详情页的「更新提测」。
       </p>
@@ -124,7 +145,7 @@ export default async function ReleasesPage({ searchParams }: ReleasesPageProps) 
         ))}
       </p>
 
-      <p>
+      <p className="row" data-style-anchor="releases.status-tabs">
         状态页签：
         {RELEASE_STATUS_TABS.map((tab) => (
           <span key={tab}>
@@ -141,7 +162,7 @@ export default async function ReleasesPage({ searchParams }: ReleasesPageProps) 
         ))}
       </p>
 
-      <form method="get" action="/releases">
+      <form method="get" action="/releases" className="filter-bar" data-style-anchor="releases.filters">
         <input type="hidden" name="workspace" value={filters.workspace} />
         <input type="hidden" name="status" value={filters.status} />
         <label htmlFor="release-project-filter">项目</label>
@@ -165,7 +186,7 @@ export default async function ReleasesPage({ searchParams }: ReleasesPageProps) 
         <Link href={listHref(filters, { project: "", q: "", status: "all" })}>清空条件</Link>
       </form>
 
-      <p>
+      <p className="hint" data-style-anchor="releases.count">
         共 {list.rows.length} 条
         {filters.status === "all" ? null : `（页签：${RELEASE_TAB_LABELS[filters.status]}）`}
         {filters.q === "" ? null : `，关键字「${filters.q}」`}
@@ -173,59 +194,71 @@ export default async function ReleasesPage({ searchParams }: ReleasesPageProps) 
       </p>
 
       {list.rows.length === 0 ? (
-        <p>这个条件下的提测记录是空的。</p>
+        <p className="empty" data-style-anchor="releases.empty">
+          这个条件下的提测记录是空的。
+        </p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>项目</th>
-              <th>提测版本</th>
-              <th>轮次</th>
-              <th>状态</th>
-              <th>来源</th>
-              <th>软件数</th>
-              <th>创建人</th>
-              <th>CRP Topic</th>
-              <th>创建时间</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.rows.map((row) => (
-              <tr key={row.id}>
-                <td>
-                  {row.projectName}（<code>{row.projectKey}</code>）
-                </td>
-                <td>
-                  <Link href={`/releases/${row.id}${scope.query}`}>
-                    <code>{row.version}</code>
-                  </Link>
-                </td>
-                <td>第 {row.revision} 轮</td>
-                <td>{releaseStatusLabel(row.status)}</td>
-                <td>{releaseSourceLabel(row.source)}</td>
-                <td>{row.packageCount}</td>
-                <td>{row.createdByName}</td>
-                <td>{row.crpTopicId === null ? "—" : <code>{row.crpTopicId}</code>}</td>
-                <td>{formatTime(row.createdAt)}</td>
-                <td>
-                  <Link href={`/releases/${row.id}${scope.query}`}>详情</Link>
-                  {"　"}
-                  <a href={`/api/releases/${row.id}/export`}>导出 CSV</a>
-                </td>
+        <div className="table-scroll">
+          <table className="data-table" data-style-anchor="releases.table">
+            <thead>
+              <tr>
+                <th>项目</th>
+                <th>提测版本</th>
+                <th>轮次</th>
+                <th>状态</th>
+                <th>来源</th>
+                <th>软件数</th>
+                <th>创建人</th>
+                <th>CRP Topic</th>
+                <th>创建时间</th>
+                <th>操作</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {list.rows.map((row) => (
+                <tr key={row.id}>
+                  <td>
+                    {row.projectName}（<code>{row.projectKey}</code>）
+                  </td>
+                  <td>
+                    <Link href={`/releases/${row.id}${scope.query}`}>
+                      <code>{row.version}</code>
+                    </Link>
+                  </td>
+                  <td>第 {row.revision} 轮</td>
+                  <td data-style-anchor="releases.row-status">
+                    <span className={statusBadgeClass(row.status)}>
+                      {releaseStatusLabel(row.status)}
+                    </span>
+                  </td>
+                  <td>
+                    <span className={sourceBadgeClass(row.source)}>
+                      {releaseSourceLabel(row.source)}
+                    </span>
+                  </td>
+                  <td>{row.packageCount}</td>
+                  <td>{row.createdByName}</td>
+                  <td>{row.crpTopicId === null ? "—" : <code>{row.crpTopicId}</code>}</td>
+                  <td>{formatTime(row.createdAt)}</td>
+                  <td>
+                    <Link href={`/releases/${row.id}${scope.query}`}>详情</Link>
+                    {"　"}
+                    <a href={`/api/releases/${row.id}/export`}>导出 CSV</a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
-      <p>
+      <p className="row" data-style-anchor="releases.create-actions">
         <Link href={`/releases/new${scope.query}`}>创建提测</Link>
         {"　"}
         <Link href={`/releases/import${scope.query}`}>从 CRP 导入</Link>
         {"　"}
         <Link href={`/projects${scope.query}`}>项目</Link>
       </p>
-    </main>
+    </PageShell>
   );
 }

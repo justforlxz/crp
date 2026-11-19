@@ -11,7 +11,6 @@
  */
 
 import type { GerritCommitOption, ReleaseBlocker } from "@/lib/releases";
-import { styles } from "../../../styles";
 import { shortSha, type Selection } from "./wizardTypes";
 
 /** 第二步表格的一行。提测版本与「有没有更新」在外壳里按快照规则算好。 */
@@ -78,7 +77,7 @@ export function StepReview({
     <>
       <h2>第二步：检查仓库更新</h2>
       <p>
-        <button type="button" style={styles.smallButton} onClick={onRefresh} disabled={refreshing}>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={onRefresh} disabled={refreshing}>
           {refreshing ? "正在从 Gerrit 刷新…" : "从 Gerrit 刷新"}
         </button>
         {order === null ? null : (
@@ -90,7 +89,11 @@ export function StepReview({
       </p>
 
       {blockers.length > 0 ? (
-        <div role="alert">
+        <div
+          className="alert alert--error"
+          role="alert"
+          data-style-anchor="release-new.review-blockers"
+        >
           <p>提交被阻断：</p>
           <ul>
             {blockers.map((blocker) => (
@@ -101,8 +104,8 @@ export function StepReview({
       ) : null}
 
       {loaded ? (
-        <div style={styles.tableScroll}>
-          <table>
+        <div className="table-scroll" data-style-anchor="release-new.review-table-scroll">
+          <table className="data-table" data-style-anchor="release-new.review-table">
             <thead>
               <tr>
                 <th>软件包</th>
@@ -124,7 +127,7 @@ export function StepReview({
                   </td>
                   <td>
                     <select
-                      style={styles.input}
+                      className="input"
                       value={row.selection?.branch ?? ""}
                       onChange={(event) => onBranchChange(row.packageName, event.target.value)}
                       disabled={row.busy || row.branches.length === 0}
@@ -139,7 +142,7 @@ export function StepReview({
                   </td>
                   <td>
                     <select
-                      style={styles.input}
+                      className="input"
                       value={row.selection?.commitSha ?? ""}
                       onChange={(event) => onCommitChange(row.packageName, event.target.value)}
                       disabled={row.busy || row.commits.length === 0}
@@ -156,7 +159,7 @@ export function StepReview({
                   <td>{row.repoVersion ?? "—"}</td>
                   <td>
                     <input
-                      style={styles.input}
+                      className="input"
                       value={row.selection?.customTag ?? ""}
                       onChange={(event) => onTagChange(row.packageName, event.target.value)}
                       placeholder={row.selection?.codeVersion ?? "留空用代码版本"}
@@ -177,7 +180,11 @@ export function StepReview({
       )}
 
       {warnings.length > 0 ? (
-        <div role="status">
+        <div
+          className="alert alert--info"
+          role="status"
+          data-style-anchor="release-new.review-warnings"
+        >
           <p>这些软件包的数据可用，但需要看一眼：</p>
           <ul>
             {warnings.map((item) => (
@@ -190,7 +197,11 @@ export function StepReview({
       ) : null}
 
       {errors.length > 0 ? (
-        <div role="alert">
+        <div
+          className="alert alert--error"
+          role="alert"
+          data-style-anchor="release-new.review-errors"
+        >
           <p>这些软件包读不到仓库数据：</p>
           <ul>
             {errors.map((item) => (
@@ -203,17 +214,17 @@ export function StepReview({
       ) : null}
 
       {loaded ? (
-        <p role="status">
+        <p className="alert alert--info" role="status" data-style-anchor="release-new.review-summary">
           本次将提测 {packageCount} 个软件，其中 {changedCount} 个有更新。
           「无变化」的软件包同样会进提测。
         </p>
       ) : null}
 
-      <p>
-        <button type="button" style={styles.smallButton} onClick={onBack}>
+      <p className="row" data-style-anchor="release-new.review-actions">
+        <button type="button" className="btn btn-secondary btn-sm" onClick={onBack}>
           上一步
         </button>{" "}
-        <button type="button" style={styles.button} onClick={onNext} disabled={!canGoNext}>
+        <button type="button" className="btn btn-primary" onClick={onNext} disabled={!canGoNext}>
           下一步：确认
         </button>
       </p>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { PageShell } from "@/components/page-shell";
 import { listReleaseProjectChoices } from "@/lib/releases";
 import { resolveWorkspaceScope } from "../../workspaceScope";
 import { ReleaseWizard } from "./wizard";
@@ -17,13 +18,12 @@ export default async function NewReleasePage({ searchParams }: NewReleasePagePro
 
   if (scope.active === null) {
     return (
-      <main>
-        <h1>创建提测</h1>
+      <PageShell title="创建提测">
         <p>
           这个账号还不属于任何工作区，先请平台管理员把账号加入工作区。当前登录：
           {scope.account.displayName}
         </p>
-      </main>
+      </PageShell>
     );
   }
 
@@ -31,25 +31,25 @@ export default async function NewReleasePage({ searchParams }: NewReleasePagePro
 
   if (projects.length === 0) {
     return (
-      <main>
-        <h1>创建提测</h1>
+      <PageShell title="创建提测">
         <p>
           这个工作区还没有项目，提测要挂在项目上。先去
           <Link href={`/projects/new${scope.query}`}>新建项目</Link>
           ，配好软件清单与基线再回来。
         </p>
-      </main>
+      </PageShell>
     );
   }
 
   return (
-    <>
-      {/* 提测记录列表页属 A13（阶段 10），在那之前「从 CRP 导入」的入口挂在这里。 */}
-      <nav style={{ maxWidth: 760, margin: "24px auto 0", textAlign: "right", fontSize: 13 }}>
+    <PageShell
+      title="创建提测"
+      // 提测记录列表页属 A13（阶段 10），在那之前「从 CRP 导入」的入口挂在这里。
+      actions={
         <Link href={`/releases/import${scope.query}`}>从 CRP 导入已有提测主题</Link>
-      </nav>
+      }
+    >
       <ReleaseWizard projects={projects} />
-    </>
+    </PageShell>
   );
 }
-

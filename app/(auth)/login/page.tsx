@@ -5,8 +5,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { PageShell } from "@/components/page-shell";
 import { peekSession } from "@/lib/auth/server";
-import { styles } from "../../styles";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = { title: "登录 · CRP 提测平台" };
@@ -32,15 +32,12 @@ export default async function LoginPage({
   const { next } = await searchParams;
 
   return (
-    <main style={styles.page}>
-      <section style={styles.card}>
-        <h1 style={styles.title}>登录</h1>
-        <p style={styles.hint}>用平台账号登录。账号由平台管理员邀请，或自行注册。</p>
-        <LoginForm nextPath={safeNext(next)} />
-        <p style={styles.hint}>
-          还没有账号？<Link href="/register">注册一个</Link>
-        </p>
-      </section>
-    </main>
+    <PageShell title="登录" variant="auth">
+      <p className="hint">用平台账号登录。账号由平台管理员邀请，或自行注册。</p>
+      <LoginForm nextPath={safeNext(next)} />
+      <p className="hint">
+        还没有账号？<Link href="/register">注册一个</Link>
+      </p>
+    </PageShell>
   );
 }

@@ -9,14 +9,13 @@
 
 import Link from "next/link";
 
-import { styles } from "../../../styles";
 import { shortSha, type SubmitResult } from "./wizardTypes";
 
 export function CreatedRelease({ result, notice }: { result: SubmitResult; notice: string }) {
   return (
-    <main>
-      <h1>提测已创建</h1>
-      <p role="status">{notice}</p>
+    <>
+      <h2>提测已创建</h2>
+      <p className="alert alert--info" role="status">{notice}</p>
       <dl>
         <dt>提测 ID</dt>
         <dd>
@@ -39,8 +38,8 @@ export function CreatedRelease({ result, notice }: { result: SubmitResult; notic
       </dl>
 
       <h2>快照</h2>
-      <div style={styles.tableScroll}>
-        <table>
+      <div className="table-scroll">
+        <table className="data-table">
           <thead>
             <tr>
               <th>软件包</th>
@@ -77,6 +76,6 @@ export function CreatedRelease({ result, notice }: { result: SubmitResult; notic
         {"　"}
         <Link href="/releases/new">再建一个提测</Link>
       </p>
-    </main>
+    </>
   );
 }

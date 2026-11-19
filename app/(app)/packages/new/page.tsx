@@ -3,10 +3,11 @@ import Link from "next/link";
 import { createPackageAction } from "../actions";
 import { ActionForm } from "../actionForm";
 
+import { PageShell } from "@/components/page-shell";
+
 export default function NewPackagePage() {
   return (
-    <main>
-      <h1>新建软件包</h1>
+    <PageShell title="新建软件包">
       <p>
         <Link href="/packages">返回软件包列表</Link>
       </p>
@@ -37,6 +38,6 @@ export default function NewPackagePage() {
           </label>
         </p>
       </ActionForm>
-    </main>
+    </PageShell>
   );
 }

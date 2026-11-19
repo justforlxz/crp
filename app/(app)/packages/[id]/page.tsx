@@ -1,6 +1,8 @@
 import Link from "next/link";
+
 import { notFound } from "next/navigation";
 
+import { PageShell } from "@/components/page-shell";
 import { getPackageDetail, listBaselineOptions, listPackages } from "@/lib/packages";
 
 import { ActionForm } from "../actionForm";
@@ -51,8 +53,7 @@ export default async function PackageDetailPage({
   });
 
   return (
-    <main>
-      <h1>{detail.name}</h1>
+    <PageShell title={detail.name}>
       <p>
         <Link href="/packages">返回软件包列表</Link>
       </p>
@@ -117,7 +118,7 @@ export default async function PackageDetailPage({
       <ActionForm action={saveDependenciesAction} submitLabel="保存依赖">
         <input type="hidden" name="id" value={detail.id} />
         {candidates.length === 0 ? (
-          <p>库里还没有别的软件包可以作为上游。</p>
+          <p className="empty">库里还没有别的软件包可以作为上游。</p>
         ) : (
           <ul>
             {candidates.map((item) => (
@@ -139,7 +140,7 @@ export default async function PackageDetailPage({
 
       <h3>当前配置的上游</h3>
       {detail.dependencies.length === 0 ? (
-        <p>没有上游依赖。</p>
+        <p className="empty">没有上游依赖。</p>
       ) : (
         <ul>
           {detail.dependencies.map((item) => (
@@ -156,7 +157,7 @@ export default async function PackageDetailPage({
 
       <h3>被哪些软件包依赖</h3>
       {detail.dependents.length === 0 ? (
-        <p>没有软件包依赖它。</p>
+        <p className="empty">没有软件包依赖它。</p>
       ) : (
         <ul>
           {detail.dependents.map((item) => (
@@ -169,7 +170,7 @@ export default async function PackageDetailPage({
 
       <h2>引用这个包的项目</h2>
       {detail.projectSoftware.length === 0 ? (
-        <p>没有项目引用这个包。</p>
+        <p className="empty">没有项目引用这个包。</p>
       ) : (
         <ul>
           {detail.projectSoftware.map((item) => (
@@ -189,24 +190,26 @@ export default async function PackageDetailPage({
           这个包的当前版本；也可以用下面的按钮现场向 Shuttle 查一次。
         </p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>基线</th>
-              <th>仓库版本</th>
-              <th>数据时间</th>
-            </tr>
-          </thead>
-          <tbody>
-            {detail.baselineVersions.map((item) => (
-              <tr key={item.id}>
-                <td>{item.baseline.name}</td>
-                <td>{item.version}</td>
-                <td>{formatTime(item.fetchedAt)}</td>
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>基线</th>
+                <th>仓库版本</th>
+                <th>数据时间</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {detail.baselineVersions.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.baseline.name}</td>
+                  <td>{item.version}</td>
+                  <td>{formatTime(item.fetchedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {baselines.length > 0 ? (
@@ -232,9 +235,9 @@ export default async function PackageDetailPage({
 
       <h2>删除</h2>
       <p>仍被项目引用的软件包不能删除；被其他软件包依赖时也要先解除依赖。</p>
-      <ActionForm action={deletePackageAction} submitLabel="删除这个软件包">
+      <ActionForm action={deletePackageAction} submitLabel="删除这个软件包" variant="danger">
         <input type="hidden" name="id" value={detail.id} />
       </ActionForm>
-    </main>
+    </PageShell>
   );
 }

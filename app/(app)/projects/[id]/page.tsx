@@ -1,6 +1,8 @@
 import Link from "next/link";
+
 import { notFound } from "next/navigation";
 
+import { PageShell } from "@/components/page-shell";
 import { formatCycle } from "@/lib/packages";
 import {
   canViewProject,
@@ -76,18 +78,23 @@ export default async function ProjectDetailPage({
   const inList = new Set(project.software.entries.map((entry) => entry.packageName));
 
   return (
-    <main>
-      <h1>
-        {project.name} <code>{project.key}</code>
-      </h1>
+    <PageShell title={<>{project.name} <code>{project.key}</code></>}>
       <p>
         <Link href={`/projects${scope.query}`}>返回项目列表</Link>
       </p>
 
-      {query.error === undefined ? null : <p role="alert">操作失败：{query.error}</p>}
-      {query.notice === undefined ? null : <p role="status">{query.notice}</p>}
+      {query.error === undefined ? null : (
+        <p className="alert alert--error" role="alert">
+          操作失败：{query.error}
+        </p>
+      )}
+      {query.notice === undefined ? null : (
+        <p className="alert alert--info" role="status">
+          {query.notice}
+        </p>
+      )}
       {project.deletedAt === null ? null : (
-        <p role="status">
+        <p className="alert alert--info" role="status">
           这个项目已于 {formatTime(project.deletedAt)} 删除：不出现在列表里，也不能再编辑，
           但历史提测记录仍然指向它，可以照常查看。
         </p>
@@ -116,14 +123,14 @@ export default async function ProjectDetailPage({
         依赖只在软件包上维护，这里显示的是清单内部的先后关系：上游构建成功才投递下游。
       </p>
       {project.software.order.length === 0 ? (
-        <p>清单还是空的，先把软件包加进来。</p>
+        <p className="empty">清单还是空的，先把软件包加进来。</p>
       ) : (
         <p>
           <code>{project.software.order.join(" → ")}</code>
         </p>
       )}
       {project.software.cycle === null ? null : (
-        <p role="alert">
+        <p className="alert alert--error" role="alert">
           依赖成环，排不出投递顺序：{formatCycle(project.software.cycle)}。
           环来自软件包上的依赖配置，去软件包页面解开，项目里不重复配置依赖。
         </p>
@@ -142,7 +149,7 @@ export default async function ProjectDetailPage({
         managers={managers}
         usableBaselines={usableBaselines}
       />
-    </main>
+    </PageShell>
   );
 }
 
@@ -164,72 +171,78 @@ function SoftwareSection({
     <>
       <h2>软件清单</h2>
       {project.software.entries.length === 0 ? (
-        <p>这个项目还没有软件包。</p>
+        <p className="empty">这个项目还没有软件包。</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>顺序</th>
-              <th>软件包</th>
-              <th>仓库路径</th>
-              <th>当前版本</th>
-              <th>跟踪分支</th>
-              <th>上游依赖（只读）</th>
-              <th>上次提测提交</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {project.software.entries.map((entry, index) => {
-              const row = rowByName.get(entry.packageName);
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>顺序</th>
+                <th>软件包</th>
+                <th>仓库路径</th>
+                <th>当前版本</th>
+                <th>跟踪分支</th>
+                <th>上游依赖（只读）</th>
+                <th>上次提测提交</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {project.software.entries.map((entry, index) => {
+                const row = rowByName.get(entry.packageName);
 
-              return (
-                <tr key={entry.packageName}>
-                  <td>{index + 1}</td>
-                  <td>
-                    <code>{entry.packageName}</code>
-                  </td>
-                  <td>{row?.repoPath ?? "—"}</td>
-                  <td>{row?.currentVersion ?? "—"}</td>
-                  <td>
-                    <form action={updateSoftwareBranchAction}>
-                      <input type="hidden" name="projectId" value={project.id} />
-                      <input type="hidden" name="workspaceSlug" value={workspaceSlug} />
-                      <input type="hidden" name="packageId" value={row?.packageId ?? ""} />
-                      <input
-                        name="trackedBranch"
-                        required
-                        defaultValue={entry.trackedBranch}
-                        size={18}
-                      />
-                      <button type="submit">保存分支</button>
-                    </form>
-                  </td>
-                  <td>
-                    {entry.upstreamNames.length === 0
-                      ? "无"
-                      : entry.upstreamNames
-                          .slice()
-                          .sort()
-                          .map((name) => (inList.has(name) ? name : `${name}（清单外）`))
-                          .join("、")}
-                  </td>
-                  <td>
-                    {entry.lastSubmittedCommit ? entry.lastSubmittedCommit.slice(0, 12) : "未提测"}
-                  </td>
-                  <td>
-                    <form action={removeSoftwareAction}>
-                      <input type="hidden" name="projectId" value={project.id} />
-                      <input type="hidden" name="workspaceSlug" value={workspaceSlug} />
-                      <input type="hidden" name="packageId" value={row?.packageId ?? ""} />
-                      <button type="submit">移除</button>
-                    </form>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                return (
+                  <tr key={entry.packageName}>
+                    <td>{index + 1}</td>
+                    <td>
+                      <code>{entry.packageName}</code>
+                    </td>
+                    <td>{row?.repoPath ?? "—"}</td>
+                    <td>{row?.currentVersion ?? "—"}</td>
+                    <td>
+                      <form action={updateSoftwareBranchAction}>
+                        <input type="hidden" name="projectId" value={project.id} />
+                        <input type="hidden" name="workspaceSlug" value={workspaceSlug} />
+                        <input type="hidden" name="packageId" value={row?.packageId ?? ""} />
+                        <input
+                          name="trackedBranch"
+                          required
+                          defaultValue={entry.trackedBranch}
+                          size={18}
+                        />
+                        <button type="submit" className="btn btn-secondary btn-sm">
+                          保存分支
+                        </button>
+                      </form>
+                    </td>
+                    <td>
+                      {entry.upstreamNames.length === 0
+                        ? "无"
+                        : entry.upstreamNames
+                            .slice()
+                            .sort()
+                            .map((name) => (inList.has(name) ? name : `${name}（清单外）`))
+                            .join("、")}
+                    </td>
+                    <td>
+                      {entry.lastSubmittedCommit ? entry.lastSubmittedCommit.slice(0, 12) : "未提测"}
+                    </td>
+                    <td>
+                      <form action={removeSoftwareAction}>
+                        <input type="hidden" name="projectId" value={project.id} />
+                        <input type="hidden" name="workspaceSlug" value={workspaceSlug} />
+                        <input type="hidden" name="packageId" value={row?.packageId ?? ""} />
+                        <button type="submit" className="btn btn-secondary btn-sm">
+                          移除
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <h3>往清单里加软件包</h3>
@@ -265,7 +278,9 @@ function SoftwareSection({
             可以覆盖软件包的默认分支。
           </p>
           <p>
-            <button type="submit">加入清单</button>
+            <button type="submit" className="btn btn-primary">
+              加入清单
+            </button>
           </p>
         </form>
       )}
@@ -335,7 +350,9 @@ function ProjectForms({
           </label>
         </p>
         <p>
-          <button type="submit">保存</button>
+          <button type="submit" className="btn btn-primary">
+            保存
+          </button>
         </p>
       </form>
 
@@ -396,7 +413,9 @@ function ProjectForms({
           </label>
         </p>
         <p>
-          <button type="submit">复制</button>
+          <button type="submit" className="btn btn-primary">
+            复制
+          </button>
         </p>
       </form>
 
@@ -407,7 +426,9 @@ function ProjectForms({
       <form action={deleteProjectAction}>
         <input type="hidden" name="projectId" value={project.id} />
         <input type="hidden" name="workspaceSlug" value={workspaceSlug} />
-        <button type="submit">删除项目</button>
+        <button type="submit" className="btn btn-danger">
+          删除项目
+        </button>
       </form>
     </>
   );

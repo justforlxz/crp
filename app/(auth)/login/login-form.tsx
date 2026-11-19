@@ -9,7 +9,6 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
 import { readErrorMessage } from "../../http-error";
-import { styles } from "../../styles";
 
 export function LoginForm({ nextPath }: { nextPath: string }) {
   const router = useRouter();
@@ -41,12 +40,19 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
 
   return (
     <form onSubmit={handleSubmit} noValidate>
-      <label style={styles.label} htmlFor="email">
+      <label className="field-label" htmlFor="email">
         邮箱
       </label>
-      <input id="email" name="email" type="email" autoComplete="username" required style={styles.input} />
+      <input
+        id="email"
+        name="email"
+        type="email"
+        autoComplete="username"
+        required
+        className="input"
+      />
 
-      <label style={styles.label} htmlFor="password">
+      <label className="field-label" htmlFor="password">
         密码
       </label>
       <input
@@ -55,12 +61,12 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
         type="password"
         autoComplete="current-password"
         required
-        style={styles.input}
+        className="input"
       />
 
-      {error === null ? null : <p style={styles.error}>{error}</p>}
+      {error === null ? null : <p className="alert alert--error">{error}</p>}
 
-      <button type="submit" style={styles.button} disabled={pending}>
+      <button type="submit" className="btn btn-primary btn-block" disabled={pending}>
         {pending ? "登录中…" : "登录"}
       </button>
     </form>

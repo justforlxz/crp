@@ -7,6 +7,7 @@
  * 基线的唯一作用是被项目选中，所以这里不做任何业务分类，也不按名字推导类型；
  * `IsCheck` 原样展示，不据此过滤分支。
  */
+import { PageShell } from "@/components/page-shell";
 import { getLatestListRun, listBaselines, listSyncRuns } from "@/lib/baselines";
 import type { BaselineListItem } from "@/lib/baselines";
 
@@ -25,6 +26,19 @@ function formatTime(value: Date | null): string {
 
 function isCheckLabel(item: BaselineListItem): string {
   return item.isCheck ? "IsCheck=1（已停止维护，不建议选择）" : "IsCheck=0（可用）";
+}
+
+/** 状态徽标的颜色档位：只决定颜色，文案仍由 `stateLabel()` 给。 */
+function stateBadgeClass(state: BaselineListItem["state"]): string {
+  if (state === "synced") {
+    return "badge badge--success";
+  }
+
+  if (state === "failed") {
+    return "badge badge--danger";
+  }
+
+  return "badge badge--warn";
 }
 
 function stateLabel(item: BaselineListItem): string {
@@ -52,19 +66,26 @@ export default async function BaselinesPage({ searchParams }: BaselinesPageProps
   ]);
 
   return (
-    <main>
-      <h1>基线</h1>
+    <PageShell title="基线">
       <p>
         基线就是 CRP 的一条交付分支，平铺清单，不做任何分类。项目从这份清单里挑一个作为目标基线，
         挑选时参考描述与 <code>IsCheck</code>；本平台不按分支名推导类型，也不过滤分支。
       </p>
 
-      {query.error === undefined ? null : <p role="alert">操作失败：{query.error}</p>}
-      {query.notice === undefined ? null : <p role="status">{query.notice}</p>}
+      {query.error === undefined ? null : (
+        <p className="alert alert--error" role="alert">
+          操作失败：{query.error}
+        </p>
+      )}
+      {query.notice === undefined ? null : (
+        <p className="alert alert--info" role="status">
+          {query.notice}
+        </p>
+      )}
 
       <h2>分支列表同步</h2>
       {latestListRun === null ? (
-        <p>还没有同步过分支列表。</p>
+        <p className="empty">还没有同步过分支列表。</p>
       ) : (
         <p>
           最近一次：{latestListRun.status === "success" ? "成功" : latestListRun.status === "failed" ? "同步失败" : "进行中"}
@@ -80,7 +101,9 @@ export default async function BaselinesPage({ searchParams }: BaselinesPageProps
       )}
 
       <form action={refreshBaselinesAction}>
-        <button type="submit">立即同步</button>
+        <button type="submit" className="btn btn-primary">
+          立即同步
+        </button>
       </form>
       <p>
         手动同步会重拉分支列表，并重新拉取「被项目选中」的基线的软件包版本；定时任务每小时跑一次，
@@ -89,73 +112,79 @@ export default async function BaselinesPage({ searchParams }: BaselinesPageProps
 
       <h2>基线清单</h2>
       {baselines.length === 0 ? (
-        <p>还没有基线，先点一次「立即同步」从 CRP 拉分支列表。</p>
+        <p className="empty">还没有基线，先点一次「立即同步」从 CRP 拉分支列表。</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>分支名</th>
-              <th>说明</th>
-              <th>是否可用于打包（IsCheck）</th>
-              <th>可选软件包数</th>
-              <th>最近同步</th>
-              <th>状态</th>
-            </tr>
-          </thead>
-          <tbody>
-            {baselines.map((item) => (
-              <tr key={item.id}>
-                <td>
-                  <code>{item.name}</code>
-                </td>
-                <td>{item.description ?? "—"}</td>
-                <td>{isCheckLabel(item)}</td>
-                <td>{item.packageCount}</td>
-                <td>{formatTime(item.syncedAt)}</td>
-                <td>{stateLabel(item)}</td>
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>分支名</th>
+                <th>说明</th>
+                <th>是否可用于打包（IsCheck）</th>
+                <th>可选软件包数</th>
+                <th>最近同步</th>
+                <th>状态</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {baselines.map((item) => (
+                <tr key={item.id}>
+                  <td>
+                    <code>{item.name}</code>
+                  </td>
+                  <td>{item.description ?? "—"}</td>
+                  <td>{isCheckLabel(item)}</td>
+                  <td>{item.packageCount}</td>
+                  <td>{formatTime(item.syncedAt)}</td>
+                  <td>
+                    <span className={stateBadgeClass(item.state)}>{stateLabel(item)}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <h2>同步记录（最近 20 条）</h2>
       {runs.length === 0 ? (
-        <p>还没有同步记录。</p>
+        <p className="empty">还没有同步记录。</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>开始时间</th>
-              <th>结束时间</th>
-              <th>种类</th>
-              <th>范围</th>
-              <th>触发</th>
-              <th>条数</th>
-              <th>结果</th>
-              <th>失败原因</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.map((run) => (
-              <tr key={run.id}>
-                <td>{formatTime(run.startedAt)}</td>
-                <td>{formatTime(run.finishedAt)}</td>
-                <td>{run.kindLabel}</td>
-                <td>{run.targetName ?? "全部"}</td>
-                <td>{run.trigger === "manual" ? "手动" : "定时"}</td>
-                <td>{run.itemCount}</td>
-                <td>
-                  {run.status === "success" ? "成功" : run.status === "failed" ? "失败" : "进行中"}
-                </td>
-                <td>
-                  <code>{run.errorMessage ?? "—"}</code>
-                </td>
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>开始时间</th>
+                <th>结束时间</th>
+                <th>种类</th>
+                <th>范围</th>
+                <th>触发</th>
+                <th>条数</th>
+                <th>结果</th>
+                <th>失败原因</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {runs.map((run) => (
+                <tr key={run.id}>
+                  <td>{formatTime(run.startedAt)}</td>
+                  <td>{formatTime(run.finishedAt)}</td>
+                  <td>{run.kindLabel}</td>
+                  <td>{run.targetName ?? "全部"}</td>
+                  <td>{run.trigger === "manual" ? "手动" : "定时"}</td>
+                  <td>{run.itemCount}</td>
+                  <td>
+                    {run.status === "success" ? "成功" : run.status === "failed" ? "失败" : "进行中"}
+                  </td>
+                  <td>
+                    <code>{run.errorMessage ?? "—"}</code>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
-    </main>
+    </PageShell>
   );
 }

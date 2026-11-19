@@ -5,7 +5,7 @@
  *
  * - 三步的文案、表头、逐行内容与按钮禁用条件；
  * - 外壳把状态传给三步的方式（第一步默认展开、第二步第三步按步骤出现、项目经理去重）；
- * - 窄屏溢出的修法：七列宽表都套在横向滚动容器里，溢出留在表格自己身上。
+ * - 窄屏溢出的修法：七列宽表都套在 `.table-scroll` 容器里，溢出留在表格自己身上。
  *
  * 不连数据库：三个步骤组件只吃 props，外壳渲染第一步也不需要仓库数据。
  */
@@ -135,7 +135,7 @@ test("第一步显示选项目、版本号与阻断原因，没选项目时不�
     }),
   );
 
-  assert.match(html, /<h2>第一步：项目归属<\/h2>/);
+  assert.match(html, /<h2 data-style-anchor="release-new.step-project">第一步：项目归属<\/h2>/);
   assert.match(html, /<option value="manager-1"[^>]*>刘洋<\/option>/);
   assert.match(html, /<option value="project-1"[^>]*>桌面专业版 V25（desktop-v25）<\/option>/);
   assert.match(html, /<code>snipe-2500u2<\/code>（已同步）/);
@@ -258,7 +258,7 @@ test("第二步的宽表套在横向滚动容器里，窄屏不让整页溢出",
     }),
   );
 
-  assert.match(html, /<div style="width:100%;overflow-x:auto"><table>/);
+  assert.match(html, /<div class="table-scroll"[^>]*><table class="data-table"/);
 });
 
 test("第二步还没读到仓库数据时只给一句提示，表格不出现", () => {
@@ -284,7 +284,7 @@ test("第二步还没读到仓库数据时只给一句提示，表格不出现",
   );
 
   assert.match(html, /正在读取分支与提交…/);
-  assert.doesNotMatch(html, /<table>/);
+  assert.doesNotMatch(html, /<table/);
 });
 
 test("阻断、警告、读取失败三种提示分别成块，Tag 格式问题写在对应行里", () => {
@@ -334,7 +334,7 @@ test("第三步按投递顺序摆出将要固化的内容，提交中时按钮�
   );
 
   assert.match(html, /<h2>第三步：确认提交<\/h2>/);
-  assert.match(html, /<div style="width:100%;overflow-x:auto"><table>/);
+  assert.match(html, /<div class="table-scroll"[^>]*><table class="data-table"/);
   assert.match(html, /<th>提测版本<\/th>/);
   assert.match(html, /<td>dde-file-manager<\/td>/);
   assert.match(html, /<code>develop\/eagle<\/code>/);
@@ -364,11 +364,11 @@ test("提交成功后的结果页显示编号、顺序与每条快照", () => {
     }),
   );
 
-  assert.match(html, /<h1>提测已创建<\/h1>/);
+  assert.match(html, /<h2>提测已创建<\/h2>/);
   assert.match(html, /提测已创建：版本 25\.0\.2，第 1 轮，1 条快照。/);
   assert.match(html, /<code>release-1<\/code>/);
   assert.match(html, /<code>dde-file-manager<\/code>/);
-  assert.match(html, /<div style="width:100%;overflow-x:auto"><table>/);
+  assert.match(html, /<div class="table-scroll"[^>]*><table class="data-table"/);
   assert.match(html, /<td>9\.9\.9<\/td>/);
   assert.match(html, /再建一个提测/);
 });
@@ -382,10 +382,11 @@ test("向导外壳默认停在第一步，项目经理只出现一次，后面�
     ],
   }));
 
-  assert.match(html, /<h1>创建提测<\/h1>/);
+  // 页面标题由 PageShell 出（见 app/(app)/releases/new/page.tsx），向导只出内容。
+  assert.doesNotMatch(html, /<h1/);
   assert.match(html, /三步：选项目 → 检查仓库更新 → 确认提交。/);
   assert.match(html, /<a href="\/projects">返回项目列表<\/a>/);
-  assert.match(html, /<h2>第一步：项目归属<\/h2>/);
+  assert.match(html, /<h2 data-style-anchor="release-new.step-project">第一步：项目归属<\/h2>/);
   assert.equal(html.match(/<option value="manager-1"[^>]*>刘洋<\/option>/g)?.length, 1);
   assert.equal(html.match(/<option value="manager-2"[^>]*>陈浩<\/option>/g)?.length, 1);
   // 还没选项目经理，项目下拉里没有项目；第二步、第三步都还没出现。
