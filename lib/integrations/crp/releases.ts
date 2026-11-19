@@ -8,7 +8,6 @@
  * 3. `ChangeLogMode=false` 时 Tag 由调用方决定，且不能含 `-`、`_`、空格，必须以数字开头。
  */
 
-import { CRP_DEFAULT_ARCHES } from "./config";
 import { CrpBusinessError, CrpInvalidParameterError, responseSnippet } from "./errors";
 import { resolveProjectId } from "./projects";
 import type { CrpTransport } from "./request";
@@ -45,6 +44,13 @@ function assertSubmitInput(input: CrpSubmitReleaseInput): void {
       "投递 Release 需要 projectName、branch、commit 三个非空参数",
     );
   }
+  // 架构集合必须由调用方给（来自提测所属基线）。这里不放默认值：写死一套架构时，
+  // 基线不支持的架构会让 CRP 在 apply 阶段拒掉整批投递，且看不出是哪一步错的（MKACG-912）。
+  if (input.arches.trim() === "") {
+    throw new CrpInvalidParameterError(
+      "投递 Release 必须给架构集合：arches 不能为空，它来自提测所属基线",
+    );
+  }
 }
 
 /** 组装 CRP 收到的请求体。字段名与类型都是 CRP 原生约定：`BranchID` 是字符串、`ProjectID` 是数字。 */
@@ -55,7 +61,7 @@ export function buildNewReleasePayload(
   changeLogMode: boolean,
 ): CrpNewReleasePayload {
   return {
-    Arches: input.arches ?? CRP_DEFAULT_ARCHES,
+    Arches: input.arches,
     BaseTag: null,
     Branch: input.branch,
     BuildID: 0,

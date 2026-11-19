@@ -20,7 +20,7 @@ import test, { after } from "node:test";
 import { POST } from "../app/api/jobs/baseline-sync/route";
 import { listBaselines } from "../lib/baselines";
 import type { CrpBranch } from "../lib/integrations/crp";
-import type { BaselinePackage } from "../lib/integrations/shuttle";
+import type { BaselinePackage, BaselineRepository } from "../lib/integrations/shuttle";
 import {
   BASELINE_PACKAGE_TTL_MS,
   planPackageRefresh,
@@ -84,19 +84,30 @@ function fakeCrp(source: CrpBranch[] | Error) {
   };
 }
 
-function fakeShuttle(source: BaselinePackage[] | Error) {
+/**
+ * 假的 Shuttle 客户端：返回固定的软件包版本与架构列表。
+ *
+ * 架构默认带上 `source`（实测 Shuttle 就会返回它），用来验证同步写库时被去掉。
+ */
+function fakeShuttle(
+  source: BaselinePackage[] | Error,
+  arches: string[] = ["amd64", "source", "sw_64"],
+) {
   const calls: string[] = [];
 
   return {
     calls,
-    async listBaselinePackages(baseline: string): Promise<BaselinePackage[]> {
+    async getBaselineRepository(baseline: string): Promise<BaselineRepository> {
       calls.push(baseline);
 
       if (source instanceof Error) {
         throw source;
       }
 
-      return source;
+      return {
+        info: { reponame: baseline, repotype: "deb", addresses: [], arches },
+        packages: source,
+      };
     },
   };
 }
@@ -296,6 +307,8 @@ test("软件包版本同步：整条基线一次取回，缓存按包名覆盖�
 
   const after = await prisma.baseline.findUnique({ where: { id: created.id } });
   assert.equal(after?.syncedAt?.getTime(), now.getTime());
+  // 架构列表与版本一起来自同一次 repo/info：去掉了 `source`，其余按字母排序。
+  assert.deepEqual(after?.arches, ["amd64", "sw_64"]);
 });
 
 test("软件包版本同步：索引为空算成功、缓存清空（分支还在但交付仓库还没有源码包）", async () => {
@@ -330,6 +343,8 @@ test("软件包版本同步：索引为空算成功、缓存清空（分支还�
 
   const after = await prisma.baseline.findUnique({ where: { id: created.id } });
   assert.equal(after?.syncedAt?.getTime(), now.getTime());
+  // 架构列表与版本一起来自同一次 repo/info：去掉了 `source`，其余按字母排序。
+  assert.deepEqual(after?.arches, ["amd64", "sw_64"]);
 });
 
 test("软件包版本同步失败：缓存与 syncedAt 保持上一次成功的值，状态显示「同步失败」", async () => {
@@ -339,7 +354,13 @@ test("软件包版本同步失败：缓存与 syncedAt 保持上一次成功的�
   });
   assert.notEqual(baseline, null);
 
-  const shuttle = fakeShuttle(new Error("下载软件包索引失败：HTTP 502"));
+  // 失败前把库里已有的架构列表改成可辨认的值：同步失败时它必须原样留着。
+  await prisma.baseline.update({
+    where: { id: baseline!.id },
+    data: { arches: ["amd64"] },
+  });
+
+  const shuttle = fakeShuttle(new Error("下载软件包索引失败：HTTP 502"), ["arm64"]);
   const results = await syncBaselinePackages(
     shuttle,
     [{ id: baseline!.id, name: baseline!.name, syncedAt: baseline!.syncedAt, missingAt: null }],
@@ -365,11 +386,12 @@ test("软件包版本同步失败：缓存与 syncedAt 保持上一次成功的�
 
   const after = await prisma.baseline.findUnique({
     where: { id: baseline!.id },
-    select: { syncedAt: true },
+    select: { syncedAt: true, arches: true },
   });
 
-  // 失败的同步不得把 syncedAt 前移。
+  // 失败的同步不得把 syncedAt 前移，也不能覆盖上一次成功写入的架构列表。
   assert.equal(after?.syncedAt?.getTime(), baseline!.syncedAt?.getTime());
+  assert.deepEqual(after?.arches, ["amd64"]);
 
   const listed = (await listBaselines()).find((item) => item.id === baseline!.id);
   assert.equal(listed?.state, "failed");
@@ -426,6 +448,9 @@ test("完整同步：只刷新被项目选中的基线", async () => {
 
   assert.notEqual(refreshed?.syncedAt, null);
   assert.equal(untouched?.syncedAt, null);
+  // 只刷新被选中的那条：它的架构列表写进来了，没被选中的那条仍是空数组。
+  assert.deepEqual(refreshed?.arches, ["amd64", "sw_64"]);
+  assert.deepEqual(untouched?.arches, []);
 
   const version = await prisma.baselinePackageVersion.findUnique({
     where: {

@@ -35,9 +35,18 @@ GET https://shuttle.uniontech.com/api/shuttle/repo/info?type=deb&reponame=eagle-
     "reponame": "eagle-1071",
     "repotype": "deb",
     "repoarch": {
-      "release":           { "division": false, "dist": "unstable" },
-      "commit":            { "division": false, "dist": "experimental" },
-      "release-candidate": { "division": true,  "dist": "unstable" }
+      "release": {
+        "division": false, "dist": "unstable",
+        "arches": ["i386", "arm64", "amd64", "mips64el", "sw_64", "loongarch64", "source"]
+      },
+      "commit": {
+        "division": false, "dist": "experimental",
+        "arches": ["i386", "amd64", "mips64el", "sw_64", "loongarch64", "arm64"]
+      },
+      "release-candidate": {
+        "division": true, "dist": "unstable",
+        "arches": ["loongarch64", "source", "sw_64", "arm64", "i386", "amd64", "mips64el"]
+      }
     },
     "repoaddr": [
       {
@@ -122,6 +131,27 @@ Version: 5.7.28.2-1
 | `pools.uniontech.com/desktop-professional`（`eagle/1071`，基础系统仓库） | 12 732 749 字节 | 6.05 秒 | 28 736 |
 
 基础系统仓库有 2.8 万个源码包、单次 6 秒，每小时刷新一次每个基线都要付这个代价。当前实现没有把这一层纳入，因为平台登记的软件包都在团队 ppa 侧。**如果 A9 或 A11 需要「构建机看到的全部源」，需要改这里，代价如上表。**
+
+### 2.6 架构列表也在 `repo/info` 里
+
+`repoarch` 的每一项都带一个 `arches` 数组（2026-11-20 实测 `eagle-1071`）：
+
+```
+repoarch["release-candidate"].arches
+= ["loongarch64","source","sw_64","arm64","i386","amd64","mips64el"]
+```
+
+三点要注意：
+
+1. **提测构建走的是 `release-candidate`。** 依据是构建任务的 `action` 字段就是
+   `release-candidate`（见第三节的响应片段），所以架构列表也从这一项取，不取 `release` 或 `commit`。
+2. **列表里有 `source`。** 它不是 CPU 架构，是源码包索引的「架构」，发给 CRP 只会让 apply 失败，
+   使用方要自己去掉。
+3. **名字是 `sw_64`、`loongarch64`，不是 `sw64`、`loong64`。** 这一套名字必须原样发给 CRP，
+   改名会在 apply 阶段被拒；对照实验见 `lib/integrations/crp/FINDINGS.md` 第十二节。
+
+`getBaselineRepository` 把架构列表与软件包版本放在一次调用里返回，两者共用同一次 `repo/info`，
+所以刷新一条基线仍然是 2 次请求。
 
 ## 三、构建任务
 

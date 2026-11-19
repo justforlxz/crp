@@ -33,6 +33,7 @@ import {
   CRP_DEFAULT_BASE_URL,
   CrpBusinessError,
   CrpInvalidParameterError,
+  toCrpArches,
   type CrpClient,
 } from "../integrations/crp";
 import {
@@ -220,7 +221,7 @@ function queryRelease(releaseId: string) {
           key: true,
           name: true,
           workspaceId: true,
-          baseline: { select: { crpBranchId: true, name: true } },
+          baseline: { select: { crpBranchId: true, name: true, arches: true } },
         },
       },
       // 只取当前轮：A17 会把旧轮标成 superseded，那些行不参与本次投递。
@@ -294,6 +295,28 @@ export async function loadUpstreamNames(
         .filter((name) => inside.has(name)),
     ]),
   );
+}
+
+/**
+ * 投递用的架构集合：来自提测所属基线（`baseline.arches`，基线同步从 Shuttle 写入）。
+ *
+ * 基线的架构列表为空时直接失败，不退回任何默认值：写死一套架构时，基线不支持的架构会让
+ * CRP 在 apply 阶段拒掉整批投递，一个构建作业都不起，而平台看不出是哪一步错的（MKACG-912）。
+ * 判错放在投递之前，所以这种失败不会在 CRP 侧留下 Release。
+ */
+function resolveDispatchArches(release: LoadedRelease): string {
+  const arches = toCrpArches(release.project.baseline.arches);
+
+  if (arches === "") {
+    throw new BuildError(
+      `基线「${release.project.baseline.name}」还没有架构列表，无法投递：` +
+        "投递要用的架构来自这条基线在 Shuttle 上的 release-candidate 仓库。" +
+        "请先同步基线（基线列表页的「立即同步」按钮，或等下一次定时同步）再推进提测。",
+      409,
+    );
+  }
+
+  return arches;
 }
 
 /**
@@ -852,6 +875,9 @@ async function dispatchSnapshot(
     throw new BuildError("这一轮快照已经不存在，请刷新后重试。", 409);
   }
 
+  // 架构先在本地取好：基线没有架构列表时当场判错，不发 Release、不把快照留在「投递中」。
+  const arches = resolveDispatchArches(release);
+
   // 投递出去的名字是 CRP 项目名，不是包名。解析要放在抢占之前：登记的 CRP 项目名不合法时
   // 直接失败，不把快照留在「投递中」等抢占超时。
   const crpProjectName = await resolveSnapshotCrpProjectName(snapshot.packageName);
@@ -893,6 +919,7 @@ async function dispatchSnapshot(
       commit: snapshot.commitSha,
       branchId,
       tag: snapshot.releaseVersion,
+      arches,
       changeLogMode: false,
     });
   } catch (error) {
