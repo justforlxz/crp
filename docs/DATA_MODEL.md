@@ -277,6 +277,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | `submittedAt`（`submitted_at`） | timestamptz | NULL | 全部软件包投递完成时间 |
 | `finishedAt`（`finished_at`） | timestamptz | NULL | 提测结束（成功或失败）时间 |
 | `lastPolledAt`（`last_polled_at`） | timestamptz | NULL | 最近一次被构建轮询看到的时间（A14 追加）；轮询按它从旧到新挑活，为空的最先 |
+| `lastAdvancedAt`（`last_advanced_at`） | timestamptz | NULL | 最近一次被构建投递任务推进的时间（MKACG-898 追加）；投递按它从旧到新挑活，为空的最先 |
 | `rollbackOfId`（`rollback_of_id`） | text | NULL | **v2 预留**，本版无流程 |
 | `codeSourceReleaseId`（`code_source_release_id`） | text | NULL | **v2 预留**，本版无流程 |
 | `riskFlag`（`risk_flag`） | boolean | NULL | **v2 预留**，本版无流程 |
@@ -289,6 +290,9 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - `last_polled_at` 只加一列、不加索引：轮询先按 `status`（已有索引）过滤到在跑的少量提测，再排序，
   开销可以忽略；它的作用是让「单轮只处理固定条数」不至于变成「最新投递的永远轮不到」。
   轮询失败也会写这一列（表示这一轮看过它了），否则一条一直失败的提测会占住队首。
+- `last_advanced_at` 与 `last_polled_at` 同一套路：投递任务单轮只推进固定条数，按这一列从旧到新挑活，
+  活跃提测多于上限时各条轮流轮到。推进失败也写这一列（表示这一轮处理过它了），
+  否则一条一直失败的提测会占住队首、把别的提测饿死。同样不加索引，理由相同。
 
 ### 4.13 release_package_snapshot（提测快照）
 
@@ -469,6 +473,17 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 索引：`(release_id, created_at)` 二级索引（按提测看请求时间线）；`snapshot_id` 二级索引（按包看）。
 - 外键：无。`release_id`、`snapshot_id` 故意不加外键，与 `session.active_workspace_id` 同一处理方式：
   这是排查用的旁证，不该被提测记录、快照的清理策略牵住；按值查询已经够用。
+
+**保留策略：留最近 30 天**（MKACG-898 定）。
+
+这张表只追加、没有上限：每次投递与轮询都写几行，放着不管会一直涨。查询场景只有「排查最近几次
+投递为什么失败」，更早的记录没有人看，所以按时间清理而不是归档。
+
+- 期限常量 `CRP_CALL_LOG_RETENTION_DAYS`，清理函数 `pruneCrpCallLogs()`，都在 `lib/build/crpLog.ts`。
+- 由投递定时任务 `runBuildDispatch` 每轮顺带执行一次（`deleteMany` 掉 `created_at` 早于期限的行），
+  不另建定时器、不加归档通道。清理失败只记一行日志，不影响投递。
+- 没有单独的 `created_at` 索引：表被期限约束住规模，每轮一次全表扫描的开销可以忽略。
+  真到了需要优化的规模，先加索引再谈分批删除。
 
 ### 4.21 release_update_record（提测增量更新留痕）
 

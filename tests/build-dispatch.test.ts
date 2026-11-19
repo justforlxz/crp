@@ -21,7 +21,16 @@ import { createServer, type Server } from "node:http";
 import test, { after, before } from "node:test";
 
 import { GET } from "../app/api/releases/[id]/dispatch/route";
-import { advanceRelease, cancelRelease, listCrpCallLogs, loadReleaseDispatch, retryFailedTasks } from "../lib/build";
+import {
+  advanceRelease,
+  cancelRelease,
+  CRP_CALL_LOG_RETENTION_DAYS,
+  listCrpCallLogs,
+  loadReleaseDispatch,
+  pruneCrpCallLogs,
+  retryFailedTasks,
+} from "../lib/build";
+import { runBuildDispatch } from "../lib/jobs/build-dispatch";
 import { prisma } from "../lib/db";
 import { createRelease } from "../lib/releases";
 import { waitForWebhookDeliveries } from "../lib/webhook";
@@ -94,8 +103,13 @@ type FakeCrp = {
   failDelete: Set<number>;
 };
 
-/** 每个测试用一段独立的 ID 区间：Topic、Release、构建任务的 ID 在库里都是唯一的。 */
-let fakeIdBase = 31_000;
+/**
+ * 每个测试用一段独立的 ID 区间：Topic、Release、构建任务的 ID 在库里都是唯一的。
+ *
+ * 起点还要与别的测试文件错开一大段（本文件从 100000 起，每个假 CRP 占 1000）：
+ * `--test-concurrency` 让多个文件同时跑时，两段区间重叠会让唯一约束凭空失败。
+ */
+let fakeIdBase = 100_000;
 
 function newFakeCrp(): FakeCrp {
   const base = fakeIdBase;
@@ -539,7 +553,13 @@ before(async () => {
       name: `${PREFIX}-receiver`,
       url: `http://127.0.0.1:${address.port}/hook`,
       secret: `${PREFIX}-secret`,
-      eventTypes: ["build.failed", "build.succeeded", "build.started", "release.status_synced"],
+      eventTypes: [
+        "build.failed",
+        "build.succeeded",
+        "build.started",
+        "build.claim_failed",
+        "release.status_synced",
+      ],
     },
   });
 
@@ -1274,4 +1294,362 @@ test("投递中断且 CRP 侧没有这条 Release 时，接手会重新投递", 
     select: { status: true },
   });
   assert.equal(snapshot.status, "building");
+});
+
+// ---------------------------------------------------------------------------
+// 后续整理（MKACG-898）：只进不出的状态、认领写库失败、旧轮次认领、定时投递饿死
+// ---------------------------------------------------------------------------
+
+test("Shuttle 任务成功但作业列表为空，超过等待期限后给出失败结论", async () => {
+  const state = newFakeCrp();
+  const network = networkOf(state);
+  const releaseId = await createReleaseWithChain("empty-jobs");
+
+  await advanceRelease(releaseId, { network });
+  await advanceRelease(releaseId, { network });
+
+  // 替身服务返回「任务成功、作业列表为空」这种原本没有出口的形态。
+  const dispatchedA = state.releases.find((item) => item.ProjectName === pkgName("a"));
+  assert.ok(dispatchedA !== undefined);
+  const buildA = state.builds.get(dispatchedA.BuildID);
+  assert.ok(buildA !== undefined);
+  buildA.task = "BUILD_OK";
+  buildA.jobs = [];
+
+  const snapshot = await prisma.releasePackageSnapshot.findFirstOrThrow({
+    where: { releaseId, packageName: pkgName("a") },
+    select: { id: true },
+  });
+
+  // 还在等待期限内时不下结论：这个形态本身要等一下作业列表，不能立刻判失败。
+  await advanceRelease(releaseId, { network });
+
+  const waiting = await prisma.buildTask.findUniqueOrThrow({
+    where: { snapshotId: snapshot.id },
+    select: { status: true, statusReason: true },
+  });
+  assert.equal(waiting.status, "building");
+  assert.equal(waiting.statusReason, null);
+
+  // 把「第一次看到这个构建任务」的时间往前挪过等待期限。
+  await prisma.buildTask.updateMany({
+    where: { snapshotId: snapshot.id },
+    data: { startedAt: new Date(Date.now() - 20 * 60 * 1000) },
+  });
+
+  const result = await advanceRelease(releaseId, { network });
+
+  const task = await prisma.buildTask.findUniqueOrThrow({
+    where: { snapshotId: snapshot.id },
+    select: { status: true, statusReason: true },
+  });
+  assert.equal(task.status, "failed", "不能再永久停在构建中");
+  assert.match(task.statusReason ?? "", /作业/);
+
+  // 上游失败照旧阻断下游：a 之前只投过 a，没有 b、c。
+  assert.equal(result.status, "failed");
+  assert.deepEqual(dispatchOrder(state), [pkgName("a")]);
+});
+
+test("A17 换包后，参数相同但属于旧轮次的 Release 不会被认领", async () => {
+  const state = newFakeCrp();
+  const network = networkOf(state);
+  const releaseId = await createReleaseWithChain("adopt-old-round");
+
+  await advanceRelease(releaseId, { network });
+  await advanceRelease(releaseId, { network });
+
+  const oldSnapshot = await prisma.releasePackageSnapshot.findFirstOrThrow({
+    where: { releaseId, packageName: pkgName("a") },
+    select: {
+      id: true,
+      attempt: true,
+      branch: true,
+      commitSha: true,
+      codeVersion: true,
+      repoVersion: true,
+      releaseVersion: true,
+    },
+  });
+  const oldRelease = state.releases.find((item) => item.ProjectName === pkgName("a"));
+  assert.ok(oldRelease !== undefined);
+
+  // 造出下一轮：参数与旧轮逐字相同，只有轮次加一。
+  const nextSnapshot = await prisma.releasePackageSnapshot.create({
+    data: {
+      releaseId,
+      packageName: pkgName("a"),
+      attempt: oldSnapshot.attempt + 1,
+      branch: oldSnapshot.branch,
+      commitSha: oldSnapshot.commitSha,
+      codeVersion: oldSnapshot.codeVersion,
+      repoVersion: oldSnapshot.repoVersion,
+      releaseVersion: oldSnapshot.releaseVersion,
+      status: "pending",
+    },
+    select: { id: true },
+  });
+
+  await prisma.releasePackageSnapshot.update({
+    where: { id: oldSnapshot.id },
+    data: { supersededById: nextSnapshot.id, supersededAt: new Date() },
+  });
+
+  const before = state.received.filter((item) => item.endsWith("/new_release")).length;
+  const result = await advanceRelease(releaseId, { network });
+
+  assert.equal(result.action, "dispatched");
+  assert.equal(result.packageName, pkgName("a"));
+
+  // 认领被拒：新轮必须自己发一条 Release，不能挂到旧轮的构建上。
+  assert.equal(
+    state.received.filter((item) => item.endsWith("/new_release")).length,
+    before + 1,
+    "新轮要重新投递，不认领旧轮的 Release",
+  );
+
+  const nextRecord = await prisma.releaseRepositoryRecord.findUniqueOrThrow({
+    where: { snapshotId: nextSnapshot.id },
+    select: { crpReleaseId: true },
+  });
+  assert.notEqual(nextRecord.crpReleaseId, String(oldRelease.ID));
+
+  // 旧轮的记录原样保留。
+  const oldRecord = await prisma.releaseRepositoryRecord.findUniqueOrThrow({
+    where: { snapshotId: oldSnapshot.id },
+    select: { crpReleaseId: true },
+  });
+  assert.equal(oldRecord.crpReleaseId, String(oldRelease.ID));
+});
+
+test("认领写库撞唯一约束时发出 build.claim_failed 告警，不只在进程日志里留一行", async () => {
+  const state = newFakeCrp();
+  const network = networkOf(state);
+  const releaseId = await createReleaseWithChain("claim-conflict");
+
+  await advanceRelease(releaseId, { network });
+  await advanceRelease(releaseId, { network });
+
+  const dispatchedA = state.releases.find((item) => item.ProjectName === pkgName("a"));
+  assert.ok(dispatchedA !== undefined);
+
+  // a 成功之后投 b 时，让替身服务把 a 的 Release ID 再返回一次：
+  // 本地 `release_repository_record.crp_release_id` 唯一约束必然冲突。
+  setBuild(state, pkgName("a"), "BUILD_OK", "BUILD_OK");
+  const conflicts = state.received.filter((item) => item.endsWith("/new_release")).length;
+  state.nextReleaseId = dispatchedA.ID;
+
+  let caught: unknown = null;
+
+  try {
+    await advanceRelease(releaseId, { network });
+  } catch (error) {
+    caught = error;
+  }
+
+  assert.ok(caught !== null, "写库失败要让调用方知道，这一轮没有推进成功");
+
+  await waitForWebhookDeliveries();
+
+  const alerts = receivedBodies.filter(
+    (body) =>
+      body.type === "build.claim_failed" &&
+      (body.data as Record<string, unknown> | undefined)?.releaseId === releaseId,
+  );
+
+  assert.equal(alerts.length, 1, "要发一条告警，让这种数据异常能被发现");
+
+  const data = alerts[0]?.data as Record<string, unknown>;
+  assert.equal(data.packageName, pkgName("b"));
+  assert.match(String(data.reason), /crp_release_id|Unique constraint/);
+  assert.ok(!String(data.reason).includes("\n"), "告警正文只留结论，不要把整段调用栈推给外部系统");
+
+  // 冲突之后没有留下半截数据：b 仍然停在「投递中」，下一轮按抢占超时恢复。
+  const snapshotB = await prisma.releasePackageSnapshot.findFirstOrThrow({
+    where: { releaseId, packageName: pkgName("b") },
+    select: { status: true },
+  });
+  assert.equal(snapshotB.status, "dispatching");
+  assert.equal(
+    state.received.filter((item) => item.endsWith("/new_release")).length,
+    conflicts + 1,
+    "b 只发一条 Release：写库失败后不在同一次推进里重发",
+  );
+});
+
+/**
+ * 把库里其它还在跑的提测排到这一轮之后，返回它们的原值。
+ *
+ * 投递挑活是跨工作区的（`lib/jobs/build-dispatch.ts` 的查询不带工作区条件），而种子数据里本来
+ * 就有两条更早创建的活跃提测（`prisma/seed.ts` 的 `pending` 与 `dispatching`）。不排开它们，
+ * 单轮上限的名额会被占满，本用例造的提测根本进不了名单 —— 在跑过 `db:seed` / `db:reset` 的
+ * 库里必然失败。
+ *
+ * 只动挑活用的一列、不改状态：用例结束原样写回，不留下执行顺序依赖，也不影响别的用例。
+ */
+async function deferOtherActiveReleases(
+  created: readonly string[],
+): Promise<Array<{ id: string; lastAdvancedAt: Date | null }>> {
+  const others = await prisma.release.findMany({
+    where: {
+      status: { in: ["pending", "dispatching", "building"] },
+      id: { notIn: [...created] },
+    },
+    select: { id: true, lastAdvancedAt: true },
+  });
+
+  if (others.length > 0) {
+    await prisma.release.updateMany({
+      where: { id: { in: others.map((item) => item.id) } },
+      data: { lastAdvancedAt: new Date() },
+    });
+  }
+
+  return others;
+}
+
+/** 把 `deferOtherActiveReleases` 改过的挑活时间写回原值。 */
+async function restoreAdvancedAt(
+  before: ReadonlyArray<{ id: string; lastAdvancedAt: Date | null }>,
+): Promise<void> {
+  for (const item of before) {
+    await prisma.release.updateMany({
+      where: { id: item.id },
+      data: { lastAdvancedAt: item.lastAdvancedAt },
+    });
+  }
+}
+
+test("定时投递按「最久没被推进」轮转，活跃提测多于单轮上限也不会有人永远排不进", async () => {
+  const state = newFakeCrp();
+  const network = networkOf(state);
+
+  const created: string[] = [];
+
+  for (let index = 0; index < 5; index += 1) {
+    created.push(await createReleaseWithChain(`rotate-${index}`));
+  }
+
+  // 单轮上限设成 2：比在跑的提测少，必须靠轮转才能轮到每一条。
+  const deferred = await deferOtherActiveReleases(created);
+  const rounds: string[][] = [];
+
+  try {
+    for (let round = 0; round < 3; round += 1) {
+      const summary = await runBuildDispatch({ trigger: "schedule", limit: 2, network });
+      rounds.push(summary.items.map((item) => item.releaseId));
+    }
+
+    assert.deepEqual(rounds[0], created.slice(0, 2), "第一轮按创建时间挑最早的两条");
+    assert.deepEqual(rounds[1], created.slice(2, 4), "第二轮挑接下来没被推进过的两条");
+    assert.equal(rounds[2]?.[0], created[4], "第三轮轮到还剩的那条");
+
+    const seen = new Set(rounds.flat());
+
+    for (const releaseId of created) {
+      assert.ok(seen.has(releaseId), "每一条提测都要在有限轮次内被推进一次");
+    }
+
+    const rows = await prisma.release.findMany({
+      where: { id: { in: created } },
+      select: { id: true, crpTopicId: true },
+    });
+
+    for (const row of rows) {
+      assert.notEqual(row.crpTopicId, null, "被推进过的提测要真的建出 Topic");
+    }
+  } finally {
+    await restoreAdvancedAt(deferred);
+  }
+});
+
+test("默认单轮上限（20）下，25 条活跃提测两轮之内全部被推进", async () => {
+  const state = newFakeCrp();
+  const network = networkOf(state);
+
+  const created: string[] = [];
+
+  for (let index = 0; index < 25; index += 1) {
+    created.push(await createReleaseWithChain(`default-limit-${index}`));
+  }
+
+  // 不传 limit：用默认的 20，比活跃提测少 5 条。
+  const deferred = await deferOtherActiveReleases(created);
+
+  try {
+    const first = await runBuildDispatch({ trigger: "schedule", network });
+    const second = await runBuildDispatch({ trigger: "schedule", network });
+
+    const firstRound = first.items.map((item) => item.releaseId);
+    const secondRound = second.items.map((item) => item.releaseId);
+
+    assert.deepEqual(firstRound, created.slice(0, 20), "第一轮推进最早创建的 20 条");
+    assert.deepEqual(
+      secondRound.slice(0, 5),
+      created.slice(20),
+      "第二轮先轮到上一轮没被推进的 5 条",
+    );
+
+    const advancedBy = new Map<string, number>();
+
+    for (const releaseId of firstRound) {
+      advancedBy.set(releaseId, 1);
+    }
+
+    for (const releaseId of secondRound) {
+      advancedBy.set(releaseId, advancedBy.get(releaseId) ?? 2);
+    }
+
+    for (const releaseId of created) {
+      const round = advancedBy.get(releaseId);
+      assert.ok(round !== undefined, `提测 ${releaseId} 两轮之内没有被推进过`);
+      assert.ok(round <= 2, `提测 ${releaseId} 第 ${round} 轮才被推进`);
+    }
+  } finally {
+    await restoreAdvancedAt(deferred);
+  }
+});
+
+test("crp_call_log 按保留期清理，表不会无限增长", async () => {
+  const staleAt = new Date(
+    Date.now() - (CRP_CALL_LOG_RETENTION_DAYS + 1) * 24 * 60 * 60 * 1000,
+  );
+  const freshAt = new Date();
+
+  const stale = await prisma.crpCallLog.create({
+    data: {
+      method: "GET",
+      url: `${CRP_BASE}/retention/stale`,
+      statusCode: 200,
+      durationMs: 1,
+      createdAt: staleAt,
+    },
+    select: { id: true },
+  });
+
+  const fresh = await prisma.crpCallLog.create({
+    data: {
+      method: "GET",
+      url: `${CRP_BASE}/retention/fresh`,
+      statusCode: 200,
+      durationMs: 1,
+      createdAt: freshAt,
+    },
+    select: { id: true },
+  });
+
+  await pruneCrpCallLogs(freshAt);
+
+  assert.equal(
+    await prisma.crpCallLog.count({ where: { id: stale.id } }),
+    0,
+    "超过保留期的记录要被清掉",
+  );
+  assert.equal(
+    await prisma.crpCallLog.count({ where: { id: fresh.id } }),
+    1,
+    "保留期内的记录要留着",
+  );
+
+  await prisma.crpCallLog.deleteMany({ where: { id: fresh.id } });
 });

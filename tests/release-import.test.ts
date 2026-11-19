@@ -106,7 +106,13 @@ type FakeCrp = {
   workflowFails: boolean;
 };
 
-let nextTopicId = 31_000;
+/**
+ * 这个文件自己的假 Topic ID 区间。
+ *
+ * 每个测试文件用一段独有的区间：`--test-concurrency` 让多个文件同时跑时，
+ * 两段区间重叠会让 `release.crp_topic_id` 唯一约束在没有真实原因的情况下失败。
+ */
+let nextTopicId = 200_000;
 let nextReleaseId = 81_000;
 
 function newFakeCrp(): FakeCrp {

@@ -12,7 +12,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { mapShuttleState, summarizeBuild } from "../lib/build/status";
+import {
+  EMPTY_JOB_LIST_GRACE_MS,
+  mapShuttleState,
+  summarizeBuild,
+} from "../lib/build/status";
 
 test("实测见过的成功状态映射为 success", () => {
   for (const state of ["BUILD_OK", "BUILD_SUCCESS", "UPLOAD_OK", "build_ok"]) {
@@ -57,6 +61,47 @@ test("任务说成功但没有任何作业时也算没结论，不冒认成功",
     status: "building",
     reason: null,
   });
+});
+
+test("任务成功但作业列表一直为空时，超过等待期限就判失败，不再永久停在构建中", () => {
+  const observedAt = new Date("2026-11-19T10:00:00Z");
+  const verdict = summarizeBuild({
+    taskState: "BUILD_OK",
+    jobStates: [],
+    waitingSince: new Date(observedAt.getTime() - EMPTY_JOB_LIST_GRACE_MS),
+    observedAt,
+  });
+
+  assert.equal(verdict.status, "failed");
+  assert.match(verdict.reason ?? "", /作业/);
+});
+
+test("任务成功但作业列表为空、还在等待期限内时继续等，不提前判失败", () => {
+  const observedAt = new Date("2026-11-19T10:00:00Z");
+
+  assert.deepEqual(
+    summarizeBuild({
+      taskState: "BUILD_OK",
+      jobStates: [],
+      waitingSince: new Date(observedAt.getTime() - 60_000),
+      observedAt,
+    }),
+    { status: "building", reason: null },
+  );
+});
+
+test("作业还在上报时不受等待期限影响 —— 等待期限只兜「列表一直是空」", () => {
+  const observedAt = new Date("2026-11-19T10:00:00Z");
+
+  assert.deepEqual(
+    summarizeBuild({
+      taskState: "BUILD_OK",
+      jobStates: ["BUILD_OK", "BUILDING"],
+      waitingSince: new Date(observedAt.getTime() - 24 * 60 * 60 * 1000),
+      observedAt,
+    }),
+    { status: "building", reason: null },
+  );
 });
 
 test("只要有一个架构的作业失败，整个包算失败 —— 缺架构的包不能投给下游", () => {

@@ -91,7 +91,7 @@ type FakeState = {
 };
 
 /** 每个测试用一段独立的 ID 区间：Topic、Release、构建任务的 ID 在库里都是唯一的。 */
-let fakeIdBase = 71_000;
+let fakeIdBase = 400_000;
 
 function newFakeState(topicId: number): FakeState {
   const base = fakeIdBase;

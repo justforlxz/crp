@@ -69,13 +69,40 @@ export type BuildSnapshot = {
   taskState: string;
   /** 各架构作业的状态，例如 `["BUILD_OK", "FAILED"]`。 */
   jobStates: readonly string[];
+  /**
+   * 第一次看到这个构建任务的时间，用于「任务成功、作业列表为空」的兜底判定。
+   * 不传表示不做兜底（纯状态映射）；生产代码传 `build_task.started_at`。
+   */
+  waitingSince?: Date | null;
+  /** 本次查询的时间。与 `waitingSince` 一起算出已经等了多久。 */
+  observedAt?: Date;
 };
+
+/**
+ * 「任务成功、作业列表一直为空」时最多再等多久。
+ *
+ * 这种返回形态原本没有任何出口：任务说成功、作业一条都没有，代码就永远判「构建中」，
+ * 整条提测卡在那里。作业列表迟迟不出现意味着 CRP 侧没有产出这个包的产物，
+ * 所以等过这个期限就判失败（下游被阻断），不能冒认成功——那会让下游基于一个不存在的产物构建。
+ *
+ * 期限从第一次看到构建任务算起，明显大于一次 Shuttle 状态同步的延迟。
+ */
+export const EMPTY_JOB_LIST_GRACE_MS = 15 * 60 * 1000;
 
 /** 汇总后的结论。`reason` 只在失败或取消时给人看，成功与进行中为空。 */
 export type BuildVerdict = {
   status: BuildStateName;
   reason: string | null;
 };
+
+/** 已经等了多久：只有给了起点与当前时间、且超过期限才算「等太久」。 */
+function waitedTooLong(snapshot: BuildSnapshot): boolean {
+  if (snapshot.waitingSince == null || snapshot.observedAt == null) {
+    return false;
+  }
+
+  return snapshot.observedAt.getTime() - snapshot.waitingSince.getTime() >= EMPTY_JOB_LIST_GRACE_MS;
+}
 
 /**
  * 一个构建任务的结论。
@@ -110,6 +137,16 @@ export function summarizeBuild(snapshot: BuildSnapshot): BuildVerdict {
   if (taskState === "success") {
     if (jobStates.length > 0 && jobStates.every((state) => state === "success")) {
       return { status: "success", reason: null };
+    }
+
+    // 任务说成功、作业一条都没报：给一段等待期，过了就判失败（没有产物，下游不能用）。
+    if (jobStates.length === 0 && waitedTooLong(snapshot)) {
+      return {
+        status: "failed",
+        reason: `Shuttle 任务已成功，但 ${Math.round(
+          EMPTY_JOB_LIST_GRACE_MS / 60_000,
+        )} 分钟内没有任何架构的作业上报，构建失败`,
+      };
     }
 
     // 任务说成功、作业还没报完：继续等，不下结论。

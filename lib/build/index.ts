@@ -40,7 +40,9 @@ export {
 
 export {
   createCrpCallRecorder,
+  CRP_CALL_LOG_RETENTION_DAYS,
   listCrpCallLogs,
+  pruneCrpCallLogs,
   type CrpCallLogRow,
   type CrpCallRecorder,
 } from "./crpLog";

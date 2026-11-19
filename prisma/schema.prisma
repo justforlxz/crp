@@ -428,6 +428,14 @@ model Release {
   /// 它表示「这一轮看过它了」，否则一条一直失败的提测会占住队首把别的提测饿死。
   lastPolledAt DateTime? @map("last_polled_at") @db.Timestamptz(3)
 
+  /// 最近一次被构建投递任务推进的时间（MKACG-898 追加）。
+  ///
+  /// 投递任务按这一列从旧到新挑活（为空的最先），单轮只推进固定条数。没有这一列时
+  /// 只能按创建时间取最早的 N 条：活跃提测多于上限时，后创建的一直排不进队首，
+  /// 长期停在「待投递」、连 Topic 都建不出来（A14 功能检测在 61 条活跃提测下实测复现过）。
+  /// 推进失败也写这一列：它表示「这一轮处理过它了」，否则一条一直失败的提测会占住队首。
+  lastAdvancedAt DateTime? @map("last_advanced_at") @db.Timestamptz(3)
+
   // 第二版预留（回退与复盘），本版只建字段，不写任何流程，也不建外键。
   /// v2 预留：被回退的那次提测 ID。
   rollbackOfId        String? @map("rollback_of_id")
