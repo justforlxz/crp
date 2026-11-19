@@ -17,6 +17,7 @@ import {
   findReleaseProjectRef,
   parseReleaseInput,
   ReleaseError,
+  releaseErrorCode,
   type ReleaseInput,
 } from "@/lib/releases";
 
@@ -95,11 +96,7 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     if (error instanceof ReleaseError) {
-      return errorJson(
-        error.status,
-        error.status === 409 ? "conflict" : "invalid_payload",
-        error.message,
-      );
+      return errorJson(error.status, releaseErrorCode(error), error.message);
     }
 
     console.error("[POST /api/releases] 创建提测失败", error);

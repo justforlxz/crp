@@ -299,7 +299,7 @@ Authorization: Bearer <SYNC_JOB_TOKEN>
 | `404` | `project_not_found` | 项目不存在 |
 | `404` | `workspace_not_found` | 账号不属于项目所在的工作区 |
 | `409` | `conflict` | 阻断条件成立，或同一项目里已有同版本号的提测记录 |
-| `502` | `invalid_payload` | 读 Gerrit 失败（凭据不对、仓库或提交不存在），消息里指出是哪个包 |
+| `502` | `upstream_unavailable` | 上游读不出来（Gerrit 拒凭据、仓库或提交不存在、changelog 读不到、超时），消息里指出是哪个包；等会儿重试可能就好了，不是请求参数写错 |
 | `500` | `internal_error` | 数据库写入失败，详情看服务端日志 |
 
 ### 示例

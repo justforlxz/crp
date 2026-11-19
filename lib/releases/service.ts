@@ -44,6 +44,24 @@ export class ReleaseError extends Error {
   }
 }
 
+/**
+ * `ReleaseError` 翻成接口的 `error.code`。
+ *
+ * 409 是「现在不能建」，502 是「上游读不出来」（Gerrit 拒绝凭据、读不到 changelog、超时），
+ * 其余算请求本身不合法。502 单独给一个码，调用方才能分清「等会儿重试」与「改自己的参数」。
+ */
+export function releaseErrorCode(error: { status: number }): string {
+  if (error.status === 409) {
+    return "conflict";
+  }
+
+  if (error.status === 502) {
+    return "upstream_unavailable";
+  }
+
+  return "invalid_payload";
+}
+
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }
@@ -320,6 +338,10 @@ function assertPackageSetMatches(
  *
  * 顺序用 `readiness.order`（上游在前），它同时决定快照的插入顺序，页面与 A12 都读这一份。
  * 代码版本不采信请求体：快照是审计记录，客户端传什么就存什么等于把审计结论交给调用方。
+ *
+ * 包与包之间彼此独立，一起读：逐个 `await` 会让提交路径变成「包数 × 两次往返」。
+ * 报错文案仍然带包名，并且按 `readiness.order` 取第一个失败 —— 同时有多个包读不到时，
+ * 报的还是投递顺序上最靠前的那个，与逐个读时一致。
  */
 async function collectSnapshots(
   project: ReleaseProjectDetail,
@@ -328,39 +350,50 @@ async function collectSnapshots(
 ): Promise<SnapshotPlan[]> {
   const packageByName = new Map(project.packages.map((item) => [item.packageName, item]));
   const submittedByName = new Map(input.packages.map((item) => [item.packageName, item]));
-  const snapshots: SnapshotPlan[] = [];
 
-  for (const packageName of project.readiness.order) {
-    const pkg = packageByName.get(packageName);
-    const submitted = submittedByName.get(packageName);
+  const results = await Promise.all(
+    project.readiness.order.map(async (packageName) => {
+      const pkg = packageByName.get(packageName);
+      const submitted = submittedByName.get(packageName);
 
-    if (pkg === undefined || submitted === undefined) {
-      // 前面已经按包名比对过，走不到这里；真走到了说明清单在两次读取之间变了。
-      throw new ReleaseError(`软件包「${packageName}」的清单状态已变化，请刷新后重试。`, 409);
+      if (pkg === undefined || submitted === undefined) {
+        // 前面已经按包名比对过，走不到这里；真走到了说明清单在两次读取之间变了。
+        return {
+          ok: false as const,
+          error: new ReleaseError(`软件包「${packageName}」的清单状态已变化，请刷新后重试。`, 409),
+        };
+      }
+
+      let codeVersion: string;
+
+      try {
+        codeVersion = await reader.readCodeVersion(pkg.repoPath, submitted.commitSha);
+      } catch (error) {
+        return { ok: false as const, error: toReleaseError(error, packageName) };
+      }
+
+      return {
+        ok: true as const,
+        snapshot: buildSnapshotPlan({
+          packageName,
+          branch: submitted.branch,
+          commitSha: submitted.commitSha,
+          codeVersion,
+          repoVersion: await getBaselineVersion(project.baseline.id, packageName),
+          customTag: submitted.customTag,
+          lastSubmittedCommit: pkg.lastSubmittedCommit,
+        }),
+      };
+    }),
+  );
+
+  for (const result of results) {
+    if (!result.ok) {
+      throw result.error;
     }
-
-    let codeVersion: string;
-
-    try {
-      codeVersion = await reader.readCodeVersion(pkg.repoPath, submitted.commitSha);
-    } catch (error) {
-      throw toReleaseError(error, packageName);
-    }
-
-    snapshots.push(
-      buildSnapshotPlan({
-        packageName,
-        branch: submitted.branch,
-        commitSha: submitted.commitSha,
-        codeVersion,
-        repoVersion: await getBaselineVersion(project.baseline.id, packageName),
-        customTag: submitted.customTag,
-        lastSubmittedCommit: pkg.lastSubmittedCommit,
-      }),
-    );
   }
 
-  return snapshots;
+  return results.flatMap((result) => (result.ok ? [result.snapshot] : []));
 }
 
 /**

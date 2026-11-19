@@ -34,8 +34,6 @@ export type ReleaseReadiness = {
   blockers: ReleaseBlocker[];
   /** 上游在前的投递顺序；有环时环上的包按名字附在末尾，不能当投递顺序用。 */
   order: string[];
-  /** 清单内的第一条依赖环（首尾同名）；没有环为 `null`。 */
-  cycle: string[] | null;
   /** 清单里的软件包数。 */
   packageCount: number;
   /** 清单内部的依赖边数。 */
@@ -86,7 +84,6 @@ export function evaluateReleaseReadiness(input: ReleaseReadinessInput): ReleaseR
     ready: blockers.length === 0,
     blockers,
     order: view.order,
-    cycle: view.cycle,
     packageCount: view.count,
     dependencyCount: view.dependencyCount,
   };

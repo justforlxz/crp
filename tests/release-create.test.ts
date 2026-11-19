@@ -21,7 +21,8 @@ import test, { after, before } from "node:test";
 
 import { POST } from "../app/api/releases/route";
 import { prisma } from "../lib/db";
-import { createRelease, ReleaseError } from "../lib/releases";
+import { GerritError } from "../lib/integrations/gerrit";
+import { createRelease, ReleaseError, releaseErrorCode } from "../lib/releases";
 
 const PREFIX = "zz885";
 const WORKSPACE_SLUG = `${PREFIX}-workspace`;
@@ -601,4 +602,66 @@ test("项目不存在时返回 404，不进入权限判定", async () => {
   assert.equal(response.status, 404);
   const body = (await response.json()) as { error: { code: string } };
   assert.equal(body.error.code, "project_not_found");
+});
+
+// ---------------------------------------------------------------------------
+// 逐包读取的并发与报错
+// ---------------------------------------------------------------------------
+
+test("逐包读代码版本是同时发出的，不是一个个等（三层依赖只等一轮）", async () => {
+  let active = 0;
+  let maxActive = 0;
+
+  const slowReader = {
+    async readCodeVersion(_repoPath: string, commitSha: string): Promise<string> {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      active -= 1;
+      return `${commitSha.slice(0, 7)}-1`;
+    },
+  };
+
+  const created = await createRelease(releaseInput({ version: "25.3.0" }), {
+    createdById: fixture.userId,
+    reader: slowReader,
+  });
+
+  // 三个包同时在读：串行时这个值只会是 1。
+  assert.equal(maxActive, 3);
+  // 并发读完之后仍按拓扑顺序落库，顺序不受完成先后影响。
+  assert.deepEqual(created.order, [pkgName("a"), pkgName("b"), pkgName("c")]);
+});
+
+test("读不到代码版本时报错文案带包名，多个包同时失败时报投递顺序上最靠前的那一个", async () => {
+  const failingReader = {
+    async readCodeVersion(repoPath: string): Promise<string> {
+      // 最靠前的包读得最慢，最后一个包最快失败：报错仍要落在 a 上，与逐个读时一致。
+      const delay = repoPath.endsWith("/a") ? 40 : repoPath.endsWith("/b") ? 20 : 1;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      throw new GerritError("Gerrit 未接受本次请求的凭据：/a/projects 返回 302。");
+    },
+  };
+
+  await assert.rejects(
+    createRelease(releaseInput({ version: "25.3.1" }), {
+      createdById: fixture.userId,
+      reader: failingReader,
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof ReleaseError);
+      assert.equal(error.status, 502);
+      assert.match(error.message, new RegExp(`读取「${PREFIX}-a」的代码版本失败`));
+      return true;
+    },
+  );
+
+  // 读不到代码版本时一条提测都不落库。
+  assert.equal(await prisma.release.count({ where: { version: "25.3.1" } }), 0);
+});
+
+test("上游不可用、冲突、请求参数不合法分别给出不同的错误码", () => {
+  assert.equal(releaseErrorCode(new ReleaseError("读不到 Gerrit", 502)), "upstream_unavailable");
+  assert.equal(releaseErrorCode(new ReleaseError("现在不能建", 409)), "conflict");
+  assert.equal(releaseErrorCode(new ReleaseError("清单不一致", 400)), "invalid_payload");
 });
