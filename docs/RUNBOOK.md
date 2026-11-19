@@ -172,14 +172,52 @@ curl -fsS -X POST -H "Authorization: Bearer $SYNC_JOB_TOKEN" \
 5. **基线**（`/baselines`）：确认项目选中的基线「已同步」。未同步会让创建提测被 409 挡住。
 6. **Webhook**（`/webhooks`，可选）：填端点地址与订阅事件，签名方式见 `docs/WEBHOOK.md`。
 
-### 软件包登记的硬规则（最容易踩）
+### 两个名字：`name` 与 `crpProjectName`
 
-投递 Release 时，平台要用**软件包名**去 CRP 查 `ProjectID`，而 CRP 只认名字**完全相等**的那一条（`lib/integrations/crp/projects.ts` 的 `resolveProjectId`）。所以：
+平台里一个软件包有两个名字，**它们不是一回事，必须分开填**：
 
-- **包名必须与 CRP 的项目名逐字相同**。例如 `deepin-kde/kwin` 在 CRP 里的项目名是 `v25_kwin`，包名就得是 `v25_kwin`，`repoPath` 仍填 `deepin-kde/kwin`。
-- 查 CRP 项目名的办法：`POST /api/project`（或 CRP 页面的项目管理）按仓库地址或名字搜，认 `RepoUrl` 那一栏是不是你要的仓库。
-- **包名不允许下划线**（`lib/packages/validation.ts` 的 `NAME_PATTERN`），而 CRP 的 `v25_*` 系列项目名都带下划线 —— 这类仓库现在**登记不进来也投不出去**，见第十一节缺陷 1。
-- 名字相同时要看清 `RepoUrl`：例如 CRP 里同时有 `wayland`（`base/wayland`）与 `v25_wayland`（`deepin-kde/wayland`），按名字精确匹配会命中前者，构建成功但打的是**另一个仓库**，见第十一节缺陷 2。
+| 字段 | 是什么 | 用在哪 | 规则 |
+| --- | --- | --- | --- |
+| `name` | Debian 源码包名，例如 `kwin` | `debian/changelog` 解析、基线软件包索引、提测快照 | 小写字母或数字开头，只允许小写字母、数字与 `+` `-` `.`；**不许下划线** |
+| `crpProjectName` | 这个包在 CRP 里的项目名，例如 `v25_kwin` | 投递 Release 时按它查 CRP 的 `ProjectID`；从 CRP 导入提测时按它落回本地软件包 | 去空白后非空、不含空白字符、不超过 100 个字符；**允许下划线** |
+
+`crpProjectName` 留空表示「与包名相同」，行为与新增这一列之前完全一样。
+
+两者必须分开的原因：CRP 的项目名普遍带 `v25_` 前缀，而 Debian 包名不允许下划线。把它们当成同一个名字写，
+要么登记被拒（`name 格式不对`），要么投到同名的另一个旧项目上（构建成功但打错仓库）。
+
+#### 怎么查到正确的 CRP 项目名
+
+1. 打开 CRP 的项目管理页，按仓库名搜；或直接调接口（`branchID` 是交付分支 ID，`eagle-1071` 是 108）：
+
+   ```bash
+   curl -sS -X POST https://crp.uniontech.com/api/project      -H "Authorization: Bearer $CRP_JWT" -H "Content-Type: application/json"      -d '{"page":0,"perPage":0,"projectGroupID":0,"newCommit":false,"archived":false,"branchID":108,"name":"kwin"}'
+   ```
+
+2. 结果里挑**名字完全相等**的那一条，抄它的 `Name`（填进 `crpProjectName`）并核对 `RepoUrl` 是不是你要的仓库。
+   名字是模糊匹配的，`kwin` 会同时返回 `dde-kwin`、`kwindowsystem`、`kwin-qtrebuild` 等，**不能拿第一条就用**。
+
+`eagle-1071`（分支 108）上实测的例子：
+
+| 包名 `name` | 仓库 `repoPath` | CRP 项目名 `crpProjectName` | CRP 项目 ID | CRP 的 `RepoUrl` |
+| --- | --- | --- | --- | --- |
+| `kwin` | `deepin-kde/kwin` | `v25_kwin` | 3251 | `ssh://gerrit.uniontech.com:29418/deepin-kde/kwin` |
+| `wayland` | `deepin-kde/wayland` | `v25_wayland` | 3040 | `ssh://gerrit.uniontech.com:29418/deepin-kde/wayland` |
+| `kwindowsystem` | `deepin-kde/kwindowsystem` | `v25_kwindowsystem` | 3049 | `ssh://gerrit.uniontech.com:29418/deepin-kde/kwindowsystem` |
+
+**同一个 CRP 项目名在 `eagle-1071`(108)、`snipe-2500u1`(123)、`snipe-2500u2`(128) 上完全一样**，
+所以这一列只需要登记一份，不需要按基线分开存。
+
+#### 登记示例
+
+```bash
+curl -fsS -X POST http://127.0.0.1:3000/api/packages \
+  -H "Authorization: Bearer $PACKAGE_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"kwin","crpProjectName":"v25_kwin","repoPath":"deepin-kde/kwin","defaultBranch":"develop/snipe"}'
+```
+
+注意 `wayland` 这个名字在 CRP 上还有两个旧项目（`wayland` 与 `deepin-wayland`，都指向 `base/wayland`）。
+只填包名不填 `crpProjectName` 就会命中它们，构建能成功但打的是 `base/wayland`。
 
 ---
 
@@ -399,6 +437,23 @@ sudo chown -R "$(id -u):$(id -g)" .next next-env.d.ts
 - 任务状态成功但作业列表一直为空，等满 15 分钟后平台判失败（没有产物不能给下游用）；
 - 需要人工确认构建到底在不在跑，去 Shuttle 按 BuildID 看。
 
+**先按 BuildID 到 Shuttle 看任务状态，不要只看页面。** 2026-11-19 的演练撞到过两种情况，页面都会一直显示「构建中」：
+
+| Shuttle 任务状态 | 含义 | 平台当前的处理 |
+| --- | --- | --- |
+| `APPLYING` → `APPLY_FAILED` | 申请把这次提测应用到仓库这一步就失败了，一个构建作业都没起来 | **当成「还在构建」**，提测永远停在构建中，下游永不被阻断 |
+| `UPLOAD_FAILED` / `UPLOAD_GIVEUP` | 构建失败 | 判失败，正常阻断下游 |
+
+`APPLY_FAILED` 的实测原因是**投递时带了这条交付分支不支持的架构**：平台固定发
+`amd64;mips64el;arm64;sw64;loong64`（`lib/integrations/crp/config.ts` 的 `CRP_DEFAULT_ARCHES`），
+而 `eagle-1071` 只支持 `amd64`、`i386`、`arm64`。同一提交、同一版本号：
+
+- 带 5 个架构 → `APPLY_FAILED`，`pkgver` 为空、作业列表为空；
+- 只带 `amd64;arm64` → apply 通过，`pkgver` 变成 `2:1.21.0.10-1`，作业排队。
+
+当前版本没有配置架构列表的入口（恒量与请求体都没有对应字段），遇到 `APPLY_FAILED` 只能
+到 Shuttle 上看状态、人工把这条提测取消，等缺陷单修完再演练。见第十一节。
+
 ---
 
 ## 九、日常运维
@@ -435,32 +490,36 @@ sudo chown -R "$(id -u):$(id -g)" .next next-env.d.ts
 
 ## 十一、已知缺陷与限制
 
-以下两条是 2026-11-19 的全链路验收中发现并已上报 PL 的真实缺陷，**不在本节点修复**，等缺陷单处理完再继续演练。
+### 缺陷 A：投递固定写死 5 个架构，交付分支不支持的架构会让 apply 直接失败
 
-### 缺陷 1：包名不允许下划线，而 CRP 项目名普遍带 `v25_` 前缀
+- 现象：`POST /new_release` 里 `Arches` 恒为 `amd64;mips64el;arm64;sw64;loong64`
+  （`lib/integrations/crp/releases.ts:58` 用的是 `CRP_DEFAULT_ARCHES`）。`eagle-1071` 只支持
+  `amd64`、`i386`、`arm64`，多出来的 `mips64el`、`sw64`、`loong64` 让 CRP 在 apply 阶段就失败。
+- 证据：同一提交（`deepin-kde/wayland` `develop/eagle` `587bde6b`）、同一版本号（`2:1.21.0.10`）：
 
-- 现象：给 `deepin-kde/kwin` 登记软件包时，若包名写 CRP 的项目名 `v25_kwin`，`POST /api/packages` 返回
-  `400 invalid_payload`：`name 格式不对（v25_kwin）。源码包名用小写字母、数字与 + - . 组成`。
-- 若包名只用 `kwin`，投递时 `resolveProjectId` 在交付分支 108 上找不到名字完全等于 `kwin` 的项目
-  （CRP 返回的近似名字有 `dde-kwin`、`kwindowsystem`、`kwin-qtrebuild` 等），投递被拒。
-- 定位：`lib/packages/validation.ts:31` 的 `NAME_PATTERN = /^[a-z0-9][a-z0-9+.-]*$/` 不允许 `_`；
-  `lib/integrations/crp/projects.ts` 的 `resolveProjectId` 只接受名字完全相等。
-- 影响：`deepin-kde/kwin`、`deepin-kde/wayland` 这类仓库的包在全链路上投不出去。
+  | 请求里的 `Arches` | CRP `BuildState` | Shuttle 任务 | 构建作业 |
+  | --- | --- | --- | --- |
+  | `amd64;mips64el;arm64;sw64;loong64` | `APPLY_FAILED` | 600315 `APPLY_FAILED`，`pkgver` 空 | 空 |
+  | `amd64;arm64` | 通过 | 600317，`pkgver=2:1.21.0.10-1` | `amd64:WAIT, arm64:WAIT` |
 
-### 缺陷 2：软件包与 CRP 项目之间只有「名字相等」这一条联系
+- 影响：只要交付分支不支持这 5 个架构里的任何一个，这条提测的每个包都会在 apply 阶段失败。
+- 当前没有办法在配置里绕开：`CRP_DEFAULT_ARCHES` 是常量，`CrpSubmitReleaseInput.arches` 没有供
+  调用方填写的入口，`.env` 里也没有对应变量。
 
-- 现象：CRP 交付分支 108 上有三个与 wayland 相关的项目：
+### 缺陷 B：未识别的终态被当成「构建中」，提测会永久卡住
 
-  | CRP 项目名 | 仓库地址 | 能否作为包名 |
-  | --- | --- | --- |
-  | `wayland` | `base/wayland` | 能 |
-  | `deepin-wayland` | `base/wayland` | 能 |
-  | `v25_wayland` | `deepin-kde/wayland` | 不能（下划线） |
+- 现象：`lib/build/status.ts` 的 `mapShuttleState` 只认 `UPLOAD_FAILED`、`UPLOAD_GIVEUP`、
+  `FAILED` 等几个失败值，`APPLY_FAILED` 不在其中，被归成「还在构建」。而「任务成功但作业为空」
+  的那条 15 分钟兜底只在**任务状态为成功**时才生效，`APPLY_FAILED` 走不到。
+- 证据：本轮演练里 Shuttle 任务 600315 从 `02:11:59` 起就是 `APPLY_FAILED`，平台连续 40 分钟
+  把这条提测报成 `building`、把 `wayland` 报成 `building`，`kwin` 一直停在「待投递」。
+- 影响：CRP 侧已经失败，平台却认为还在构建，提测永远不结束、下游永不被阻断，页面只能靠人盯着 Shuttle 才能发现。
 
-  按名字 `wayland` 投递会命中第一个项目，构建会成功，但打的是 `base/wayland`，与本平台登记的
-  `repoPath`（`deepin-kde/wayland`）**不是同一个仓库**。`Package.repoPath` 与 CRP 的 `RepoUrl`
-  之间没有任何对应关系，平台也无从校验。
-- 影响：投错仓库不会报错，问题要等到装包才发现。
+**已修复**：2026-11-19 的全链路验收发现「软件包名与 CRP 项目名不是一个名字，投递与导入都对不上」，
+由 MKACG-910 修复（`Package.crpProjectName` 字段 + `lib/packages/crpProject.ts` 统一解析），
+登记方式见本文第四节。
+
+下面列的是仍然存在的限制。
 
 ### 其它限制
 

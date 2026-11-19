@@ -44,21 +44,33 @@ const WORKSPACE_SLUG = "desktop-core";
 /** 签发会话用的种子账号。 */
 const SESSION_EMAIL = "admin@uniontech.com";
 /**
- * 软件包的 CRP 项目名与 Gerrit 仓库路径。
+ * 演练用的三个软件包：Debian 源码包名、CRP 项目名、Gerrit 仓库路径。
  *
- * 包名必须与 CRP 的项目名逐字相同：投递时平台按包名去 CRP 查 ProjectID，只接受完全一致的
- * 名字（见 `lib/integrations/crp/projects.ts` 的 `resolveProjectId`）。见 RUNBOOK 的「软件包登记」。
+ * 两个名字各管一边，不能混：`name` 是 Debian 源码包名（不许下划线），
+ * `crpProjectName` 是投递时去 CRP 查 `ProjectID` 用的名字（允许下划线）。
+ * 这里写死的 CRP 项目名是用 `POST /api/project`（`branchID=108`）在 `eagle-1071` 上实测得到的。
  */
 const PACKAGES = [
-  { name: "v25_wayland", repoPath: "deepin-kde/wayland", preferredBranch: "develop/eagle" },
-  { name: "v25_kwin", repoPath: "deepin-kde/kwin", preferredBranch: "develop/snipe" },
+  {
+    name: "wayland",
+    crpProjectName: "v25_wayland",
+    repoPath: "deepin-kde/wayland",
+    preferredBranch: "develop/eagle",
+  },
+  {
+    name: "kwin",
+    crpProjectName: "v25_kwin",
+    repoPath: "deepin-kde/kwin",
+    preferredBranch: "develop/snipe",
+  },
 ] as const;
 /** `kwin` 的上游是 `wayland`。 */
-const UPSTREAM = "v25_wayland";
-const DOWNSTREAM = "v25_kwin";
+const UPSTREAM = "wayland";
+const DOWNSTREAM = "kwin";
 /** A17 演练里补进来的第三个包。 */
 const APPEND_PACKAGE = {
-  name: "v25_kwindowsystem",
+  name: "kwindowsystem",
+  crpProjectName: "v25_kwindowsystem",
   repoPath: "deepin-kde/kwindowsystem",
   preferredBranch: "develop/eagle",
 } as const;
@@ -324,6 +336,8 @@ async function createManagerAndProject(
 
 type PackageRef = {
   name: string;
+  /** 投递时去 CRP 查 ProjectID 用的名字；与包名不同（CRP 侧带下划线）。 */
+  crpProjectName: string;
   id: string;
   repoPath: string;
   branch: string;
@@ -370,10 +384,15 @@ async function registerPackages(
     const head = await readHead(reader, item.repoPath, item.preferredBranch);
     heads.set(item.name, head);
     log(
-      `${item.name} ← ${item.repoPath} @ ${head.branch} ${head.headSha.slice(0, 12)}` +
-        `（代码版本 ${head.codeVersion}）`,
+      `${item.name}（CRP 项目 ${item.crpProjectName}）← ${item.repoPath} @ ${head.branch} ` +
+        `${head.headSha.slice(0, 12)}（代码版本 ${head.codeVersion}）`,
     );
-    bodies.push({ name: item.name, repoPath: item.repoPath, defaultBranch: head.branch });
+    bodies.push({
+      name: item.name,
+      crpProjectName: item.crpProjectName,
+      repoPath: item.repoPath,
+      defaultBranch: head.branch,
+    });
   }
 
   const reply = await call({
@@ -402,6 +421,7 @@ async function registerPackages(
     const head = heads.get(item.name)!;
     packages.push({
       name: item.name,
+      crpProjectName: item.crpProjectName,
       id: row.id,
       repoPath: item.repoPath,
       branch: head.branch,
@@ -658,7 +678,12 @@ async function drillA17(
       method: "POST",
       token: env.packageToken,
       body: [
-        { name: APPEND_PACKAGE.name, repoPath: APPEND_PACKAGE.repoPath, defaultBranch: head.branch },
+        {
+          name: APPEND_PACKAGE.name,
+          crpProjectName: APPEND_PACKAGE.crpProjectName,
+          repoPath: APPEND_PACKAGE.repoPath,
+          defaultBranch: head.branch,
+        },
       ],
     }),
     "POST /api/packages",
@@ -670,7 +695,10 @@ async function drillA17(
   });
   expect(appended !== null, `库里读不到 ${APPEND_PACKAGE.name}`);
   await addProjectSoftware({ projectId, packageId: appended.id, trackedBranch: head.branch });
-  log(`清单新增：${APPEND_PACKAGE.name} @ ${head.branch} ${head.headSha.slice(0, 12)}`);
+  log(
+    `清单新增：${APPEND_PACKAGE.name}（CRP 项目 ${APPEND_PACKAGE.crpProjectName}）` +
+      `@ ${head.branch} ${head.headSha.slice(0, 12)}`,
+  );
 
   // 换掉 wayland 的 Commit：取同一分支上的另一条真实提交。
   const wayland = await readHead(reader, "deepin-kde/wayland", "develop/eagle");
