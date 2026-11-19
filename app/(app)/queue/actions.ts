@@ -6,6 +6,9 @@
  * 「立即轮询」调的就是定时任务入口用的那个 `runBuildPoll()`，没有第二份轮询逻辑。
  * 结果通过查询参数带回页面：这里没有表单状态，跳一下最简单。
  *
+ * 提示文本由 `./messages.ts` 生成：页面只给归类后的一句话，报错明细留在服务端日志 ——
+ * 异常原文里可能有表名、约束名、SQL 片段与接口地址。
+ *
  * 手动刷新仍然是服务端写入，不是前端轮询（MUST NOT 用前端轮询驱动状态写入）：
  * 点了按钮才写一次，页面本身依旧只读库。
  */
@@ -15,6 +18,8 @@ import { redirect } from "next/navigation";
 
 import { requireRole } from "@/lib/auth/server";
 import { runBuildPoll } from "@/lib/build";
+
+import { reportItemFailures, reportPollCrash } from "./messages";
 
 /** 回到队列页，并带上工作区：多工作区账号点完按钮不该被甩回会话里记住的另一个工作区。 */
 function back(workspaceSlug: string, notice: string | null, error: string | null): never {
@@ -62,7 +67,7 @@ export async function refreshQueueAction(workspaceSlug: string): Promise<void> {
   try {
     summary = await runBuildPoll({ trigger: "manual" });
   } catch (error) {
-    back(workspaceSlug, null, `轮询失败：${error instanceof Error ? error.message : String(error)}`);
+    back(workspaceSlug, null, reportPollCrash(error));
   }
 
   revalidatePath("/queue");
@@ -70,13 +75,7 @@ export async function refreshQueueAction(workspaceSlug: string): Promise<void> {
   const failed = summary.items.filter((item) => item.error !== null);
 
   if (failed.length > 0) {
-    back(
-      workspaceSlug,
-      null,
-      `部分提测轮询失败，状态已保持原样：${failed
-        .map((item) => `${item.version}（${item.error ?? "原因未知"}）`)
-        .join("；")}`,
-    );
+    back(workspaceSlug, null, reportItemFailures(failed));
   }
 
   back(workspaceSlug, describe(summary), null);

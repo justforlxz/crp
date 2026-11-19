@@ -11,6 +11,10 @@
  * | `poll` | 每轮每条提测一条 | 轮询本身，失败时 `result` 是错误摘要 |
  * | `status` | 某个包的状态变了才写 | `result` 是「旧阶段 → 新阶段」，状态没变不写，避免流水被刷屏 |
  * | `progress` | 每轮每条提测一条 | `crp_work_progress` 的回写结果，失败时写明保留的旧值 |
+ *
+ * 流水只追加、不改，所以必须有人管老行：`prunePollEvents()` 按保留期删掉过期的，
+ * 由 `runBuildPoll()` 每轮调一次（仓库没有常驻调度进程，轮询本身就是那只手）。
+ * 保留期见 `POLL_EVENT_RETENTION_DAYS` 与 `docs/DATA_MODEL.md` 4.22。
  */
 
 import { prisma } from "../db";
@@ -51,6 +55,43 @@ export async function recordPollEvent(input: BuildPollEventInput): Promise<void>
     });
   } catch (error) {
     console.error(`[build-poll] 提测 ${input.releaseId} 的调度事件写不进去：`, error);
+  }
+}
+
+/**
+ * 调度事件流水保留多少天。
+ *
+ * 一条提测的记录从创建到完结以天计，排障与复盘要回答的是「这一轮为什么没动」，
+ * 30 天足够覆盖一次提测从建到合的全过程再加一轮复盘。队列页只读最近 30 条，
+ * 清理掉更老的行不会让页面少一条。
+ */
+export const POLL_EVENT_RETENTION_DAYS = 30;
+
+/**
+ * 删掉超过保留期的流水，返回删掉的条数。
+ *
+ * 这张表只追加、每轮每条提测固定写 `poll` 与 `progress` 两条，不清理会随轮询轮次无限增长。
+ * 删不掉的只打进程日志，不打断轮询：清理是维护动作，不能因为它失败就把状态同步停下。
+ */
+export async function prunePollEvents(now: Date = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - POLL_EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+
+  try {
+    const { count } = await prisma.buildPollEvent.deleteMany({
+      where: { createdAt: { lt: cutoff } },
+    });
+
+    if (count > 0) {
+      console.info(
+        `[build-poll] 清理 ${count} 条早于 ${cutoff.toISOString()} 的调度事件` +
+          `（保留 ${POLL_EVENT_RETENTION_DAYS} 天）`,
+      );
+    }
+
+    return count;
+  } catch (error) {
+    console.error("[build-poll] 调度事件的过期清理失败：", error);
+    return 0;
   }
 }
 

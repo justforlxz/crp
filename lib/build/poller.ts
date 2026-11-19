@@ -27,7 +27,7 @@
 
 import { prisma } from "../db";
 import { workProgressLabel } from "../integrations/crp";
-import { recordPollEvent } from "./pollEvent";
+import { prunePollEvents, recordPollEvent } from "./pollEvent";
 import {
   ACTIVE_RELEASE_STATES,
   pollReleaseBuilds,
@@ -380,6 +380,14 @@ async function pollOneSafely(
   try {
     return await pollOne(release, options);
   } catch (error) {
+    // 与 `pollOne` 末尾写的是同一列：失败也记「这一轮看过它了」，两条路径才对得上。
+    // 写不进去就算了 —— 这条本来已经是失败记录，不能再让它把整轮拖垮。
+    await prisma.release
+      .update({ where: { id: release.id }, data: { lastPolledAt: new Date() } })
+      .catch((updateError: unknown) => {
+        console.error(`[build-poll] 提测 ${release.id} 的轮询时间写不进去：`, updateError);
+      });
+
     return {
       releaseId: release.id,
       version: release.version,
@@ -490,6 +498,9 @@ export async function runBuildPoll(
       `（只轮询 ${ACTIVE_RELEASE_STATES.join("/")}，已完结的提测不再轮询）` +
       ` 成功=${summary.polled} 失败=${summary.failed}`,
   );
+  // 流水只追加，靠这一轮顺手清掉过期的行，否则它会随轮询轮次一直长。
+  // 放在最后：清理失败不影响本轮已经写好的状态与结果。
+  await prunePollEvents();
 
   return summary;
 }
