@@ -1027,3 +1027,44 @@ curl -fsS -X POST -b cookie.txt -H "content-type: application/json" \
   -d '{"projectId":"01a1ee26-…","topicId":29123,"mode":"commit"}' \
   "http://localhost:3000/api/releases/import"
 ```
+
+## GET /api/releases/{id}/export
+
+把一条提测的软件包提交快照导出成 CSV。页面 `/releases/{id}` 的「导出 CSV」与提测记录列表每行的
+「导出 CSV」都指向这里。
+
+### 鉴权
+
+用户会话（Cookie）。工作区从提测归属查出，不看查询串里传来的工作区。提测不存在、账号不是这条提测
+所属工作区的成员，一律返回 404 —— 不泄露这条提测是否存在。导出只要「只读」权限，因此成员不会因为
+角色太低被拒（平台管理员不受成员关系限制）。
+
+### 返回体
+
+`text/csv; charset=utf-8`，带 BOM（Excel 打开中文不乱码），行结束符 `\r\n`。
+
+- 表头固定 11 列，与详情页的快照表逐字一致：
+  `提交顺序,软件包/仓库,分支,代码版本,基线仓库版本,本次提测版本,是否自定义 Tag,基线 Commit,本次 Commit,提交说明,提交人`
+- 每个软件包一行，顺序与详情页一致（依赖拓扑序，上游在前），只含**这一条**提测的内容。
+- `是否自定义 Tag` 按 `releaseVersion !== codeVersion` 判定（没有单独的存储字段）；
+  `基线 Commit` 是同一个包在这条提测里上一轮的 Commit，首轮为空，导出为 `—`。
+- `提交说明` / `提交人` 用 Commit 号现读 Gerrit；读不到时该格为 `—`，文件照常导出。
+- 以 `=`、`+`、`-`、`@`、制表符或回车开头的值会加一个前导单引号（Excel 的「按文本处理」标记），
+  避免打开时被当成公式执行；占位符 `—`（U+2014）不受影响。
+
+文件名 `{项目标识}-{提测版本}-r{轮次}.csv`。
+
+### 状态码
+
+| 状态码 | `error.code` | 什么情况 |
+| --- | --- | --- |
+| `200` | — | 返回 CSV |
+| `401` | `unauthenticated` | 未登录 |
+| `404` | `release_not_found` | 提测记录不存在 |
+| `404` | `workspace_not_found` | 账号不是这条提测所属工作区的成员（与「不存在」同一口径） |
+
+### 示例
+
+```bash
+curl -fsS -b cookie.txt -OJ "http://localhost:3000/api/releases/01a1ee26-…/export"
+```
