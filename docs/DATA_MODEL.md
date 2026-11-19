@@ -306,6 +306,14 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 索引：`(release_id, package_name, attempt)` 唯一；`superseded_by_id` 唯一（一条新轮只接替一轮）；`(release_id, status)` 二级索引（详情页按状态分组）。
 - 外键：`release_id → release.id`，RESTRICT；`superseded_by_id → release_package_snapshot.id`（自关联），RESTRICT。
 - **可变字段只有四个**：`status`、`statusChangedAt`、`supersededById`、`supersededAt`。其余业务字段（分支、Commit、三个版本号、`attempt`）创建后不得修改，应用层不提供更新入口。
+- `dispatching` 是 A12 的抢占状态：某一轮推进把它从 `pending` 改成 `dispatching` 之后才去调 CRP 投递，
+  抢不到的那一次推进不会重复发 Release。投递成功后转 `building`。
+- 从 `dispatching` 退回来有两条路，覆盖的失败不同：
+  1. `submitRelease` 自己抛错（CRP 拒绝、连不上、参数非法）→ 当场退回 `pending`，下一次推进重投；
+  2. 投递发出去了、但写库那一步失败或被进程中断 → 快照停在 `dispatching`，超过抢占有效期
+     （5 分钟）后由 `releaseStaleClaims` 退回 `pending`；重新投递之前会先问一趟 CRP，
+     已经有同一个包、分支、Commit、提测版本的 Release 就直接认领、补写记录，不再发第二条。
+  所以「停在 `dispatching`」不是死状态，但第 2 条的恢复要等一个抢占周期，不会立刻发生。
 
 ### 4.14 release_repository_record（提测与 CRP 仓库记录的关联）
 
@@ -340,6 +348,8 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | `snapshotId`（`snapshot_id`） | text | NOT NULL | 权威归属：具体那一轮快照 |
 | `shuttleTaskId`（`shuttle_task_id`） | text | NULL | Shuttle 侧任务 ID；还没查到构建时为空 |
 | `status` | `build_status` | NOT NULL，默认 `pending` | 构建状态 |
+| `blockedBySnapshotId`（`blocked_by_snapshot_id`） | text | NULL | 因哪个上游快照失败而阻断（A12 追加）；不是被阻断的为空。不建外键，见 4.20 的同一处理方式 |
+| `statusReason`（`status_reason`） | text | NULL | 给人看的失败或阻断原因，例如「因上游 kwin 构建失败而阻断」（A12 追加） |
 | `lastPolledAt`（`last_polled_at`） | timestamptz | NULL | 最近一次向 Shuttle 查询结果的时间 |
 | `startedAt`（`started_at`） | timestamptz | NULL | 构建开始时间 |
 | `finishedAt`（`finished_at`） | timestamptz | NULL | 构建结束时间 |
@@ -426,6 +436,30 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 - 索引：`(kind, started_at)` 二级索引（按种类看最近一次同步）；`status` 二级索引（找卡在 `running` 的任务）。
 - 外键：无。`target_id` 故意不加外键：它按 `kind` 指向不同的表，外键表达不了这种多态。
 
+### 4.20 crp_call_log（CRP 调用记录）
+
+每一次真正发往 CRP 的请求留一行（A12 追加）。设计契约要求「每次对 CRP 的调用都有请求记录
+（URL、耗时、状态、响应摘要）可查」，没有这张表就只能翻进程日志。
+
+记录点在请求层（`lib/integrations/crp/request.ts` 的 `onRequest` 回调），不在各个调用点上：
+重试的每一次、登录请求、被拒的请求都会留记录，逐个调用点手工记一定会漏。重试一次就是一行。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | text | PK | |
+| `releaseId`（`release_id`） | text | NULL | 发起这次调用的提测；登录、查分支这类不属于任何提测的调用为空 |
+| `snapshotId`（`snapshot_id`） | text | NULL | 这次调用服务于哪一轮快照；建 Topic、放弃 Topic 这类不针对单个包的调用为空 |
+| `method` | text | NOT NULL | HTTP 方法 |
+| `url` | text | NOT NULL | 完整地址，含接口前缀与查询串 |
+| `statusCode`（`status_code`） | integer | NULL | HTTP 状态码；连不上或超时这类没有响应的情况为空 |
+| `durationMs`（`duration_ms`） | integer | NOT NULL | 本次请求耗时（毫秒） |
+| `responseSnippet`（`response_snippet`） | text | NULL | 响应体摘要，入库前截断到 500 字；没有响应时是失败原因 |
+| `createdAt`（`created_at`） | timestamptz | NOT NULL | 记录时间 |
+
+- 索引：`(release_id, created_at)` 二级索引（按提测看请求时间线）；`snapshot_id` 二级索引（按包看）。
+- 外键：无。`release_id`、`snapshot_id` 故意不加外键，与 `session.active_workspace_id` 同一处理方式：
+  这是排查用的旁证，不该被提测记录、快照的清理策略牵住；按值查询已经够用。
+
 ## 五、关键约束（逐条对应设计契约）
 
 | 约束 | 落在哪 |
@@ -444,6 +478,8 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | 项目无业务类型字段、基线无分类字段 | `project`、`baseline` 均无此类列；归属只由 `workspace_id` 与 `project_manager_id` 决定 |
 | 删项目不删历史提测记录 | `project.deleted_at` 软删 + `release.project_id` 外键 RESTRICT |
 | 高频查询索引 | `release.status`、`release.created_at`、`build_task.release_id`（`release.project_id` 由唯一索引最左前缀覆盖） |
+| 每次 CRP 调用都有请求记录 | `crp_call_log`（URL、耗时、状态码、响应摘要），记录点在请求层而不是调用点 |
+| 阻断可解释 | `build_task.blocked_by_snapshot_id` 指向造成阻断的上游快照，`build_task.status_reason` 给人看 |
 | 会话令牌只存哈希、服务端可撤销 | `session.token_hash` 唯一（存 SHA-256，不存令牌本身）、`session.revoked_at` 非空即失效 |
 | 不预留回退与复盘的表 | 只有 `release.rollback_of_id`、`release.code_source_release_id`、`release.risk_flag` 三个可空字段 |
 

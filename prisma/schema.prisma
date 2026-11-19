@@ -527,6 +527,14 @@ model BuildTask {
   startedAt     DateTime? @map("started_at") @db.Timestamptz(3)
   finishedAt    DateTime? @map("finished_at") @db.Timestamptz(3)
 
+  /// 因哪个上游快照失败而阻断；为空表示这条任务不是被阻断的（A12 追加）。
+  ///
+  /// 不建外键：它是「原因指向」，指向的快照与任务是同一条提测里的兄弟行，
+  /// 加上外键只会让删除顺序多一层约束，而这个字段本身不承担引用完整性。
+  blockedBySnapshotId String? @map("blocked_by_snapshot_id")
+  /// 给人看的阻断或失败原因，例如「因上游 kwin 构建失败而阻断」（A12 追加）。
+  statusReason        String? @map("status_reason")
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -638,4 +646,38 @@ model SyncRun {
   @@index([kind, startedAt])
   @@index([status])
   @@map("sync_run")
+}
+
+// ---------------------------------------------------------------------------
+// 外部调用记录
+// ---------------------------------------------------------------------------
+
+/// CRP 调用记录：每一次真正发往 CRP 的请求留一行（A12 追加）。
+///
+/// 投递一条依赖链会发很多次请求（建 Topic、查软件包、投递 Release、删 Release……），
+/// 「这次投递到底请求了哪些地址、各自多久、CRP 回了什么」必须能事后查，不能只靠进程日志。
+///
+/// 两个归属列故意不建外键，与 `session.active_workspace_id` 同一处理方式：
+/// 这是排查用的旁证，不该被提测记录、快照的清理策略牵住；按值查询已经够用。
+model CrpCallLog {
+  id              String   @id @default(uuid(7))
+  /// 发起这次调用的提测；登录、查分支这类不属于任何一次提测的调用为空。
+  releaseId       String?  @map("release_id")
+  /// 这次调用服务于哪一轮快照；建 Topic、放弃 Topic 这类不针对单个包的调用为空。
+  snapshotId      String?  @map("snapshot_id")
+  /// HTTP 方法：`GET` / `POST` / `PUT` / `DELETE`。
+  method          String
+  /// 完整地址，含接口前缀与查询串。
+  url             String
+  /// HTTP 状态码；连不上或超时这类没有响应的情况为空。
+  statusCode      Int?     @map("status_code")
+  /// 本次请求的耗时（毫秒）。
+  durationMs      Int      @map("duration_ms")
+  /// 响应体摘要，入库前截断到 500 字。
+  responseSnippet String?  @map("response_snippet")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([releaseId, createdAt])
+  @@index([snapshotId])
+  @@map("crp_call_log")
 }

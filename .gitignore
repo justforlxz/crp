@@ -20,6 +20,11 @@
 # production
 /build
 
+# `lib/build/` 是投递与构建的领域代码，不是构建产物。
+# 有些机器的全局 gitignore 里有 `build/` 规则，会让这个目录整个被忽略、提交漏文件，所以显式取回。
+!/lib/build/
+!/lib/build/**
+
 # misc
 .DS_Store
 *.pem

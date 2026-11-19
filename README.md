@@ -66,7 +66,7 @@
 | `pnpm build` / `pnpm start` | 生产构建 / 启动生产服务 |
 | `pnpm lint` | ESLint 检查 |
 | `pnpm typecheck` | TypeScript 类型检查（`tsc --noEmit`） |
-| `pnpm test` | 单元测试（Node 内置测试运行器，经 tsx 执行 TypeScript） |
+| `pnpm test` | 单元测试（Node 内置测试运行器，经 tsx 执行 TypeScript）。**测试文件串行执行**：都连同一个数据库，而基线同步的用例会全局改写 `baseline` 的「已消失」标记，并发跑会互相误伤 |
 | `pnpm db:migrate` | 应用已提交的迁移（`prisma migrate deploy`），空库建表用它 |
 | `pnpm db:migrate:dev` | 开发时新建迁移（`prisma migrate dev --name <名称>`） |
 | `pnpm db:reset` | 清空数据库、重放全部迁移并跑种子（`prisma migrate reset --force && prisma db seed`）；Prisma 7 的 reset 不再自动跑种子，所以这里显式接上；会丢数据，只对本地开发库用 |
@@ -125,11 +125,35 @@
 # OnCalendar=hourly
 ```
 
-接口细节与返回体见 [docs/API.md](docs/API.md)。
-
 **失败时的行为**：同步失败只写本次 `sync_run`（状态、结束时间、错误摘要），`baseline` 与
 `baseline_package_version` 一行不改，`syncedAt` 不前移 —— 失败的同步绝不会看起来像同步过。
 页面状态列据「最近一次同步的结果」显示「同步失败」，并带上原因；历史数据继续可用。
+
+## 投递与构建（提测执行）
+
+提测创建完不会自己发出去：平台按依赖顺序逐个向 CRP 投递，上游构建成功才发下游。
+推进逻辑全部在 `lib/build/`，入口是 `advanceRelease(releaseId)` —— **一次只往前走一步**，
+进度只存在数据库里，所以进程重启不丢进度，重复触发也不会重复建 Topic。
+
+| 步骤 | 做什么 |
+| --- | --- |
+| 1 | 还没有 Topic 就在项目选中的基线上建一个，把 Topic ID 写回提测记录 |
+| 2 | 轮询已投递包的构建结果（CRP 取 `BuildID`，再按它问 Shuttle），写回构建任务与作业 |
+| 3 | 有包构建失败 → 把它的全部下游标成阻断并写明「因上游 X 失败而阻断」，提测判失败 |
+| 4 | 否则投递**一个**上游已全部成功的包（串行，不并发投递依赖链） |
+| 5 | 全部成功 → `success`；有成功也有失败 → `partial_failure`；一个都没成功 → `failed` |
+
+**定时推进**：外部定时器每隔几分钟 POST 一次接口，把在跑的提测各往前推一步。
+本仓库不引入队列，也不依赖进程内定时器。
+
+```bash
+# cron：每 2 分钟推一次
+*/2 * * * * curl -fsS -X POST -H "Authorization: Bearer $BUILD_DISPATCH_JOB_TOKEN" \
+  http://localhost:3000/api/jobs/build-dispatch
+```
+
+页面上或接口里的手动动作（`POST /api/releases/{id}/dispatch`，可用 `?action=retry|cancel`）走的是同一个
+`advanceRelease`，没有第二份推进逻辑。
 
 ## 项目与项目经理
 
@@ -201,6 +225,7 @@
 | `CRP_TOKEN_PATH` | 否 | CRP token 缓存文件，默认 `~/.cache/crp/jwt`，权限 0600 |
 | `PACKAGE_API_TOKEN` | 用 `POST /api/packages` 时必需 | 外部系统提交软件包用的独立 token，与用户会话无关；没配置时该接口一律返回 401。接口细节见 [docs/API.md](docs/API.md) |
 | `SYNC_JOB_TOKEN` | 用 `POST /api/jobs/baseline-sync` 时必需 | 定时任务触发基线同步用的独立 token，与用户会话、`PACKAGE_API_TOKEN` 都无关；没配置时该接口一律返回 401 |
+| `BUILD_DISPATCH_JOB_TOKEN` | 用 `POST /api/jobs/build-dispatch` 时必需 | 定时任务推进提测投递用的独立 token；这个接口会真的向 CRP 建 Topic、发 Release，没配置时一律返回 401 |
 | `SHUTTLE_BASE_URL` | 否 | Shuttle 接口前缀，默认 `https://shuttle.uniontech.com/api/shuttle`；基线软件包版本从它读 |
 | `CRP_BASE_URL` | 否 | CRP 接口前缀，默认 `https://crp.uniontech.com/api`；基线分支列表从它读，**不需要认证** |
 
@@ -223,7 +248,8 @@ lib/integrations/    CRP、Shuttle、Gerrit 客户端（职责边界见其 READM
 lib/integrations/gerrit/  Gerrit 与 gitiles 客户端、changelog 解析、实测记录 FINDINGS.md
 lib/webhook/         Webhook 事件清单、签名、投递与端点读写（约定见 docs/WEBHOOK.md）
 lib/baselines/       基线读取：列表、同步记录、给其它节点用的版本查询（状态判定见 status.ts）
-lib/jobs/            定时任务的服务端逻辑，当前只有 baseline-sync.ts（基线同步）
+lib/build/           投递与构建：依赖链推进、CRP 投递、构建轮询回写、调用记录（入口见 index.ts）
+lib/jobs/            定时任务的服务端逻辑：baseline-sync.ts（基线同步）、build-dispatch.ts（推进投递）
 lib/projects/        项目经理与项目：输入校验、清单排序、读写与业务规则
 lib/releases/        创建提测：阻断条件、快照组装、输入校验与写库（Gerrit 读取见 gerrit.ts）
 scripts/             接真实外部系统的验证脚本，不经 CI 执行
