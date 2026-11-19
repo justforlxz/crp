@@ -77,6 +77,7 @@
 | `pnpm tsx scripts/verify-projects.ts` | 用真实数据库验收项目经理与项目：归属校验、共用基线、复制不带提交历史、软删后提测记录仍可查；只动自己建的临时行 |
 | `pnpm tsx scripts/verify-webhook.ts` | 本机起一个 Webhook 接收端点，验收投递、签名与重试，约 15 秒 |
 | `pnpm tsx scripts/verify-webhook-signature.ts` | 独立复算某次投递的签名，参数见 `docs/WEBHOOK.md` |
+| `scripts/style-check/container.sh` | 在门禁镜像里跑样式回归检查（L1 静态结构 + L2 计算样式 + L3 几何与整页截图）；加 `--update` 重写基线。判定口径见 [docs/STYLE-VERIFICATION.md](docs/STYLE-VERIFICATION.md) |
 
 ## 账号与登录
 
@@ -239,14 +240,40 @@
 
 ## 持续集成
 
-`.github/workflows/ci.yml` 在 `push` 到 `main` 与向 `main` 提 PR 时触发，只有一个 job，按顺序执行：
+`.github/workflows/ci.yml` 在 `push` 到 `main` 与向 `main` 提 PR 时触发，两个 job：
 
-`pnpm install --frozen-lockfile` → `pnpm db:migrate` → `pnpm db:seed` → `pnpm db:reset`（连续两次） → `pnpm lint` → `pnpm typecheck` → `pnpm test`
+**`checks`**（功能）：`pnpm install --frozen-lockfile` → `pnpm db:migrate` → `pnpm db:seed` → `pnpm db:reset`（连续两次） → `pnpm lint` → `pnpm typecheck` → `pnpm test`
 
-- Node 用 `22.x`，与 `package.json` 的 `engines.node` 同一条版本线；pnpm 的版本由 `package.json` 的 `packageManager` 决定（当前 `pnpm@9.15.9`），由 `pnpm/action-setup` 安装，不在 workflow 里重复写版本。
+**`style`**（样式门禁）：跑在 `mcr.microsoft.com/playwright:v1.65.1-noble` 里 —— 与基线生成用的是同一个镜像，浏览器和字体都随镜像固定，不需要另外下载或缓存；步骤是 `pnpm install` → `pnpm db:migrate` → `pnpm db:seed` → `pnpm test:style`。样式改坏时这个 job 失败、PR 标红；`--update` 在 CI 里被脚本拒绝。
+
+- `checks` 的 Node 用 `22.x`，与 `package.json` 的 `engines.node` 同一条版本线；pnpm 的版本由 `package.json` 的 `packageManager` 决定（当前 `pnpm@9.15.9`），由 `pnpm/action-setup` 安装，不在 workflow 里重复写版本。
+- `style` job 在容器里跑，Node 来自镜像，pnpm 由 job 按 `package.json` 的 `packageManager` 装上（版本只有这一个来源）；容器用 `--network` 默认桥接，靠 service 名 `postgres` 连库。
 - 数据库用 `postgres:17` 的 service container，账号、库名、`DATABASE_URL` 都写在 workflow 里，不需要任何 secret。
 - 迁移和种子在 CI 里真跑：`_prisma_migrations` 能建表、种子能写入，才说明「空库可迁移」这条在干净环境成立。
 - `pnpm db:reset` 连跑两次：证明清库、重放迁移、灌种子这一整套可以重复执行，且每张表记录数仍与种子声明一致。这条会清空数据库，只允许放在一次性环境里跑。
+
+## 样式门禁（`pnpm test:style`）
+
+样式改坏了要能被机器挡住，而不是靠人看。判定方案完整版见 [docs/STYLE-VERIFICATION.md](docs/STYLE-VERIFICATION.md)，这里只放执行入口与三条要点。
+
+三层检查，任意一层失败都以退出码 1 结束：
+
+| 层 | 查什么 | 判据 |
+| --- | --- | --- |
+| L1 静态结构 | 页面是否都经 `PageShell` 渲染、有没有裸 `<table>`、有没有新增内联 `style`、`app/globals.css` 的规则数与设计变量 | 前三条命中 0 处；规则数不低于基线；变量值与基线一致 |
+| L2 计算样式 | 6 个页面上 `data-style-anchor` 锚点的 14 个属性（字号、颜色、边框、圆角、内外边距、宽高等） | 与 `tests/visual/baseline/<页面>.json` 逐字段严格相等 |
+| L3 几何与截图 | 锚点 `boundingBox` 与 1280×900 整页截图 | 几何 ≤ 2px；像素差 ≤ 0.5%，超阈值把差异图写到 `tests/visual/diff/` |
+
+```bash
+scripts/style-check/container.sh            # 比对（门禁镜像里跑）
+scripts/style-check/container.sh --update   # 重写基线，只能人显式发起
+```
+
+三条要点：
+
+- **必须进门禁镜像**（`mcr.microsoft.com/playwright:v1.65.1-noble`）：截图与几何对字体敏感，基线与 CI 都在这个镜像里。本机其它系统直接跑会报字体差异，那不是样式坏了。
+- **`--update` 在 CI 里被拒绝**（退出码 2）。基线更新必须与引发它的样式改动在同一个 PR，Reviewer 要看基线 diff。
+- **基线一次刷新全部**：六页的 JSON + PNG 加 `lint.json` 的规则数与设计变量，不允许只更新一部分；L1 结构检查没通过时一个也不写。
 
 ## 环境变量
 
@@ -292,8 +319,10 @@ components/          跨页面复用的服务端组件：build-status.tsx（提�
 lib/projects/        项目经理与项目：输入校验、清单排序、读写与业务规则
 lib/releases/        创建提测：阻断条件、快照组装、输入校验与写库（Gerrit 读取见 gerrit.ts）
 scripts/             接真实外部系统的验证脚本，不经 CI 执行
+scripts/style-check/ 样式门禁：L1 静态检查、L2/L3 取样与比对、`--update`、门禁镜像入口
 prisma/              schema、migrations、seed
 tests/               单元测试
+tests/visual/baseline/  样式门禁的基线（每页一份计算样式 JSON + 一张整页截图）
 docs/                PRD、数据模型与 Webhook 约定文档
 generated/           `prisma generate` 产物，不入库
 ```

@@ -1,0 +1,192 @@
+{
+  "page": "release-detail",
+  "path": "/releases/<id>?workspace=desktop-core",
+  "viewport": {
+    "width": 1280,
+    "height": 900
+  },
+  "anchors": {
+    "release-detail.summary": [
+      {
+        "style": {
+          "display": "grid",
+          "position": "static",
+          "margin": "0px 0px 16px",
+          "padding": "0px",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "lineHeight": "22.4px",
+          "color": "rgb(31, 35, 41)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "border": "0px none rgb(31, 35, 41)",
+          "borderRadius": "0px",
+          "boxShadow": "none",
+          "width": "1024px",
+          "height": "207.578px"
+        },
+        "box": {
+          "x": 232,
+          "y": 169.78,
+          "width": 1024,
+          "height": 207.58
+        }
+      }
+    ],
+    "release-detail.build-status": [
+      {
+        "style": {
+          "display": "block",
+          "position": "static",
+          "margin": "0px",
+          "padding": "0px",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "lineHeight": "22.4px",
+          "color": "rgb(31, 35, 41)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "border": "0px none rgb(31, 35, 41)",
+          "borderRadius": "0px",
+          "boxShadow": "none",
+          "width": "1024px",
+          "height": "435.453px"
+        },
+        "box": {
+          "x": 232,
+          "y": 409.36,
+          "width": 1024,
+          "height": 435.45
+        }
+      }
+    ],
+    "release-detail.update-entry": [
+      {
+        "style": {
+          "display": "block",
+          "position": "static",
+          "margin": "32px 0px 8px",
+          "padding": "0px",
+          "fontSize": "20px",
+          "fontWeight": "600",
+          "lineHeight": "27px",
+          "color": "rgb(31, 35, 41)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "border": "0px none rgb(31, 35, 41)",
+          "borderRadius": "0px",
+          "boxShadow": "none",
+          "width": "1024px",
+          "height": "27px"
+        },
+        "box": {
+          "x": 232,
+          "y": 876.81,
+          "width": 1024,
+          "height": 27
+        }
+      }
+    ],
+    "release-detail.snapshot-table-scroll": [
+      {
+        "style": {
+          "display": "block",
+          "position": "static",
+          "margin": "0px 0px 16px",
+          "padding": "0px",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "lineHeight": "22.4px",
+          "color": "rgb(31, 35, 41)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "border": "0px none rgb(31, 35, 41)",
+          "borderRadius": "0px",
+          "boxShadow": "none",
+          "width": "1024px",
+          "height": "498.5px"
+        },
+        "box": {
+          "x": 232,
+          "y": 1277.38,
+          "width": 1024,
+          "height": 498.5
+        }
+      }
+    ],
+    "release-detail.snapshot-table": [
+      {
+        "style": {
+          "display": "table",
+          "position": "static",
+          "margin": "0px",
+          "padding": "0px",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "lineHeight": "20.8px",
+          "color": "rgb(31, 35, 41)",
+          "backgroundColor": "rgb(255, 255, 255)",
+          "border": "0px none rgb(31, 35, 41)",
+          "borderRadius": "0px",
+          "boxShadow": "none",
+          "width": "1024px",
+          "height": "498.5px"
+        },
+        "box": {
+          "x": 232,
+          "y": 1277.38,
+          "width": 1024,
+          "height": 498.5
+        }
+      }
+    ],
+    "release-detail.repo-records-table": [
+      {
+        "style": {
+          "display": "table",
+          "position": "static",
+          "margin": "0px",
+          "padding": "0px",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "lineHeight": "20.8px",
+          "color": "rgb(31, 35, 41)",
+          "backgroundColor": "rgb(255, 255, 255)",
+          "border": "0px none rgb(31, 35, 41)",
+          "borderRadius": "0px",
+          "boxShadow": "none",
+          "width": "1024px",
+          "height": "332.781px"
+        },
+        "box": {
+          "x": 232,
+          "y": 1842.88,
+          "width": 1024,
+          "height": 332.78
+        }
+      }
+    ],
+    "release-detail.crp-info": [
+      {
+        "style": {
+          "display": "grid",
+          "position": "static",
+          "margin": "0px 0px 16px",
+          "padding": "0px",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "lineHeight": "22.4px",
+          "color": "rgb(31, 35, 41)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "border": "0px none rgb(31, 35, 41)",
+          "borderRadius": "0px",
+          "boxShadow": "none",
+          "width": "1024px",
+          "height": "169.984px"
+        },
+        "box": {
+          "x": 232,
+          "y": 2350.23,
+          "width": 1024,
+          "height": 169.98
+        }
+      }
+    ]
+  }
+}

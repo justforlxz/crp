@@ -1,0 +1,166 @@
+{
+  "page": "queue",
+  "path": "/queue?workspace=system-apps",
+  "viewport": {
+    "width": 1280,
+    "height": 900
+  },
+  "anchors": {
+    "queue.intro": [
+      {
+        "style": {
+          "display": "block",
+          "position": "static",
+          "margin": "0px 0px 12px",
+          "padding": "0px",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "lineHeight": "22.4px",
+          "color": "rgb(31, 35, 41)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "border": "0px none rgb(31, 35, 41)",
+          "borderRadius": "0px",
+          "boxShadow": "none",
+          "width": "1024px",
+          "height": "44.7812px"
+        },
+        "box": {
+          "x": 232,
+          "y": 80.39,
+          "width": 1024,
+          "height": 44.78
+        }
+      }
+    ],
+    "queue.workspace-switcher": [
+      {
+        "style": {
+          "display": "flex",
+          "position": "static",
+          "margin": "0px 0px 12px",
+          "padding": "8px 0px",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "lineHeight": "22.4px",
+          "color": "rgb(31, 35, 41)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "border": "0px none rgb(31, 35, 41)",
+          "borderRadius": "0px",
+          "boxShadow": "none",
+          "width": "1024px",
+          "height": "38.3906px"
+        },
+        "box": {
+          "x": 232,
+          "y": 137.17,
+          "width": 1024,
+          "height": 38.39
+        }
+      }
+    ],
+    "queue.stats": [
+      {
+        "style": {
+          "display": "grid",
+          "position": "static",
+          "margin": "0px 0px 16px",
+          "padding": "0px",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "lineHeight": "22.4px",
+          "color": "rgb(31, 35, 41)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "border": "0px none rgb(31, 35, 41)",
+          "borderRadius": "0px",
+          "boxShadow": "none",
+          "width": "1024px",
+          "height": "115.172px"
+        },
+        "box": {
+          "x": 232,
+          "y": 242.56,
+          "width": 1024,
+          "height": 115.17
+        }
+      }
+    ],
+    "queue.refresh": [
+      {
+        "style": {
+          "display": "block",
+          "position": "static",
+          "margin": "0px",
+          "padding": "0px",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "lineHeight": "22.4px",
+          "color": "rgb(31, 35, 41)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "border": "0px none rgb(31, 35, 41)",
+          "borderRadius": "0px",
+          "boxShadow": "none",
+          "width": "1024px",
+          "height": "34.7969px"
+        },
+        "box": {
+          "x": 232,
+          "y": 408.13,
+          "width": 1024,
+          "height": 34.8
+        }
+      }
+    ],
+    "queue.topo": [
+      {
+        "style": {
+          "display": "block",
+          "position": "static",
+          "margin": "32px 0px 8px",
+          "padding": "0px",
+          "fontSize": "20px",
+          "fontWeight": "600",
+          "lineHeight": "27px",
+          "color": "rgb(31, 35, 41)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "border": "0px none rgb(31, 35, 41)",
+          "borderRadius": "0px",
+          "boxShadow": "none",
+          "width": "1024px",
+          "height": "27px"
+        },
+        "box": {
+          "x": 232,
+          "y": 519.7,
+          "width": 1024,
+          "height": 27
+        }
+      }
+    ],
+    "queue.task-table": [
+      {
+        "style": {
+          "display": "table",
+          "position": "static",
+          "margin": "0px",
+          "padding": "0px",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "lineHeight": "20.8px",
+          "color": "rgb(31, 35, 41)",
+          "backgroundColor": "rgb(255, 255, 255)",
+          "border": "0px none rgb(31, 35, 41)",
+          "borderRadius": "0px",
+          "boxShadow": "none",
+          "width": "1024px",
+          "height": "113.438px"
+        },
+        "box": {
+          "x": 232,
+          "y": 751.14,
+          "width": 1024,
+          "height": 113.44
+        }
+      }
+    ]
+  }
+}

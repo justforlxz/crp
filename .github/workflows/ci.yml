@@ -70,3 +70,57 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  # 样式门禁：三层检查（L1 静态结构、L2 计算样式、L3 几何与整页截图）。
+  # 和基线生成用同一个镜像 —— 截图与几何对字体敏感，换一套字体量出来的数字就变了，
+  # 那不是样式坏了。镜像自带 Node 与 Chromium（Playwright 1.65.1 对应 revision 1255），
+  # 不需要另外下载或缓存浏览器。
+  style:
+    name: 样式门禁（pnpm test:style）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: mcr.microsoft.com/playwright:v1.65.1-noble
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: crp
+          POSTGRES_PASSWORD: crp
+          POSTGRES_DB: crp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U crp"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # 容器 job 通过 service 名连库，不走 127.0.0.1。
+      DATABASE_URL: postgresql://crp:crp@postgres:5432/crp?schema=public
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        # 镜像里没有 corepack，直接装。版本只认 package.json 的 packageManager，
+        # 这里不再写第二份，免得与锁文件对不上时以莫名报错的形式失败。
+        run: |
+          version="$(sed -n 's/.*"packageManager": *"pnpm@\([^"]*\)".*/\1/p' package.json | head -n 1)"
+          npm i -g "pnpm@$version"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
+        run: pnpm db:migrate
+
+      - name: Seed data
+        run: pnpm db:seed
+
+      # 构建、起服务、取样、比对都在脚本里；--update 在这里会被脚本拒绝。
+      - name: Run style gate
+        run: pnpm test:style
