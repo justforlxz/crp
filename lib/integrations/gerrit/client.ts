@@ -137,6 +137,20 @@ export type GerritClient = {
     project: string,
     ref: string,
   ): Promise<{ entry: ChangelogEntry; text: string }>;
+  /**
+   * 列出全部项目的路径（`deepin-kde/kwin` 这种形式）。
+   *
+   * 从 CRP 导入提测时，CRP Release 只给包名，而读 changelog 要仓库路径，
+   * 这一步提供候选集合；候选唯一与否由调用方判定，这里只负责如实列出。
+   */
+  listProjects(): Promise<string[]>;
+  /**
+   * 读某个 Tag 指向的提交。
+   *
+   * 仓库里没有这个 Tag（或仓库不存在）时抛 `GerritNotFoundError`，
+   * 调用方据此认定「这个 Tag 不在这个仓库」。
+   */
+  resolveTag(project: string, tag: string): Promise<GerritCommit>;
 };
 
 type FetchLike = (
@@ -372,6 +386,27 @@ export function createGerritClient(
       const text = Buffer.from(body, "base64").toString("utf8");
 
       return { entry: parseChangelog(text), text };
+    },
+
+    async listProjects() {
+      const body = await requestJson<Record<string, unknown>>(
+        "/a/projects/",
+        "Gerrit 拒绝了项目清单请求，无法按包名反查仓库。",
+      );
+
+      // 响应是把项目路径映射到详情对象的字典，键就是仓库路径。
+      return Object.keys(body ?? {}).sort((left, right) => left.localeCompare(right));
+    },
+
+    async resolveTag(project, tag) {
+      const path =
+        `${GITILES_ROOT}/${encodeGitilesPath(project)}` +
+        `/+/${encodeGitilesRef(`refs/tags/${tag}`)}?format=JSON`;
+
+      return toCommit(
+        await requestJson<GitilesCommit>(path, `项目 ${project} 上没有 Tag ${tag}。`),
+        `${project}@refs/tags/${tag}`,
+      );
     },
   };
 }

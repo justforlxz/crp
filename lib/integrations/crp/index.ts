@@ -33,6 +33,7 @@ export {
   type CrpErrorKind,
 } from "./errors";
 export { validateReleaseTag } from "./tag";
+export { getTopic, normalizeTopic, searchTopics, TOPIC_SEARCH_LIMIT } from "./topics";
 export {
   normalizeTopicWorkflow,
   WORK_PROGRESS,
@@ -57,6 +58,7 @@ export type {
   CrpRelease,
   CrpSubmitReleaseInput,
   CrpSubmittedRelease,
+  CrpTopic,
   CrpTopicUrls,
   CrpTopicWorkflow,
 } from "./types";

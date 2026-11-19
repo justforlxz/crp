@@ -9,6 +9,7 @@
 
 import {
   createGerritClient,
+  GerritNotFoundError,
   readGerritConfig,
   type GerritClient,
   type GerritCommit,
@@ -31,6 +32,15 @@ export type GerritReader = {
   listCommits(repoPath: string, branch: string, limit?: number): Promise<GerritCommitOption[]>;
   /** 某个提交的 `debian/changelog` 版本。 */
   readCodeVersion(repoPath: string, commitSha: string): Promise<string>;
+  /** 全部项目的仓库路径；从 CRP 导入时按包名反查仓库用。 */
+  listProjects(): Promise<string[]>;
+  /**
+   * 某个 Tag 指向的提交；这个仓库里没有该 Tag 时返回 `null`。
+   *
+   * 只有「仓库里没有这个 Tag」才返回 `null`：认证失败、连不上都照常抛错，
+   * 否则「读不到」会被当成「没有」，导入会以为是别的原因失败。
+   */
+  resolveTagCommit(repoPath: string, tag: string): Promise<string | null>;
 };
 
 function firstLine(message: string): string {
@@ -81,6 +91,24 @@ export function createGerritReader(client?: GerritClient): GerritReader {
       const { entry } = await resolve().readChangelog(repoPath, commitSha);
 
       return entry.version;
+    },
+
+    listProjects() {
+      return resolve().listProjects();
+    },
+
+    async resolveTagCommit(repoPath, tag) {
+      try {
+        const commit = await resolve().resolveTag(repoPath, tag);
+
+        return commit.sha;
+      } catch (error) {
+        if (error instanceof GerritNotFoundError) {
+          return null;
+        }
+
+        throw error;
+      }
     },
   };
 }

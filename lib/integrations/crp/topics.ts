@@ -17,6 +17,7 @@ import type {
   CrpCreateTopicInput,
   CrpCreatedTopic,
   CrpRawTopic,
+  CrpTopic,
   CrpRawTopicOwner,
   CrpRawTopicUrls,
   CrpTopicUrls,
@@ -46,6 +47,94 @@ function namesToString(value: CrpRawTopic["Owner"]): string | null {
   }
 
   return null;
+}
+
+/** Owner 的账号名，没有时给空串。导入预览里要显示是谁建的主题。 */
+function ownerNames(value: CrpRawTopic["Owner"]): string {
+  return namesToString(value) ?? "";
+}
+
+/**
+ * 把 `GET /topics/{id}` 与 `GET /branches/{id}/topics` 的单项整理成调用方要的结构。
+ *
+ * `BranchID` 缺失时给 0，由调用方判定「主题没有分支」；这里不做拦截，
+ * 因为同一个响应也会被用来展示，缺字段不该让展示整体失败。
+ */
+export function normalizeTopic(raw: CrpRawTopic): CrpTopic {
+  const branchId = Number(raw.BranchID);
+
+  return {
+    id: Number(raw.ID),
+    name: raw.Name ?? "",
+    branchId: Number.isFinite(branchId) ? branchId : 0,
+    type: raw.Type ?? "",
+    abandoned: raw.Abandoned === true,
+    completed: raw.Completed === true,
+    state: Number(raw.State ?? 0),
+    owner: ownerNames(raw.Owner),
+    raw,
+  };
+}
+
+/** 读单个主题。导入第一步「输入 Topic ID」用它。 */
+export async function getTopic(transport: CrpTransport, topicId: number): Promise<CrpTopic> {
+  if (!Number.isInteger(topicId) || topicId <= 0) {
+    throw new CrpInvalidParameterError("读主题必须给 Topic ID：topicId 不合法");
+  }
+
+  const raw = await transport.request<CrpRawTopic>({ method: "GET", path: `/topics/${topicId}` });
+
+  if (raw === null || typeof raw !== "object") {
+    throw new CrpBusinessError(`GET /topics/${topicId} 没有返回主题对象`, {
+      responseSnippet: responseSnippet(JSON.stringify(raw)),
+    });
+  }
+
+  return normalizeTopic(raw);
+}
+
+/** 一次搜索最多返回多少条，防止把整条分支的主题都塞给页面。 */
+export const TOPIC_SEARCH_LIMIT = 50;
+
+/**
+ * 按名称搜索某条交付分支下的 `test` 类型主题。
+ *
+ * 为什么不走 `POST /topics/search`：这个部署上该路由对任何请求体都返回 `null`，
+ * 实测记录见 FINDINGS.md 第 4.4 节。这里改用 CRP 前端自己在用的
+ * `GET /branches/{branch_id}/topics?Type=test`，再按名称做包含匹配。
+ *
+ * 名字比较不区分大小写：CRP 的主题名里既有中文也有英文缩写，大小写不该影响能不能搜到。
+ */
+export async function searchTopics(
+  transport: CrpTransport,
+  input: { branchId: number; name: string },
+): Promise<CrpTopic[]> {
+  if (!Number.isInteger(input.branchId) || input.branchId <= 0) {
+    throw new CrpInvalidParameterError("搜索主题必须给交付分支 ID：branchId 不合法");
+  }
+
+  const keyword = input.name.trim().toLowerCase();
+
+  if (keyword === "") {
+    throw new CrpInvalidParameterError("搜索主题必须给名称关键字：name 为空");
+  }
+
+  const raw = await transport.request<CrpRawTopic[]>({
+    method: "GET",
+    path: `/branches/${input.branchId}/topics?Type=${TOPIC_TYPE_TEST}`,
+  });
+
+  if (!Array.isArray(raw)) {
+    throw new CrpBusinessError("GET /branches/{id}/topics 没有返回数组", {
+      responseSnippet: responseSnippet(JSON.stringify(raw)),
+    });
+  }
+
+  return raw
+    .map(normalizeTopic)
+    .filter((topic) => topic.type === TOPIC_TYPE_TEST)
+    .filter((topic) => topic.name.toLowerCase().includes(keyword))
+    .slice(0, TOPIC_SEARCH_LIMIT);
 }
 
 export async function createTopic(

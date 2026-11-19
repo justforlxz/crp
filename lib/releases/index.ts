@@ -51,6 +51,26 @@ export { canViewRelease, type ReleaseAccessQuery } from "./access";
 export { collectDownstream } from "./downstream";
 
 export {
+  mapCrpBuildState,
+  releaseStatusFromSnapshots,
+  type CrpBuildStateMapping,
+  type ImportedReleaseStatus,
+  type ImportedSnapshotStatus,
+} from "./import-map";
+
+export {
+  importReleaseFromTopic,
+  previewReleaseImport,
+  ReleaseImportConflict,
+  type ImportedBlockedPackage,
+  type ImportedPackagePlan,
+  type ImportedRelease,
+  type ImportReleaseFromTopicOptions,
+  type ReleaseImportOptions,
+  type ReleaseImportPreview,
+} from "./import";
+
+export {
   applyReleaseUpdate,
   loadReleaseUpdateView,
   previewReleaseUpdate,

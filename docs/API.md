@@ -754,3 +754,195 @@ curl -fsS -X POST -b cookie.txt -H "content-type: application/json" \
   -d '{"replace":[{"packageName":"kwin","branch":"develop/eagle","commitSha":"9c8b7a6f…"}]}' \
   "http://localhost:3000/api/releases/01a1f0c0-…/update"
 ```
+
+## GET /api/releases/import
+
+从 CRP 导入的第一步「找主题」用。两种用法二选一：
+
+- `?topicId=123`：读一个主题，顺带给出它有多少个 Release；
+- `?baselineId=<uuid>&name=<关键字>`：在某条基线（CRP 交付分支）下按名称搜 `test` 类型主题。
+
+### 鉴权
+
+用户会话（httpOnly Cookie），**已登录账号**即可读：主题与 Release 是平台级数据，与基线清单同一口径。
+
+### 返回体
+
+按 ID 读：
+
+```json
+{
+  "topic": {
+    "id": 29123,
+    "name": "【FlemingX】缩放需求实时生效联调测试_20261117",
+    "branchId": 108,
+    "branchName": "eagle-1071",
+    "owner": "zhangcailian",
+    "type": "test",
+    "abandoned": false,
+    "completed": false,
+    "releaseCount": 4
+  }
+}
+```
+
+按名称搜：
+
+```json
+{
+  "topics": [
+    { "id": 29123, "name": "…", "branchId": 108, "branchName": "eagle-1071",
+      "owner": "zhangcailian", "type": "test", "abandoned": false, "completed": false,
+      "releaseCount": null }
+  ]
+}
+```
+
+搜索走 `GET /branches/{branchId}/topics?Type=test` 再本地按名称包含匹配（不区分大小写），
+最多 50 条；`POST /topics/search` 在这个部署上对任何请求体都返回 `null`，不用它。理由与实测见
+`lib/integrations/crp/FINDINGS.md` 第十一节。搜索结果不回 `releaseCount`（要逐条查 Release，代价太大）。
+
+### 状态码
+
+| 状态码 | `error.code` | 什么情况 |
+| --- | --- | --- |
+| `200` | — | 读到主题，或搜索结果（可以为空数组） |
+| `400` | `invalid_query` | 既没给 `topicId`，也没同时给 `baselineId` 与 `name`；`topicId` 不是正整数 |
+| `401` | `unauthenticated` | 未登录 |
+| `404` | `baseline_not_found` | `baselineId` 不存在 |
+| `409` | `baseline_without_branch` | 这条基线没有可用的 CRP 分支 ID |
+| `502` | `crp_unavailable` | 读不到 CRP（网络、认证、客户端配置） |
+
+## POST /api/releases/import
+
+把 CRP 上已存在的提测主题导入成一条提测记录。`mode` 必填：
+
+- `mode: "preview"`：只算不写，返回逐包映射预览；卡住的包列在 `blocked` 里，`ready` 为 `false`；
+- `mode: "commit"`：真正落库（`release` + 每包一条 `attempt = 1` 的快照 + 每条 CRP Release 的关联记录）。
+
+**整个过程不向 CRP 写任何东西**：只调 `GET /topics/{id}`、`GET /topics/{id}/releases`、
+`GET /topics/{id}/workflow/info` 三个读接口。导入后立刻把 `WorkProgress` 写进记录，
+`>= 20`（已转测）的记录「更新提测」不可用。
+
+### 鉴权
+
+用户会话，工作区从项目归属查出，**不采信请求体里的工作区**：与 `POST /api/releases` 同一口径
+（未登录 `401`、不在工作区 `404 workspace_not_found`、低于「开发者」`403`）。
+
+### 请求体
+
+```json
+{
+  "projectId": "01a1ee26-82e3-7644-ab2e-a8c9c40fe147",
+  "topicId": 29123,
+  "mode": "preview",
+  "addPackagesToProject": false
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `projectId` | string | 是 | 导入的提测挂在哪个项目 |
+| `topicId` | number | 是 | CRP 主题 ID，正整数 |
+| `mode` | `"preview"` \| `"commit"` | 是 | 必填，避免「本想预览却真导入了」 |
+| `addPackagesToProject` | boolean | 否 | 是否把这些包一并加入项目软件清单，默认 `false` |
+
+### 预览返回体（`mode: "preview"`）
+
+```json
+{
+  "project": { "id": "…", "key": "v25", "name": "V25 桌面", "baselineId": "…", "baselineName": "eagle-1071" },
+  "topic": { "id": 29123, "name": "…", "branchId": 108, "branchName": "eagle-1071",
+             "owner": "zhangcailian", "type": "test", "abandoned": false, "completed": false },
+  "packages": [
+    {
+      "packageName": "kwin",
+      "packageId": "01a1ee26-…",
+      "repoPath": "deepin-kde/kwin",
+      "branch": "develop/eagle",
+      "commitSha": "17325d43cac4a15abba58dde2136f8e20526f671",
+      "commitSource": "crp",
+      "codeVersion": "5.27.2.29-deepin29-1",
+      "repoVersion": "5.27.11.1",
+      "releaseVersion": "5.2.27.29",
+      "crpReleaseId": "107449",
+      "crpBuildId": "586123",
+      "buildState": "UPLOAD_OK",
+      "buildStateKnown": true,
+      "buildStateNote": null,
+      "status": "success",
+      "versionMismatch": true
+    }
+  ],
+  "blocked": [],
+  "existing": null,
+  "ready": true
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `packages[].commitSource` | `crp`（取自 CRP Release 的 Commit）或 `gerrit-tag`（CRP 没给提交号，按 tag 在 Gerrit 反查到） |
+| `packages[].releaseVersion` | 提测版本，逐字取自 CRP Release 的 `tag`，不重算 |
+| `packages[].packageId` | 为 `null` 表示这次导入会顺手建一条软件包记录（`repoPath` 已由 Gerrit 反查确定） |
+| `packages[].buildStateKnown` | `false` 表示 CRP 返回了没见过的构建状态，已按 `pending` 处理，`buildStateNote` 里有说明 |
+| `packages[].status` | 快照状态，由 CRP 的 `BuildState` 映射：`UPLOAD_OK` → `success`、`UPLOAD_CRP`/`APPLYING` → `building`、`UPLOAD_GIVEUP` → `failed`、其余 → `pending` |
+| `packages[].versionMismatch` | 提测版本与代码版本不同（往往正是要改包的原因） |
+| `blocked[].reason` | 这个包为什么不能导入，整次导入停在预览 |
+| `existing` | 已导入过这个主题时的已有记录（同一个主题只能导入一次） |
+| `ready` | 能不能继续导入：`blocked` 为空且 `existing` 为 `null` |
+
+### 导入返回体（`mode: "commit"`，`201`）
+
+```json
+{
+  "id": "01a1f2b0-…",
+  "version": "5.2.27.29",
+  "revision": 1,
+  "status": "success",
+  "source": "imported",
+  "packageCount": 4,
+  "autoRegisteredPackages": [],
+  "addedToProject": [],
+  "workProgress": 20,
+  "workProgressLabel": "转测试中（无法更新包）",
+  "workProgressError": null,
+  "locked": true,
+  "packages": [ { "…": "与预览的 packages 同结构，去掉 packageId" } ]
+}
+```
+
+`version` 取主题里第一条 Release 的 `tag`（主题本身没有版本号，CRP 侧的版本挂在每个 Release 上）。
+
+### 状态码
+
+| 状态码 | `error.code` | 什么情况 |
+| --- | --- | --- |
+| `201` | — | 导入完成 |
+| `400` | `invalid_json` / `invalid_payload` | 请求体不是 JSON，或 `mode` / `projectId` / `topicId` 不合规 |
+| `400` | `invalid_request` | 主题不是 `test` 类型 |
+| `401` | `unauthenticated` | 未登录 |
+| `403` | `forbidden` | 工作区角色低于「开发者」 |
+| `404` | `project_not_found` | 项目不存在 |
+| `409` | `already_imported` | 这个主题已经导入过；`details.existingReleaseId` / `existingVersion` 指向已有记录，页面据此跳转 |
+| `409` | `invalid_request` | 项目已删除、主题已放弃、主题里没有 Release、主题分支与项目基线不一致（错误里点名两个分支）、有包拿不到 Commit / 仓库路径不确定、项目里已有同版本号的提测记录 |
+| `502` | `crp_unavailable` | 读不到 CRP（`message` 里带 CRP 的原话） |
+| `500` | `internal_error` | 其它未预期错误 |
+
+### 示例
+
+```bash
+# 预览：只算不写
+curl -fsS -b cookie.txt \
+  "http://localhost:3000/api/releases/import?topicId=29123"
+
+# 映射预览
+curl -fsS -X POST -b cookie.txt -H "content-type: application/json" \
+  -d '{"projectId":"01a1ee26-…","topicId":29123,"mode":"preview"}' \
+  "http://localhost:3000/api/releases/import"
+
+# 确认导入
+curl -fsS -X POST -b cookie.txt -H "content-type: application/json" \
+  -d '{"projectId":"01a1ee26-…","topicId":29123,"mode":"commit"}' \
+  "http://localhost:3000/api/releases/import"
+```

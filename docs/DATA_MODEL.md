@@ -1,6 +1,6 @@
 # 数据模型（A5 定稿）
 
-本文是 `prisma/schema.prisma` 的说明文档，与 schema 一一对应：21 张表、9 组枚举、全部唯一索引、外键与删除策略都在这里写明。改 schema 必须同步改本文。
+本文是 `prisma/schema.prisma` 的说明文档，与 schema 一一对应：21 张表、10 组枚举、全部唯一索引、外键与删除策略都在这里写明。改 schema 必须同步改本文。
 
 其中 4.20（`crp_call_log`）是 A12 追加、4.21（`release_update_record`）是 A17 追加；两张都是只追加的旁证表，不改 A5 已定的字段与索引。
 
@@ -47,6 +47,7 @@ PRD 里的 `Release 1-1 CrpTopic` 在本版没有独立表，Topic 的字段并�
 | --- | --- | --- |
 | `WorkspaceRole`（`workspace_role`） | `project_manager`、`developer`、`reader` | 工作区成员角色。平台管理员是账号级标记 `app_user.is_platform_admin`，不进这个枚举 |
 | `ReleaseStatus`（`release_status`） | `pending`、`dispatching`、`building`、`success`、`partial_failure`、`failed`、`abandoned` | 提测记录状态。`dispatching` = 正在按依赖顺序投递；`building` = 已投完等构建结果 |
+| `ReleaseSource`（`release_source`） | `platform`、`imported` | 提测记录的来源。`platform` = 在本平台按「创建提测」建出来的；`imported` = 从 CRP 已有主题导入（A18）。后续流程两者一致，只在列表与详情上标出来源 |
 | `SnapshotStatus`（`snapshot_status`） | `pending`、`dispatching`、`building`、`success`、`failed`、`abandoned`、`superseded` | 提测快照每一轮的状态。`superseded` = 被更晚一轮替换，必有 `superseded_by_id`；`abandoned` = 人为放弃，没有后继 |
 | `BuildStatus`（`build_status`） | `pending`、`building`、`success`、`failed`、`canceled` | 构建任务与构建作业共用 |
 | `WebhookDeliveryStatus`（`webhook_delivery_status`） | `pending`、`success`、`failed` | Webhook 投递状态 |
@@ -261,6 +262,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | `version` | text | NOT NULL | Topic 版本号，提测时填写 |
 | `revision` | integer | NOT NULL，默认 1 | 提测轮次，从 1 开始；每次增量更新加一 |
 | `status` | `release_status` | NOT NULL，默认 `pending` | 提测状态 |
+| `source` | `release_source` | NOT NULL，默认 `platform` | 提测来源：平台创建 / 从 CRP 主题导入 |
 | `description` | text | NULL | 提测说明 |
 | `createdById`（`created_by_id`） | text | NOT NULL | 发起人 |
 | `crpTopicId`（`crp_topic_id`） | text | NULL | CRP 侧 Topic ID；建 Topic 之前为空 |

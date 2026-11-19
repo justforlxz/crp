@@ -1,0 +1,203 @@
+/**
+ * CRP 主题读取与搜索的单测：网络层换成假的 `fetch`，走真实客户端。
+ *
+ * 锁住 A18 追加的两个方法：
+ *
+ * - `getTopic` 走 `GET /topics/{id}`，把 Owner 对象数组折成账号名；
+ * - `searchTopics` 走 `GET /branches/{id}/topics?Type=test` 再按名称过滤 ——
+ *   `POST /topics/search` 在这个部署上不可用（对任何请求体都返回 `null`），
+ *   所以这里同时断言「一次 POST /topics/search 都没发」。
+ */
+
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { createCrpClient } from "../lib/integrations/crp";
+
+const BASE = "https://crp.example.test/api";
+
+type Call = { method: string; path: string; search: string };
+
+/** 假 CRP：记录每次请求，按路径回固定响应。 */
+function fakeCrp(topics: unknown[]): { fetch: typeof fetch; calls: Call[] } {
+  const calls: Call[] = [];
+
+  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const parsed = new URL(url);
+    const method = init?.method ?? "GET";
+
+    calls.push({
+      method,
+      path: parsed.pathname.replace(/^\/api/, ""),
+      search: parsed.search,
+    });
+
+    if (method === "GET" && /^\/topics\/\d+$/.test(parsed.pathname.replace(/^\/api/, ""))) {
+      const id = Number(parsed.pathname.split("/").at(-1));
+
+      return new Response(
+        JSON.stringify({
+          ID: id,
+          Name: "【FlemingX】缩放需求实时生效联调测试",
+          BranchID: 108,
+          Type: "test",
+          Abandoned: false,
+          Completed: false,
+          State: 0,
+          Owner: [
+            { employeeid: "1", mail: "a@example.com", name: "zhangdingyuan", namecn: "张丁元" },
+            { employeeid: "2", mail: "b@example.com", name: "crp-user", namecn: "CRP 用户" },
+          ],
+          Members: null,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    if (method === "GET" && /^\/branches\/\d+\/topics$/.test(parsed.pathname.replace(/^\/api/, ""))) {
+      assert.equal(parsed.searchParams.get("Type"), "test", "只搜 test 类型主题");
+
+      return new Response(JSON.stringify(topics), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // 任何别的请求（尤其是 POST /topics/search）都不该发生。
+    return new Response(JSON.stringify({ message: `未实现的请求 ${method} ${parsed.pathname}` }), {
+      status: 404,
+    });
+  }) as typeof fetch;
+
+  return { fetch: fetchImpl, calls };
+}
+
+function client(fetchImpl: typeof fetch) {
+  return createCrpClient({
+    baseUrl: BASE,
+    token: "test-token",
+    tokenPath: null,
+    fetchImpl,
+    retries: 0,
+  });
+}
+
+test("读主题：整理成调用方要的字段，Owner 折成账号名", async () => {
+  const state = fakeCrp([]);
+  const topic = await client(state.fetch).getTopic(29123);
+
+  assert.equal(topic.id, 29123);
+  assert.equal(topic.name, "【FlemingX】缩放需求实时生效联调测试");
+  assert.equal(topic.branchId, 108);
+  assert.equal(topic.type, "test");
+  assert.equal(topic.abandoned, false);
+  assert.equal(topic.completed, false);
+  assert.equal(topic.owner, "zhangdingyuan;crp-user");
+  assert.deepEqual(state.calls.map((call) => `${call.method} ${call.path}`), ["GET /topics/29123"]);
+});
+
+test("读主题：Topic ID 不合法时本地就拦下，不发请求", async () => {
+  const state = fakeCrp([]);
+
+  await assert.rejects(() => client(state.fetch).getTopic(0), /topicId 不合法/);
+  assert.equal(state.calls.length, 0);
+});
+
+test("按名称搜主题：只回 test 类型、名字含关键字的那几条，一次 POST 都没发", async () => {
+  const state = fakeCrp([
+    // 名字匹配、类型 test：要留下
+    {
+      ID: 1,
+      Name: "FlemingZ TR6增补主题",
+      BranchID: 108,
+      Type: "test",
+      Abandoned: false,
+      Completed: false,
+      State: 0,
+      Owner: [{ name: "crp-user" }],
+    },
+    // 名字匹配但类型不是 test：丢掉
+    {
+      ID: 2,
+      Name: "Fleming 的 dev 主题",
+      BranchID: 108,
+      Type: "dev",
+      Abandoned: false,
+      Completed: false,
+      State: 0,
+      Owner: null,
+    },
+    // 名字不匹配：丢掉
+    {
+      ID: 3,
+      Name: "别的主题",
+      BranchID: 108,
+      Type: "test",
+      Abandoned: false,
+      Completed: false,
+      State: 0,
+      Owner: null,
+    },
+    // 大小写不同但名字匹配：要留下（名字比较不区分大小写）
+    {
+      ID: 4,
+      Name: "yaml 打包问题",
+      BranchID: 108,
+      Type: "test",
+      Abandoned: false,
+      Completed: false,
+      State: 0,
+      Owner: null,
+    },
+  ]);
+
+  const topics = await client(state.fetch).searchTopics({ branchId: 108, name: "fleming" });
+  assert.deepEqual(topics.map((item) => item.id), [1]);
+  assert.equal(topics[0].owner, "crp-user");
+
+  const yaml = await client(state.fetch).searchTopics({ branchId: 108, name: "YAML" });
+  assert.deepEqual(yaml.map((item) => item.id), [4]);
+
+  assert.equal(
+    state.calls.some((call) => call.method === "POST"),
+    false,
+    "不该发任何 POST，包括 POST /topics/search",
+  );
+  assert.equal(
+    state.calls.every((call) => call.path === "/branches/108/topics"),
+    true,
+    "唯一的请求是列这条分支下的主题",
+  );
+});
+
+test("按名称搜主题：关键字为空或分支 ID 不合法时报参数错误", async () => {
+  const state = fakeCrp([]);
+
+  await assert.rejects(
+    () => client(state.fetch).searchTopics({ branchId: 108, name: "   " }),
+    /name 为空/,
+  );
+  await assert.rejects(
+    () => client(state.fetch).searchTopics({ branchId: 0, name: "kwin" }),
+    /branchId 不合法/,
+  );
+  assert.equal(state.calls.length, 0);
+});
+
+test("按名称搜主题：结果一次性只回上限那么多条", async () => {
+  const many = Array.from({ length: 80 }, (_, index) => ({
+    ID: 1_000 + index,
+    Name: `主题 ${index}`,
+    BranchID: 108,
+    Type: "test",
+    Abandoned: false,
+    Completed: false,
+    State: 0,
+    Owner: null,
+  }));
+
+  const topics = await client(fakeCrp(many).fetch).searchTopics({ branchId: 108, name: "主题" });
+
+  assert.equal(topics.length, 50, "最多 50 条，防止把整条分支的主题都塞给页面");
+});
