@@ -7,7 +7,6 @@
  * 表格外面套横向滚动容器，理由与第二步相同。
  */
 
-import { styles } from "../../../styles";
 import { shortSha } from "./wizardTypes";
 
 /** 第三步表格的一行：一个软件包将要写进快照的全部内容。 */
@@ -34,8 +33,8 @@ export function StepConfirm({ rows, submitting, canSubmit, onBack, onSubmit }: S
   return (
     <>
       <h2>第三步：确认提交</h2>
-      <div style={styles.tableScroll}>
-        <table>
+      <div className="table-scroll">
+        <table className="data-table">
           <thead>
             <tr>
               <th>软件包</th>
@@ -72,10 +71,10 @@ export function StepConfirm({ rows, submitting, canSubmit, onBack, onSubmit }: S
       </p>
 
       <p>
-        <button type="button" style={styles.smallButton} onClick={onBack}>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={onBack}>
           上一步
         </button>{" "}
-        <button type="button" style={styles.button} onClick={onSubmit} disabled={!canSubmit}>
+        <button type="button" className="btn btn-primary" onClick={onSubmit} disabled={!canSubmit}>
           {submitting ? "提交中…" : "提交提测"}
         </button>
       </p>

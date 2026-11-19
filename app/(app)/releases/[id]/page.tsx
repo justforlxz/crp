@@ -15,8 +15,10 @@
  * 跨工作区一律 404：按 id 直接查库，所以这一处判断就是跨工作区读取的唯一关口。
  */
 import Link from "next/link";
+
 import { notFound } from "next/navigation";
 
+import { PageShell } from "@/components/page-shell";
 import { findReleaseScope } from "@/lib/build";
 import {
   canViewRelease,
@@ -61,13 +63,12 @@ export default async function ReleaseDetailPage({
 
   if (scope.active === null) {
     return (
-      <main>
-        <h1>提测详情</h1>
+      <PageShell title="提测详情">
         <p>
           这个账号还不属于任何工作区，先请平台管理员把账号加入工作区。当前登录：
           {scope.account.displayName}
         </p>
-      </main>
+      </PageShell>
     );
   }
 
@@ -90,13 +91,12 @@ export default async function ReleaseDetailPage({
   } catch (error) {
     if (error instanceof ReleaseError) {
       return (
-        <main>
-          <h1>提测详情</h1>
-          <p role="alert">{error.message}</p>
+        <PageShell title="提测详情">
+          <p className="alert alert--error" role="alert">{error.message}</p>
           <p>
             <Link href={`/releases${scope.query}`}>回到提测记录列表</Link>
           </p>
-        </main>
+        </PageShell>
       );
     }
 
@@ -106,8 +106,7 @@ export default async function ReleaseDetailPage({
   const commitErrors = detail.packages.filter((item) => item.commitError !== null);
 
   return (
-    <main>
-      <h1>提测详情</h1>
+    <PageShell title="提测详情">
       <p>
         <Link href={`/releases${scope.query}`}>提测记录列表</Link>
         {"　"}
@@ -116,11 +115,19 @@ export default async function ReleaseDetailPage({
         </Link>
       </p>
 
-      {query.error === undefined ? null : <p role="alert">操作失败：{query.error}</p>}
-      {query.notice === undefined ? null : <p role="status">{query.notice}</p>}
+      {query.error === undefined ? null : (
+        <p className="alert alert--error" role="alert">
+          操作失败：{query.error}
+        </p>
+      )}
+      {query.notice === undefined ? null : (
+        <p className="alert alert--info" role="status">
+          {query.notice}
+        </p>
+      )}
 
       <h2>概要</h2>
-      <dl>
+      <dl data-style-anchor="release-detail.summary">
         <dt>提测版本</dt>
         <dd>
           <code>{detail.version}</code>（第 {detail.revision} 轮，
@@ -157,7 +164,7 @@ export default async function ReleaseDetailPage({
       {/* 构建状态区块（A14）：数据由服务端定时轮询写进库里，这一块只读。 */}
       <BuildStatusSection releaseId={detail.releaseId} />
 
-      <h2>更新提测</h2>
+      <h2 data-style-anchor="release-detail.update-entry">更新提测</h2>
       {detail.lockReason === null ? (
         <p>
           <Link href={`/releases/${detail.releaseId}/update${scope.query}`}>更新提测</Link>
@@ -176,46 +183,48 @@ export default async function ReleaseDetailPage({
 
       <h2>更新历史</h2>
       {detail.history.length === 0 ? (
-        <p>这条提测还没有补包或换包记录，只有建提测时的第一轮。</p>
+        <p className="empty">这条提测还没有补包或换包记录，只有建提测时的第一轮。</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>轮次</th>
-              <th>时间</th>
-              <th>操作人</th>
-              <th>动作</th>
-              <th>加的包</th>
-              <th>放弃的包</th>
-              <th>重投的包</th>
-            </tr>
-          </thead>
-          <tbody>
-            {detail.history.map((row) => (
-              <tr key={row.id}>
-                <td>
-                  第 {row.revisionBefore} 轮 → 第 {row.revisionAfter} 轮
-                </td>
-                <td>{formatTime(row.createdAt)}</td>
-                <td>{row.operatorName}</td>
-                <td>{row.action === "append" ? "补包" : "换包"}</td>
-                <td>
-                  {row.action === "append" ? <code>{row.packageNames.join("、")}</code> : "—"}
-                </td>
-                <td>
-                  <code>{row.abandonedPackages.length === 0 ? "—" : row.abandonedPackages.join("、")}</code>
-                </td>
-                <td>
-                  <code>
-                    {row.redispatchedPackageNames.length === 0
-                      ? "—"
-                      : row.redispatchedPackageNames.join("、")}
-                  </code>
-                </td>
+        <div className="table-scroll" data-style-anchor="release-detail.history-table-scroll">
+          <table className="data-table" data-style-anchor="release-detail.history-table">
+            <thead>
+              <tr>
+                <th>轮次</th>
+                <th>时间</th>
+                <th>操作人</th>
+                <th>动作</th>
+                <th>加的包</th>
+                <th>放弃的包</th>
+                <th>重投的包</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {detail.history.map((row) => (
+                <tr key={row.id}>
+                  <td>
+                    第 {row.revisionBefore} 轮 → 第 {row.revisionAfter} 轮
+                  </td>
+                  <td>{formatTime(row.createdAt)}</td>
+                  <td>{row.operatorName}</td>
+                  <td>{row.action === "append" ? "补包" : "换包"}</td>
+                  <td>
+                    {row.action === "append" ? <code>{row.packageNames.join("、")}</code> : "—"}
+                  </td>
+                  <td>
+                    <code>{row.abandonedPackages.length === 0 ? "—" : row.abandonedPackages.join("、")}</code>
+                  </td>
+                  <td>
+                    <code>
+                      {row.redispatchedPackageNames.length === 0
+                        ? "—"
+                        : row.redispatchedPackageNames.join("、")}
+                    </code>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <h2>软件包提交快照</h2>
@@ -228,73 +237,77 @@ export default async function ReleaseDetailPage({
         （列与这张表一致，行数与上面的软件包数一致）
       </p>
       {commitErrors.length === 0 ? null : (
-        <p role="status">
+        <p className="alert alert--info" role="status">
           提交说明与提交人读不到 Gerrit 时留空：{commitErrors.map((item) => item.packageName).join("、")}。
           其余列不受影响。
         </p>
       )}
-      <table>
-        <thead>
-          <tr>
-            {SNAPSHOT_COLUMNS.map((column) => (
-              <th key={column}>{column}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {detail.packages.map((item, index) => {
-            const cells = snapshotRowCells(item, index + 1);
-
-            return (
-              <tr key={item.packageName}>
-                {cells.map((cell, cellIndex) => (
-                  <td key={`${item.packageName}-${SNAPSHOT_COLUMNS[cellIndex]}`} title={cell}>
-                    {CODE_COLUMNS.has(SNAPSHOT_COLUMNS[cellIndex] ?? "") ? <code>{cell}</code> : cell}
-                  </td>
-                ))}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-
-      <h2>CRP 仓库记录</h2>
-      {detail.repositoryRecords.length === 0 ? (
-        <p>这些软件包还没投递到 CRP，所以还没有仓库记录。</p>
-      ) : (
-        <table>
+      <div className="table-scroll" data-style-anchor="release-detail.snapshot-table-scroll">
+        <table className="data-table" data-style-anchor="release-detail.snapshot-table">
           <thead>
             <tr>
-              <th>软件包</th>
-              <th>CRP Release ID</th>
-              <th>CRP Build ID</th>
-              <th>CRP 状态</th>
-              <th>仓库地址</th>
-              <th>最近同步</th>
+              {SNAPSHOT_COLUMNS.map((column) => (
+                <th key={column}>{column}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {detail.repositoryRecords.map((row) => (
-              <tr key={row.crpReleaseId}>
-                <td>{row.packageName}</td>
-                <td>
-                  <code>{row.crpReleaseId}</code>
-                </td>
-                <td>{row.crpBuildId === null ? "—" : <code>{row.crpBuildId}</code>}</td>
-                <td>{row.crpStatusName ?? "—"}</td>
-                <td>{row.repositoryUrl === null ? "—" : <code>{row.repositoryUrl}</code>}</td>
-                <td>{formatTime(row.lastSyncedAt)}</td>
-              </tr>
-            ))}
+            {detail.packages.map((item, index) => {
+              const cells = snapshotRowCells(item, index + 1);
+
+              return (
+                <tr key={item.packageName}>
+                  {cells.map((cell, cellIndex) => (
+                    <td key={`${item.packageName}-${SNAPSHOT_COLUMNS[cellIndex]}`} title={cell}>
+                      {CODE_COLUMNS.has(SNAPSHOT_COLUMNS[cellIndex] ?? "") ? <code>{cell}</code> : cell}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
+      </div>
+
+      <h2>CRP 仓库记录</h2>
+      {detail.repositoryRecords.length === 0 ? (
+        <p className="empty">这些软件包还没投递到 CRP，所以还没有仓库记录。</p>
+      ) : (
+        <div className="table-scroll">
+          <table className="data-table" data-style-anchor="release-detail.repo-records-table">
+            <thead>
+              <tr>
+                <th>软件包</th>
+                <th>CRP Release ID</th>
+                <th>CRP Build ID</th>
+                <th>CRP 状态</th>
+                <th>仓库地址</th>
+                <th>最近同步</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.repositoryRecords.map((row) => (
+                <tr key={row.crpReleaseId}>
+                  <td>{row.packageName}</td>
+                  <td>
+                    <code>{row.crpReleaseId}</code>
+                  </td>
+                  <td>{row.crpBuildId === null ? "—" : <code>{row.crpBuildId}</code>}</td>
+                  <td>{row.crpStatusName ?? "—"}</td>
+                  <td>{row.repositoryUrl === null ? "—" : <code>{row.repositoryUrl}</code>}</td>
+                  <td>{formatTime(row.lastSyncedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       <p>
         最近一次同步：{formatTime(detail.repositorySyncedAt)}
       </p>
       <form action={refreshRepositoryRecordsAction}>
         <input type="hidden" name="releaseId" value={detail.releaseId} />
-        <button type="submit">刷新 CRP 仓库记录</button>
+        <button type="submit" className="btn btn-secondary">刷新 CRP 仓库记录</button>
       </form>
       <p>
         刷新会向 CRP 查一次这条 Topic 下的 Release，再按构建 ID 查 Shuttle 的构建结果，把状态写回本地；
@@ -302,7 +315,7 @@ export default async function ReleaseDetailPage({
       </p>
 
       <h2>提测信息</h2>
-      <dl>
+      <dl data-style-anchor="release-detail.crp-info">
         <dt>CRP Topic ID</dt>
         <dd>
           {detail.crpTopicId === null ? (
@@ -358,6 +371,6 @@ export default async function ReleaseDetailPage({
         <dt>工作流进度最近同步</dt>
         <dd>{formatTime(detail.workProgressSyncedAt)}</dd>
       </dl>
-    </main>
+    </PageShell>
   );
 }

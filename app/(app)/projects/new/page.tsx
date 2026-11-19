@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { PageShell } from "@/components/page-shell";
 import { listBaselineChoices, listManagers } from "@/lib/projects";
 import { resolveWorkspaceScope } from "../../workspaceScope";
 import { createProjectAction } from "../actions";
@@ -24,10 +25,9 @@ export default async function NewProjectPage({ searchParams }: NewProjectPagePro
 
   if (scope.active === null) {
     return (
-      <main>
-        <h1>新建项目</h1>
+      <PageShell title="新建项目">
         <p>这个账号还不属于任何工作区，先请平台管理员把账号加入工作区。</p>
-      </main>
+      </PageShell>
     );
   }
 
@@ -41,13 +41,16 @@ export default async function NewProjectPage({ searchParams }: NewProjectPagePro
   const unusableBaselines = baselines.filter((baseline) => baseline.state !== "synced");
 
   return (
-    <main>
-      <h1>新建项目</h1>
+    <PageShell title="新建项目">
       <p>
         <Link href={`/projects${scope.query}`}>返回项目列表</Link>
       </p>
 
-      {query.error === undefined ? null : <p role="alert">保存失败：{query.error}</p>}
+      {query.error === undefined ? null : (
+        <p className="alert alert--error" role="alert">
+          保存失败：{query.error}
+        </p>
+      )}
 
       {managers.length === 0 ? (
         <p>
@@ -126,9 +129,11 @@ export default async function NewProjectPage({ searchParams }: NewProjectPagePro
           </label>
         </p>
         <p>
-          <button type="submit">保存</button>
+          <button type="submit" className="btn btn-primary">
+            保存
+          </button>
         </p>
       </form>
-    </main>
+    </PageShell>
   );
 }

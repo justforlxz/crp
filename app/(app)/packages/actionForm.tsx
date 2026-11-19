@@ -20,10 +20,13 @@ type FormAction = (
 export function ActionForm({
   action,
   submitLabel,
+  variant = "primary",
   children,
 }: {
   action: FormAction;
   submitLabel: string;
+  /** 按钮档位：默认主按钮，删除这类不可逆操作传 `danger`。 */
+  variant?: "primary" | "danger";
   children: ReactNode;
 }) {
   const [state, formAction, pending] = useActionState(action, null);
@@ -31,9 +34,13 @@ export function ActionForm({
   return (
     <form action={formAction}>
       {children}
-      {state?.error ? <p role="alert">{state.error}</p> : null}
-      {state?.message ? <p role="status">{state.message}</p> : null}
-      <button type="submit" disabled={pending}>
+      {state?.error ? <p className="alert alert--error" role="alert">{state.error}</p> : null}
+      {state?.message ? <p className="alert alert--info" role="status">{state.message}</p> : null}
+      <button
+        type="submit"
+        className={variant === "danger" ? "btn btn-danger" : "btn btn-primary"}
+        disabled={pending}
+      >
         {pending ? "处理中…" : submitLabel}
       </button>
     </form>

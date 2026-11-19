@@ -10,7 +10,6 @@ import { useState, type FormEvent } from "react";
 
 import { ROLE_LABELS, type Role } from "@/lib/auth/roles";
 import { readErrorMessage } from "../../http-error";
-import { styles } from "../../styles";
 
 type WorkspaceOption = { id: string; name: string; role: Role };
 
@@ -27,7 +26,7 @@ export function LogoutButton() {
   }
 
   return (
-    <button type="button" style={styles.smallButton} onClick={handleClick} disabled={pending}>
+    <button type="button" className="btn btn-secondary btn-sm" onClick={handleClick} disabled={pending}>
       {pending ? "退出中…" : "退出登录"}
     </button>
   );
@@ -61,14 +60,14 @@ export function WorkspaceSwitcher({
   }
 
   if (workspaces.length === 0) {
-    return <p style={styles.hint}>当前账号还没有加入任何工作区，请联系平台管理员分配。</p>;
+    return <p className="hint">当前账号还没有加入任何工作区，请联系平台管理员分配。</p>;
   }
 
   return (
     <>
-      <ul style={styles.list}>
+      <ul className="list">
         {workspaces.map((workspace) => (
-          <li key={workspace.id} style={styles.row}>
+          <li key={workspace.id} className="row">
             <span>
               {workspace.name}（{ROLE_LABELS[workspace.role]}）
             </span>
@@ -77,7 +76,7 @@ export function WorkspaceSwitcher({
             ) : (
               <button
                 type="button"
-                style={styles.smallButton}
+                className="btn btn-secondary btn-sm"
                 onClick={() => handleSwitch(workspace.id)}
                 disabled={pending !== null}
               >
@@ -87,7 +86,7 @@ export function WorkspaceSwitcher({
           </li>
         ))}
       </ul>
-      {error === null ? null : <p style={styles.error}>{error}</p>}
+      {error === null ? null : <p className="alert alert--error">{error}</p>}
     </>
   );
 }
@@ -136,39 +135,39 @@ export function InviteMemberForm({ workspaceId }: { workspaceId: string }) {
 
   return (
     <form onSubmit={handleSubmit} noValidate>
-      <label style={styles.label} htmlFor="member-displayName">
+      <label className="field-label" htmlFor="member-displayName">
         姓名
       </label>
-      <input id="member-displayName" name="displayName" style={styles.input} />
+      <input id="member-displayName" name="displayName" className="input" />
 
-      <label style={styles.label} htmlFor="member-email">
+      <label className="field-label" htmlFor="member-email">
         邮箱
       </label>
-      <input id="member-email" name="email" type="email" required style={styles.input} />
+      <input id="member-email" name="email" type="email" required className="input" />
 
-      <label style={styles.label} htmlFor="member-password">
+      <label className="field-label" htmlFor="member-password">
         初始密码（新账号必填，至少 8 位）
       </label>
       <input
         id="member-password"
         name="password"
         type="password"
-        style={styles.input}
+        className="input"
       />
 
-      <label style={styles.label} htmlFor="member-role">
+      <label className="field-label" htmlFor="member-role">
         角色
       </label>
-      <select id="member-role" name="role" defaultValue="developer" style={styles.input}>
+      <select id="member-role" name="role" defaultValue="developer" className="input">
         <option value="project_manager">项目经理</option>
         <option value="developer">开发者</option>
         <option value="reader">只读成员</option>
       </select>
 
-      {error === null ? null : <p style={styles.error}>{error}</p>}
-      {notice === null ? null : <p style={styles.hint}>{notice}</p>}
+      {error === null ? null : <p className="alert alert--error">{error}</p>}
+      {notice === null ? null : <p className="hint">{notice}</p>}
 
-      <button type="submit" style={styles.button} disabled={pending}>
+      <button type="submit" className="btn btn-primary" disabled={pending}>
         {pending ? "提交中…" : "建号并加入工作区"}
       </button>
     </form>

@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
 import { readErrorMessage } from "../../http-error";
-import { styles } from "../../styles";
 
 export function RegisterForm() {
   const router = useRouter();
@@ -43,17 +42,24 @@ export function RegisterForm() {
 
   return (
     <form onSubmit={handleSubmit} noValidate>
-      <label style={styles.label} htmlFor="displayName">
+      <label className="field-label" htmlFor="displayName">
         姓名
       </label>
-      <input id="displayName" name="displayName" required style={styles.input} />
+      <input id="displayName" name="displayName" required className="input" />
 
-      <label style={styles.label} htmlFor="email">
+      <label className="field-label" htmlFor="email">
         邮箱
       </label>
-      <input id="email" name="email" type="email" autoComplete="username" required style={styles.input} />
+      <input
+        id="email"
+        name="email"
+        type="email"
+        autoComplete="username"
+        required
+        className="input"
+      />
 
-      <label style={styles.label} htmlFor="password">
+      <label className="field-label" htmlFor="password">
         密码（至少 8 位）
       </label>
       <input
@@ -62,12 +68,12 @@ export function RegisterForm() {
         type="password"
         autoComplete="new-password"
         required
-        style={styles.input}
+        className="input"
       />
 
-      {error === null ? null : <p style={styles.error}>{error}</p>}
+      {error === null ? null : <p className="alert alert--error">{error}</p>}
 
-      <button type="submit" style={styles.button} disabled={pending}>
+      <button type="submit" className="btn btn-primary btn-block" disabled={pending}>
         {pending ? "注册中…" : "注册"}
       </button>
     </form>

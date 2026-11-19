@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { PageShell } from "@/components/page-shell";
 import { listBaselines } from "@/lib/baselines";
 import { listReleaseProjectChoices } from "@/lib/releases";
 import { resolveWorkspaceScope } from "../../workspaceScope";
@@ -24,13 +25,12 @@ export default async function ImportReleasePage({ searchParams }: ImportReleaseP
 
   if (scope.active === null) {
     return (
-      <main>
-        <h1>从 CRP 导入</h1>
+      <PageShell title="从 CRP 导入">
         <p>
           这个账号还不属于任何工作区，先请平台管理员把账号加入工作区。当前登录：
           {scope.account.displayName}
         </p>
-      </main>
+      </PageShell>
     );
   }
 
@@ -41,26 +41,27 @@ export default async function ImportReleasePage({ searchParams }: ImportReleaseP
 
   if (projects.length === 0) {
     return (
-      <main>
-        <h1>从 CRP 导入</h1>
+      <PageShell title="从 CRP 导入">
         <p>
           这个工作区还没有项目，导入的提测要挂在项目上。先去
           <Link href={`/projects/new${scope.query}`}>新建项目</Link>
           ，配好软件清单与基线再回来。
         </p>
-      </main>
+      </PageShell>
     );
   }
 
   return (
-    <ImportWizard
-      projects={projects}
-      baselines={baselines.map((item) => ({
-        id: item.id,
-        crpBranchId: item.crpBranchId,
-        name: item.name,
-      }))}
-      workspaceQuery={scope.query}
-    />
+    <PageShell title="从 CRP 导入">
+      <ImportWizard
+        projects={projects}
+        baselines={baselines.map((item) => ({
+          id: item.id,
+          crpBranchId: item.crpBranchId,
+          name: item.name,
+        }))}
+        workspaceQuery={scope.query}
+      />
+    </PageShell>
   );
 }

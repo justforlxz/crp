@@ -45,7 +45,7 @@ export async function BuildStatusBlock({ releaseId }: BuildStatusBlockProps) {
   }
 
   return (
-    <section>
+    <section data-style-anchor="release-detail.build-status">
       <h2>构建状态</h2>
       <p>
         提测状态：{view.statusLabel}；CRP 工作流进度：
@@ -67,40 +67,42 @@ export async function BuildStatusBlock({ releaseId }: BuildStatusBlockProps) {
       {view.tasks.length === 0 ? (
         <p>这条提测还没有软件包。</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>软件包</th>
-              <th>阶段</th>
-              <th>提测版本</th>
-              <th>架构状态</th>
-              <th>耗时</th>
-              <th>最近轮询</th>
-              <th>原因</th>
-              <th>CRP Release ID</th>
-              <th>Shuttle 构建任务 ID</th>
-            </tr>
-          </thead>
-          <tbody>
-            {view.tasks.map((task) => (
-              <tr key={task.snapshotId}>
-                <td>
-                  <code>{task.packageName}</code>
-                </td>
-                <td>{task.stage}</td>
-                <td>
-                  <code>{task.releaseVersion}</code>
-                </td>
-                <td>{describeArches(task.arches)}</td>
-                <td>{formatDuration(task.durationMs)}</td>
-                <td>{formatTime(task.lastPolledAt)}</td>
-                <td>{task.reason ?? "—"}</td>
-                <td>{task.crpReleaseId === null ? "—" : <code>{task.crpReleaseId}</code>}</td>
-                <td>{task.shuttleTaskId === null ? "—" : <code>{task.shuttleTaskId}</code>}</td>
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>软件包</th>
+                <th>阶段</th>
+                <th>提测版本</th>
+                <th>架构状态</th>
+                <th>耗时</th>
+                <th>最近轮询</th>
+                <th>原因</th>
+                <th>CRP Release ID</th>
+                <th>Shuttle 构建任务 ID</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {view.tasks.map((task) => (
+                <tr key={task.snapshotId}>
+                  <td>
+                    <code>{task.packageName}</code>
+                  </td>
+                  <td>{task.stage}</td>
+                  <td>
+                    <code>{task.releaseVersion}</code>
+                  </td>
+                  <td>{describeArches(task.arches)}</td>
+                  <td>{formatDuration(task.durationMs)}</td>
+                  <td>{formatTime(task.lastPolledAt)}</td>
+                  <td>{task.reason ?? "—"}</td>
+                  <td>{task.crpReleaseId === null ? "—" : <code>{task.crpReleaseId}</code>}</td>
+                  <td>{task.shuttleTaskId === null ? "—" : <code>{task.shuttleTaskId}</code>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );

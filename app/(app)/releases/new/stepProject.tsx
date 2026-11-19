@@ -8,7 +8,6 @@
  */
 
 import type { ReleaseProjectChoice } from "@/lib/releases";
-import { styles } from "../../../styles";
 
 export type StepProjectProps = {
   /** 是否停在第一步：只有停在这一步时输入框可编辑。 */
@@ -47,15 +46,16 @@ export function StepProject({
 }: StepProjectProps) {
   return (
     <>
-      <h2>第一步：项目归属</h2>
+      <h2 data-style-anchor="release-new.step-project">第一步：项目归属</h2>
 
       <p>
-        <label style={styles.label} htmlFor="release-manager">
+        <label className="field-label" htmlFor="release-manager">
           项目经理
         </label>
         <select
           id="release-manager"
-          style={styles.input}
+          data-style-anchor="release-new.manager-select"
+          className="input"
           value={managerId}
           onChange={(event) => onManagerChange(event.target.value)}
           disabled={!active}
@@ -70,12 +70,13 @@ export function StepProject({
       </p>
 
       <p>
-        <label style={styles.label} htmlFor="release-project">
+        <label className="field-label" htmlFor="release-project">
           项目
         </label>
         <select
           id="release-project"
-          style={styles.input}
+          data-style-anchor="release-new.project-select"
+          className="input"
           value={projectId}
           onChange={(event) => onProjectChange(event.target.value)}
           disabled={!active || managerId === ""}
@@ -107,7 +108,7 @@ export function StepProject({
       )}
 
       {project !== null && project.blockers.length > 0 ? (
-        <div role="alert">
+        <div className="alert alert--error" role="alert" data-style-anchor="release-new.blockers">
           <p>这个项目现在不能提测：</p>
           <ul>
             {project.blockers.map((blocker) => (
@@ -118,12 +119,12 @@ export function StepProject({
       ) : null}
 
       <p>
-        <label style={styles.label} htmlFor="release-version">
+        <label className="field-label" htmlFor="release-version">
           Topic 版本号
         </label>
         <input
           id="release-version"
-          style={styles.input}
+          className="input"
           value={version}
           onChange={(event) => onVersionChange(event.target.value)}
           placeholder="25.0.2"
@@ -133,12 +134,12 @@ export function StepProject({
       </p>
 
       <p>
-        <label style={styles.label} htmlFor="release-description">
+        <label className="field-label" htmlFor="release-description">
           提测说明（可不填）
         </label>
         <input
           id="release-description"
-          style={styles.input}
+          className="input"
           value={description}
           onChange={(event) => onDescriptionChange(event.target.value)}
           disabled={!active}
@@ -149,7 +150,7 @@ export function StepProject({
         <p>
           <button
             type="button"
-            style={styles.button}
+            className="btn btn-primary"
             onClick={onNext}
             disabled={projectId === "" || version.trim() === ""}
           >

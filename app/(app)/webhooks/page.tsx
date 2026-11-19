@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { PageShell } from "@/components/page-shell";
 import { listWebhookEndpoints, listWebhookWorkspaces } from "@/lib/webhook/endpoints";
 import { isWebhookEventType, WEBHOOK_EVENT_LABELS, WEBHOOK_EVENT_TYPES } from "@/lib/webhook/events";
 import { listRecentDeliveries } from "@/lib/webhook/service";
@@ -17,6 +18,15 @@ function eventLabel(type: string): string {
   return isWebhookEventType(type) ? WEBHOOK_EVENT_LABELS[type] : type;
 }
 
+/** 投递结果的徽标档位：只决定颜色，文案不变。 */
+function deliveryBadgeClass(status: string): string {
+  if (status === "success") {
+    return "badge badge--success";
+  }
+
+  return status === "failed" ? "badge badge--danger" : "badge badge--warn";
+}
+
 function formatTime(value: Date): string {
   return `${value.toISOString().replace("T", " ").slice(0, 19)}Z`;
 }
@@ -27,10 +37,9 @@ export default async function WebhooksPage({ searchParams }: WebhooksPageProps) 
 
   if (workspaces.length === 0) {
     return (
-      <main>
-        <h1>Webhook 端点</h1>
+      <PageShell title="Webhook 端点">
         <p>库里还没有工作区，先执行 `pnpm db:seed` 灌入种子数据。</p>
-      </main>
+      </PageShell>
     );
   }
 
@@ -40,8 +49,7 @@ export default async function WebhooksPage({ searchParams }: WebhooksPageProps) 
   const deliveries = await listRecentDeliveries(workspace.id);
 
   return (
-    <main>
-      <h1>Webhook 端点</h1>
+    <PageShell title="Webhook 端点">
       <p>
         提测与构建事件按端点订阅推给外部系统。每次投递都留记录，签名可被外部独立复算，
         算法见 <code>docs/WEBHOOK.md</code>。
@@ -59,8 +67,16 @@ export default async function WebhooksPage({ searchParams }: WebhooksPageProps) 
         ))}
       </p>
 
-      {query.error === undefined ? null : <p role="alert">操作失败：{query.error}</p>}
-      {query.notice === undefined ? null : <p role="status">{query.notice}</p>}
+      {query.error === undefined ? null : (
+        <p className="alert alert--error" role="alert">
+          操作失败：{query.error}
+        </p>
+      )}
+      {query.notice === undefined ? null : (
+        <p className="alert alert--info" role="status">
+          {query.notice}
+        </p>
+      )}
 
       <h2>新建端点</h2>
       <form action={createEndpointAction}>
@@ -108,99 +124,115 @@ export default async function WebhooksPage({ searchParams }: WebhooksPageProps) 
           </label>
         </p>
         <p>
-          <button type="submit">保存端点</button>
+          <button type="submit" className="btn btn-primary">
+            保存端点
+          </button>
         </p>
       </form>
 
       <h2>端点清单</h2>
       {endpoints.length === 0 ? (
-        <p>这个工作区还没有端点。</p>
+        <p className="empty">这个工作区还没有端点。</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>名称</th>
-              <th>回调地址</th>
-              <th>订阅事件</th>
-              <th>状态</th>
-              <th>签名密钥</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {endpoints.map((endpoint) => (
-              <tr key={endpoint.id}>
-                <td>{endpoint.name}</td>
-                <td>
-                  <code>{endpoint.url}</code>
-                </td>
-                <td>{endpoint.eventTypes.map(eventLabel).join("、")}</td>
-                <td>{endpoint.enabled ? "启用" : "停用"}</td>
-                <td>已设置（不回显）</td>
-                <td>
-                  <form action={toggleEndpointAction}>
-                    <input type="hidden" name="id" value={endpoint.id} />
-                    <input type="hidden" name="workspaceSlug" value={workspace.slug} />
-                    <input
-                      type="hidden"
-                      name="enabled"
-                      value={endpoint.enabled ? "false" : "true"}
-                    />
-                    <button type="submit">{endpoint.enabled ? "停用" : "启用"}</button>
-                  </form>
-                  <form action={sendTestEventAction}>
-                    <input type="hidden" name="id" value={endpoint.id} />
-                    <input type="hidden" name="workspaceSlug" value={workspace.slug} />
-                    <button type="submit" disabled={!endpoint.enabled}>
-                      发送测试事件
-                    </button>
-                  </form>
-                </td>
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>回调地址</th>
+                <th>订阅事件</th>
+                <th>状态</th>
+                <th>签名密钥</th>
+                <th>操作</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {endpoints.map((endpoint) => (
+                <tr key={endpoint.id}>
+                  <td>{endpoint.name}</td>
+                  <td>
+                    <code>{endpoint.url}</code>
+                  </td>
+                  <td>{endpoint.eventTypes.map(eventLabel).join("、")}</td>
+                  <td>
+                    <span className={endpoint.enabled ? "badge badge--success" : "badge"}>
+                      {endpoint.enabled ? "启用" : "停用"}
+                    </span>
+                  </td>
+                  <td>已设置（不回显）</td>
+                  <td>
+                    <form action={toggleEndpointAction}>
+                      <input type="hidden" name="id" value={endpoint.id} />
+                      <input type="hidden" name="workspaceSlug" value={workspace.slug} />
+                      <input
+                        type="hidden"
+                        name="enabled"
+                        value={endpoint.enabled ? "false" : "true"}
+                      />
+                      <button type="submit" className="btn btn-secondary btn-sm">
+                        {endpoint.enabled ? "停用" : "启用"}
+                      </button>
+                    </form>
+                    <form action={sendTestEventAction}>
+                      <input type="hidden" name="id" value={endpoint.id} />
+                      <input type="hidden" name="workspaceSlug" value={workspace.slug} />
+                      <button type="submit" className="btn btn-secondary btn-sm" disabled={!endpoint.enabled}>
+                        发送测试事件
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <h2>投递日志（最近 20 条）</h2>
       {deliveries.length === 0 ? (
-        <p>还没有投递记录。</p>
+        <p className="empty">还没有投递记录。</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>时间</th>
-              <th>端点</th>
-              <th>事件</th>
-              <th>关联记录</th>
-              <th>状态</th>
-              <th>HTTP</th>
-              <th>耗时</th>
-              <th>尝试</th>
-              <th>响应摘要</th>
-            </tr>
-          </thead>
-          <tbody>
-            {deliveries.map((delivery) => (
-              <tr key={delivery.id}>
-                <td>{formatTime(delivery.createdAt)}</td>
-                <td>{delivery.endpointName}</td>
-                <td>{eventLabel(delivery.eventType)}</td>
-                <td>{delivery.relatedRecord ?? "-"}</td>
-                <td>{delivery.status === "success" ? "成功" : delivery.status === "failed" ? "失败" : "进行中"}</td>
-                <td>{delivery.httpStatus ?? "-"}</td>
-                <td>{delivery.durationMs === null ? "-" : `${delivery.durationMs}ms`}</td>
-                <td>
-                  {delivery.attempts} 次{delivery.lastError === null ? "" : `（${delivery.lastError}）`}
-                </td>
-                <td>
-                  <code>{delivery.responseSnippet ?? "-"}</code>
-                </td>
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>端点</th>
+                <th>事件</th>
+                <th>关联记录</th>
+                <th>状态</th>
+                <th>HTTP</th>
+                <th>耗时</th>
+                <th>尝试</th>
+                <th>响应摘要</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {deliveries.map((delivery) => (
+                <tr key={delivery.id}>
+                  <td>{formatTime(delivery.createdAt)}</td>
+                  <td>{delivery.endpointName}</td>
+                  <td>{eventLabel(delivery.eventType)}</td>
+                  <td>{delivery.relatedRecord ?? "-"}</td>
+                  <td>
+                    <span className={deliveryBadgeClass(delivery.status)}>
+                      {delivery.status === "success" ? "成功" : delivery.status === "failed" ? "失败" : "进行中"}
+                    </span>
+                  </td>
+                  <td>{delivery.httpStatus ?? "-"}</td>
+                  <td>{delivery.durationMs === null ? "-" : `${delivery.durationMs}ms`}</td>
+                  <td>
+                    {delivery.attempts} 次{delivery.lastError === null ? "" : `（${delivery.lastError}）`}
+                  </td>
+                  <td>
+                    <code>{delivery.responseSnippet ?? "-"}</code>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
-    </main>
+    </PageShell>
   );
 }

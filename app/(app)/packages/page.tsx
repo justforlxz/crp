@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { PageShell } from "@/components/page-shell";
 import { listPackages } from "@/lib/packages";
 
 // 数据每分钟都在被同步任务改，页面不做静态化。
@@ -18,51 +19,56 @@ export default async function PackagesPage() {
   const packages = await listPackages();
 
   return (
-    <main>
-      <h1>软件包</h1>
-      <p>
+    <PageShell title="软件包">
+      <p data-style-anchor="packages.intro">
         软件包全平台共用一份登记，依赖只在软件包上维护一次，项目只读引用。
       </p>
-      <p>
-        <Link href="/packages/new">新建软件包</Link>
+      <p className="row" data-style-anchor="packages.create-entry">
+        <Link href="/packages/new" className="btn btn-primary">
+          新建软件包
+        </Link>
       </p>
 
       {packages.length === 0 ? (
-        <p>还没有登记任何软件包。</p>
+        <p className="empty" data-style-anchor="packages.empty">
+          还没有登记任何软件包。
+        </p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>名称</th>
-              <th>仓库路径</th>
-              <th>默认分支</th>
-              <th>当前版本</th>
-              <th>当前 Commit</th>
-              <th>上游依赖</th>
-              <th>被依赖</th>
-              <th>引用项目</th>
-              <th>最近同步</th>
-            </tr>
-          </thead>
-          <tbody>
-            {packages.map((item) => (
-              <tr key={item.id}>
-                <td>
-                  <Link href={`/packages/${item.id}`}>{item.name}</Link>
-                </td>
-                <td>{item.repoPath}</td>
-                <td>{item.defaultBranch}</td>
-                <td>{item.currentVersion ?? "—"}</td>
-                <td>{item.currentCommit ? item.currentCommit.slice(0, 12) : "—"}</td>
-                <td>{item._count.dependencies}</td>
-                <td>{item._count.dependents}</td>
-                <td>{item._count.projectSoftware}</td>
-                <td>{formatTime(item.lastSyncedAt)}</td>
+        <div className="table-scroll" data-style-anchor="packages.table-scroll">
+          <table className="data-table" data-style-anchor="packages.table">
+            <thead data-style-anchor="packages.table-header">
+              <tr>
+                <th>名称</th>
+                <th data-style-anchor="packages.header-repo-path">仓库路径</th>
+                <th>默认分支</th>
+                <th>当前版本</th>
+                <th>当前 Commit</th>
+                <th>上游依赖</th>
+                <th>被依赖</th>
+                <th>引用项目</th>
+                <th>最近同步</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {packages.map((item) => (
+                <tr key={item.id}>
+                  <td>
+                    <Link href={`/packages/${item.id}`}>{item.name}</Link>
+                  </td>
+                  <td>{item.repoPath}</td>
+                  <td>{item.defaultBranch}</td>
+                  <td>{item.currentVersion ?? "—"}</td>
+                  <td>{item.currentCommit ? item.currentCommit.slice(0, 12) : "—"}</td>
+                  <td>{item._count.dependencies}</td>
+                  <td>{item._count.dependents}</td>
+                  <td>{item._count.projectSoftware}</td>
+                  <td>{formatTime(item.lastSyncedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
-    </main>
+    </PageShell>
   );
 }

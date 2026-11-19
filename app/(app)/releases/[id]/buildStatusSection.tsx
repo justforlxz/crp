@@ -32,7 +32,7 @@ export async function renderBuildStatusBlock(
     return (
       <section>
         <h2>构建状态</h2>
-        <p role="status">构建状态暂时读不到，提测的其他内容不受影响。</p>
+        <p className="alert alert--info" role="status">构建状态暂时读不到，提测的其他内容不受影响。</p>
       </section>
     );
   }
