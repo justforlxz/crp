@@ -47,14 +47,29 @@ test("依赖有环时被阻断，提示里带出回路", () => {
   assert.match(readiness.blockers[0].message, /软件包管理/);
 });
 
-test("自依赖也算环", () => {
+test("自依赖也算环，回路从阻断文案里读", () => {
   const readiness = evaluateReleaseReadiness({
     baseline: SYNCED,
     entries: [entry("kwin", ["kwin"])],
   });
 
   assert.equal(readiness.ready, false);
-  assert.deepEqual(readiness.cycle, ["kwin", "kwin"]);
+  assert.match(readiness.blockers[0].message, /kwin → kwin/);
+});
+
+test("结论里不再单列依赖环，环只通过阻断文案给出", () => {
+  const readiness = evaluateReleaseReadiness({
+    baseline: SYNCED,
+    entries: [entry("kwin", ["dde-dock"]), entry("dde-dock", ["kwin"])],
+  });
+
+  assert.deepEqual(Object.keys(readiness).sort(), [
+    "blockers",
+    "dependencyCount",
+    "order",
+    "packageCount",
+    "ready",
+  ]);
 });
 
 test("基线未同步、已消失、同步失败三种都被阻断，且原因各不相同", () => {

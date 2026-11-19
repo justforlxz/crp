@@ -69,6 +69,8 @@ export const styles: Record<string, CSSProperties> = {
     background: "#fdeceb",
     borderRadius: 4,
   },
+  /** 宽表的横向滚动容器：窄屏上表格自己滚，不让整页出现横向滚动条。 */
+  tableScroll: { width: "100%", overflowX: "auto" },
   row: { display: "flex", gap: 8, alignItems: "center", padding: "8px 0" },
   section: { marginTop: 24 },
   list: { margin: 0, padding: 0, listStyle: "none" },

@@ -28,6 +28,7 @@ export {
   listReleaseProjectChoices,
   loadReleaseProject,
   ReleaseError,
+  releaseErrorCode,
   type CreateReleaseOptions,
   type CreatedRelease,
   type ReleaseProjectChoice,
