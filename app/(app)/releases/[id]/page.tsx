@@ -2,7 +2,8 @@
  * 提测详情（A13）。
  *
  * 一条提测的来龙去脉都在这页：概要条（版本、基线、软件数、创建人、说明、是否已锁定、来源）、
- * 「更新提测」入口、更新历史、软件包提交快照表、CRP 仓库记录关联、提测信息。
+ * 构建状态区块（A14 的组件，这一页只负责挂上去）、「更新提测」入口、更新历史、
+ * 软件包提交快照表、CRP 仓库记录关联、提测信息。
  *
  * 两条硬约束落在页面上：
  *
@@ -28,6 +29,7 @@ import {
 } from "@/lib/releases";
 import { resolveWorkspaceScope } from "../../workspaceScope";
 import { refreshRepositoryRecordsAction } from "./actions";
+import { BuildStatusSection } from "./buildStatusSection";
 import { CopyValue } from "./copyValue";
 
 // CRP 进度与构建状态一直在变，页面不做静态化。
@@ -152,12 +154,8 @@ export default async function ReleaseDetailPage({
           ) : null}
         </dd>
       </dl>
-
-      {/*
-        A14（构建队列/构建状态）的挂载点在这里：`components/build-status.tsx` 导出
-        `BuildStatusBlock({ releaseId })`，合入后在这一行 import 并渲染即可。
-        现在刻意不 import 未合入的文件，否则构建会直接失败。
-      */}
+      {/* 构建状态区块（A14）：数据由服务端定时轮询写进库里，这一块只读。 */}
+      <BuildStatusSection releaseId={detail.releaseId} />
 
       <h2>更新提测</h2>
       {detail.lockReason === null ? (
