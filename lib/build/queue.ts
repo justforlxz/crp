@@ -97,19 +97,60 @@ function startOfUtcDay(now: Date): Date {
 }
 
 /**
- * 读一个工作区的构建队列。
+ * 队列页取的那一版提测行。
+ *
+ * 取数与组装拆开之后，这份形状就是两者的接缝：`loadBuildQueueData()` 按它查库，
+ * `buildQueueView()` 只按它组装、不再碰 Prisma。字段只留组装真正读的那些。
+ */
+type QueueReleaseSource = {
+  id: string;
+  version: string;
+  status: string;
+  crpWorkProgress: number | null;
+  crpWorkProgressLabel: string | null;
+  crpWorkProgressSyncedAt: Date | null;
+  project: { name: string };
+  snapshots: Array<{
+    id: string;
+    packageName: string;
+    status: string;
+    buildTask: {
+      startedAt: Date | null;
+      finishedAt: Date | null;
+      blockedBySnapshotId: string | null;
+      statusReason: string | null;
+      jobs: Array<{ arch: string; status: string }>;
+    } | null;
+  }>;
+};
+
+/** 队列页的原始数据：库里的行 + 上游名单 + 今日计数 + 最近的流水。 */
+export type BuildQueueSnapshot = {
+  /** 未完结的提测，最新投递的在前。 */
+  releases: readonly QueueReleaseSource[];
+  /** 包名 → 上游包名，只含这批数据里出现过的名字。 */
+  upstreams: ReadonlyMap<string, readonly string[]>;
+  /** 今天（UTC）拿到终态的构建任务数。 */
+  finishedToday: number;
+  /** 最近的调度事件流水。 */
+  events: BuildPollEventRow[];
+  /** 这批数据读出来的时刻。 */
+  generatedAt: Date;
+};
+
+/**
+ * 取队列页要的数据，只查不组装。
  *
  * 只读**未完结**的提测：终局的提测留在「调度事件流水」与详情页里，不占队列页的位置。
  * 这个集合天然被「在跑的工作量」限住，所以**不加条数上限** —— 上限会把最新投递的提测挤掉
  * （QA 在功能检测里验出过：21 条活跃提测时新投递的那条看不到，统计卡也只算 20）。
  *
  * 排序按创建时间从新到旧：最新投递的排在最前，一打开页面就能看到自己刚起的提测。
- * 统计卡与任务表出自同一批数据，不会出现「卡上一个数、表里另一个数」。
  */
-export async function loadBuildQueue(
+export async function loadBuildQueueData(
   workspaceId: string,
   options: LoadBuildQueueOptions = {},
-): Promise<BuildQueueView> {
+): Promise<BuildQueueSnapshot> {
   const now = options.now ?? new Date();
 
   const releases = await prisma.release.findMany({
@@ -120,7 +161,6 @@ export async function loadBuildQueue(
       id: true,
       version: true,
       status: true,
-      crpTopicId: true,
       crpWorkProgress: true,
       crpWorkProgressLabel: true,
       crpWorkProgressSyncedAt: true,
@@ -133,10 +173,8 @@ export async function loadBuildQueue(
           id: true,
           packageName: true,
           status: true,
-          repositoryRecord: { select: { crpReleaseId: true } },
           buildTask: {
             select: {
-              status: true,
               startedAt: true,
               finishedAt: true,
               blockedBySnapshotId: true,
@@ -153,21 +191,41 @@ export async function loadBuildQueue(
     releases.flatMap((release) => release.snapshots.map((snapshot) => snapshot.packageName)),
   );
 
+  const [finishedToday, events] = await Promise.all([
+    prisma.buildTask.count({
+      where: {
+        release: { project: { workspaceId } },
+        finishedAt: { gte: startOfUtcDay(now) },
+      },
+    }),
+    listPollEvents(workspaceId, 30),
+  ]);
+
+  return { releases, upstreams, finishedToday, events, generatedAt: now };
+}
+
+/**
+ * 把一批原始数据组装成队列页的视图。
+ *
+ * 纯函数：不查库、不看时钟，输出只取决于传进来的数据 —— 所以同一份数据改动前后可以逐字段对比。
+ * 统计卡与任务表出自同一批数据，不会出现「卡上一个数、表里另一个数」。
+ */
+export function buildQueueView(data: BuildQueueSnapshot): BuildQueueView {
   // 阻断原因指向的是同一提测里的兄弟快照，先把「ID → 包名」备好。
   const packageNameBySnapshotId = new Map(
-    releases.flatMap((release) =>
+    data.releases.flatMap((release) =>
       release.snapshots.map((snapshot) => [snapshot.id, snapshot.packageName] as const),
     ),
   );
 
-  const views: QueueReleaseView[] = releases.map((release) => {
+  const views: QueueReleaseView[] = data.releases.map((release) => {
     const statusByName = new Map(
       release.snapshots.map((snapshot) => [snapshot.packageName, snapshot.status]),
     );
     const edges: Array<{ from: string; to: string }> = [];
 
     const tasks = release.snapshots.map((snapshot) => {
-      const names = upstreams.get(snapshot.packageName) ?? [];
+      const names = data.upstreams.get(snapshot.packageName) ?? [];
       const waitingFor = names.filter((name) => statusByName.get(name) !== "success");
 
       for (const name of names) {
@@ -192,7 +250,7 @@ export async function loadBuildQueue(
         phase: stage.phase,
         stage: stage.name,
         progress: describeProgress(snapshot.buildTask?.jobs ?? null),
-        durationMs: elapsedOf(snapshot.buildTask ?? null, now),
+        durationMs: elapsedOf(snapshot.buildTask ?? null, data.generatedAt),
         waitingFor,
         reason: snapshot.buildTask?.statusReason ?? null,
       } satisfies QueueTaskRow;
@@ -214,27 +272,29 @@ export async function loadBuildQueue(
 
   const allTasks = views.flatMap((view) => view.tasks);
 
-  const [finishedToday, events] = await Promise.all([
-    prisma.buildTask.count({
-      where: {
-        release: { project: { workspaceId } },
-        finishedAt: { gte: startOfUtcDay(now) },
-      },
-    }),
-    listPollEvents(workspaceId, 30),
-  ]);
-
   return {
     stats: {
       queued: allTasks.filter((task) => OPEN_PHASES.has(task.phase)).length,
       building: allTasks.filter((task) => task.phase === "running").length,
       waiting: allTasks.filter((task) => task.phase === "waiting").length,
-      finishedToday,
+      finishedToday: data.finishedToday,
     },
     releases: views,
-    events,
-    generatedAt: now,
+    events: data.events,
+    generatedAt: data.generatedAt,
   };
+}
+
+/**
+ * 读一个工作区的构建队列：先取数，再组装。
+ *
+ * 页面、测试与之后的读模型都调这一个入口，拆开的两步只在需要单独对照时才直接用。
+ */
+export async function loadBuildQueue(
+  workspaceId: string,
+  options: LoadBuildQueueOptions = {},
+): Promise<BuildQueueView> {
+  return buildQueueView(await loadBuildQueueData(workspaceId, options));
 }
 
 // ---------------------------------------------------------------------------

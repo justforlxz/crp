@@ -18,16 +18,22 @@
 import "dotenv/config";
 
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test, { after, before } from "node:test";
 
+import { reportItemFailures, reportPollCrash } from "../app/(app)/queue/messages";
 import { POST as pollJobPost } from "../app/api/jobs/build-poll/route";
 import {
   ACTIVE_RELEASE_STATES,
+  POLL_EVENT_RETENTION_DAYS,
+  buildQueueView,
   formatDuration,
   listPollEvents,
   loadBuildQueue,
+  loadBuildQueueData,
   loadReleaseBuildStatus,
   pickWorkflowProgress,
+  prunePollEvents,
   queueStageOf,
   runBuildPoll,
 } from "../lib/build";
@@ -194,7 +200,10 @@ function crpFetchOf(state: FakeState): typeof fetch {
 function shuttleFetchOf(state: FakeState): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     if (state.shuttleDown) {
-      throw new Error("测试制造的 Shuttle 请求超时");
+      // 与真实客户端同一形态：错误消息里带方法与接口地址（见 `lib/integrations/shuttle/client.ts`）。
+      throw new Error(
+        `请求 Shuttle 失败：POST ${SHUTTLE_BASE}/task/list：The operation was aborted due to timeout`,
+      );
     }
 
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -1105,4 +1114,325 @@ test("定时入口：没配 token 一律 401，填错 token 也是 401", async (
       process.env.BUILD_POLL_JOB_TOKEN = saved;
     }
   }
+});
+
+// ---------------------------------------------------------------------------
+// MKACG-906 AC1：取数与组装拆开后，队列视图逐字段不变
+// ---------------------------------------------------------------------------
+
+test("AC1 取数与组装拆开后，队列视图逐字段不变，四项组成都还在", async () => {
+  await closeLeftoverReleases();
+
+  const now = new Date("2026-11-19T08:00:00.000Z");
+
+  const seeded = await seedRelease({
+    version: "a14-split",
+    status: "building",
+    topicId: 90_008,
+    workProgress: 10,
+    snapshots: [
+      {
+        suffix: "a",
+        status: "building",
+        crpReleaseId: 5_501,
+        crpBuildId: 2_501,
+        buildTask: {
+          status: "building",
+          shuttleTaskId: "2501",
+          startedAt: new Date("2026-11-19T07:30:00.000Z"),
+        },
+        jobs: [
+          { arch: "amd64", status: "success" },
+          { arch: "arm64", status: "building" },
+        ],
+      },
+      { suffix: "b", status: "pending" },
+      { suffix: "c", status: "pending" },
+    ],
+  });
+
+  await prisma.buildPollEvent.create({
+    data: {
+      releaseId: seeded.releaseId,
+      event: "poll",
+      condition: "周期到期",
+      result: "查询 1 个包：成功 0、失败 0、构建中 1",
+    },
+  });
+
+  // 同一份数据、同一个时刻：拆开后「取数 → 组装」的结果必须与拆分前的单函数逐字段一致。
+  const oneShot = await loadBuildQueue(fixture.workspaceId, { now });
+  const split = buildQueueView(await loadBuildQueueData(fixture.workspaceId, { now }));
+
+  assert.deepEqual(split, oneShot);
+
+  const release = oneShot.releases.find((item) => item.releaseId === seeded.releaseId);
+  assert.ok(release !== undefined);
+
+  // 四项组成逐个检查：统计卡、依赖拓扑、任务列表、调度事件流水。
+  assert.equal(oneShot.stats.queued, 3);
+  assert.equal(oneShot.stats.building, 1);
+  assert.equal(oneShot.stats.waiting, 2);
+  assert.deepEqual(release.edges, [
+    { from: pkgName("a"), to: pkgName("b") },
+    { from: pkgName("b"), to: pkgName("c") },
+  ]);
+  assert.deepEqual(
+    release.tasks.map((task) => [task.packageName, task.stage, task.progress, task.durationMs]),
+    [
+      [pkgName("a"), "构建中", "1/2 个架构完成", 30 * 60_000],
+      [pkgName("b"), "等待依赖", null, null],
+      [pkgName("c"), "等待依赖", null, null],
+    ],
+  );
+  assert.equal(oneShot.events[0]?.releaseVersion, "a14-split");
+  assert.equal(oneShot.events[0]?.condition, "周期到期");
+  assert.equal(oneShot.generatedAt.getTime(), now.getTime());
+});
+
+// ---------------------------------------------------------------------------
+// MKACG-906 AC2：调度事件流水的保留期
+// ---------------------------------------------------------------------------
+
+test("AC2 调度事件流水按 30 天保留期清理，保留期内的行不动", async () => {
+  await closeLeftoverReleases();
+
+  const now = new Date("2026-11-19T08:00:00.000Z");
+  const dayMs = 24 * 60 * 60 * 1000;
+
+  const seeded = await seedRelease({
+    version: "a14-retention",
+    status: "pending",
+    topicId: null,
+    snapshots: [],
+  });
+
+  const createEvent = (daysAgo: number, result: string) =>
+    prisma.buildPollEvent.create({
+      data: {
+        releaseId: seeded.releaseId,
+        event: "poll",
+        condition: "周期到期",
+        result,
+        createdAt: new Date(now.getTime() - daysAgo * dayMs),
+      },
+      select: { id: true },
+    });
+
+  const expired = await createEvent(POLL_EVENT_RETENTION_DAYS + 1, "过期那条");
+  const oldestKept = await createEvent(POLL_EVENT_RETENTION_DAYS - 1, "保留期内的最老一条");
+  const fresh = await createEvent(0, "刚写的");
+
+  const removed = await prunePollEvents(now);
+  assert.equal(removed >= 1, true, "应有至少一条过期的行被删掉");
+
+  const left = await prisma.buildPollEvent.findMany({
+    where: { releaseId: seeded.releaseId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+
+  assert.deepEqual(
+    left.map((row) => row.id),
+    [oldestKept.id, fresh.id],
+    "只删早于保留期的行，保留期内的原样留着",
+  );
+  assert.equal(left.some((row) => row.id === expired.id), false);
+
+  // 文档里写明的保留期与代码里的常量是同一条，改一处漏一处会被这条断言拦下。
+  const doc = await readFile("docs/DATA_MODEL.md", "utf8");
+  assert.equal(doc.includes(`**保留策略：${POLL_EVENT_RETENTION_DAYS} 天。**`), true);
+});
+
+// ---------------------------------------------------------------------------
+// MKACG-906 AC3：页面提示不带表名、约束名、SQL 片段与接口地址
+// ---------------------------------------------------------------------------
+
+/** 抓一段 console.error 输出，用来断言「明细留在服务端日志」。 */
+async function captureConsoleError<T>(
+  run: () => Promise<T>,
+): Promise<{ value: T; logs: string[] }> {
+  const logs: string[] = [];
+  const original = console.error;
+
+  console.error = (...args: unknown[]) => {
+    logs.push(args.map((item) => String(item)).join(" "));
+  };
+
+  try {
+    return { value: await run(), logs };
+  } finally {
+    console.error = original;
+  }
+}
+
+test("AC3 页面提示不带表名、约束名、SQL 片段与接口地址，明细留在服务端日志", async () => {
+  // 造一次真的数据库异常：原文里带表名，与 `pollOneSafely` 交给 `items[].error` 的形态一致。
+  let dbError: unknown;
+
+  try {
+    await prisma.$queryRawUnsafe("SELECT * FROM zz_a14_no_such_table");
+  } catch (error) {
+    dbError = error;
+  }
+
+  assert.ok(dbError instanceof Error);
+  // 与 `errorSummary` 的拼法一致：`<name>: <message>`，再截到 500 字。
+  const dbRaw = `${dbError.name}: ${dbError.message}`.slice(0, 500);
+  assert.equal(dbRaw.includes("zz_a14_no_such_table"), true, "数据库原文里确实带表名");
+
+  const constraintRaw =
+    "PrismaClientKnownRequestError: Unique constraint failed on the fields: " +
+    "(`release_project_id_version_key`). Raw query failed. Code: `42P01`. " +
+    'Message: `relation "public.release_package_snapshot" does not exist`; ' +
+    'SELECT "release"."id" FROM "release" WHERE "release"."id" = $1';
+  const shuttleRaw = `ShuttleError: 请求 Shuttle 失败：POST ${SHUTTLE_BASE}/task/list：超时`;
+
+  // 页面上不该出现的四类信息：表名、约束名、SQL 片段、接口地址。
+  const secrets = [
+    "zz_a14_no_such_table",
+    "release_project_id_version_key",
+    "release_package_snapshot",
+    "SELECT",
+    "https://",
+  ];
+
+  const { value: partial, logs: partialLogs } = await captureConsoleError(async () =>
+    reportItemFailures([
+      { version: "1.0.1", error: dbRaw },
+      { version: "1.0.2", error: constraintRaw },
+      { version: "1.0.3", error: shuttleRaw },
+    ]),
+  );
+
+  const { value: crash, logs: crashLogs } = await captureConsoleError(async () =>
+    reportPollCrash(new Error(constraintRaw)),
+  );
+
+  for (const text of [partial, crash]) {
+    for (const secret of secrets) {
+      assert.equal(text.includes(secret), false, `页面提示里不该出现「${secret}」：${text}`);
+    }
+
+    assert.equal(text.includes("明细见服务端日志"), true);
+  }
+
+  const logged = [...partialLogs, ...crashLogs].join("\n");
+
+  for (const secret of secrets) {
+    assert.equal(logged.includes(secret), true, `明细应留在服务端日志里：「${secret}」`);
+  }
+
+  // 页面上还是要知道是哪几条出的问题。
+  assert.equal(partial.includes("1.0.1、1.0.2、1.0.3"), true);
+});
+
+test("AC3 Shuttle 失败：接口返回留着原文，页面提示只给一句话", async () => {
+  await closeLeftoverReleases();
+
+  const topicId = 90_009;
+  const state = newFakeState(topicId);
+
+  const seeded = await seedRelease({
+    version: "a14-page-hint",
+    status: "building",
+    topicId,
+    snapshots: [
+      {
+        suffix: "a",
+        status: "building",
+        crpReleaseId: 5_601,
+        crpBuildId: 2_601,
+        buildTask: { status: "building", shuttleTaskId: "2601", startedAt: new Date() },
+        jobs: [{ arch: "amd64", status: "building" }],
+      },
+    ],
+  });
+
+  stageBuildInChain(state, 5_601, 2_601, "a");
+  state.shuttleDown = true;
+
+  const { value: summary, logs } = await captureConsoleError(() =>
+    runBuildPoll({ trigger: "manual", network: networkOf(state) }),
+  );
+
+  const failed = summary.items.filter((item) => item.error !== null);
+  const broken = failed.find((item) => item.releaseId === seeded.releaseId);
+
+  assert.ok(broken !== undefined, "Shuttle 超时的那条应进失败名单");
+  // 接口返回（`/api/jobs/build-poll` 的 `items[].error`）保留原文。
+  assert.equal(broken.error?.includes(SHUTTLE_BASE), true);
+
+  const { value: hint, logs: hintLogs } = await captureConsoleError(async () =>
+    reportItemFailures(failed),
+  );
+
+  assert.equal(hint.includes(SHUTTLE_BASE), false, "页面提示不带接口地址");
+  assert.equal(hint.includes("a14-page-hint"), true, "页面提示仍要说清是哪几条");
+  assert.equal(
+    [...logs, ...hintLogs].join("\n").includes(SHUTTLE_BASE),
+    true,
+    "接口地址留在服务端日志",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// MKACG-906：兜底分支也记 lastPolledAt，且写不进去时不该把整轮拖垮
+// ---------------------------------------------------------------------------
+
+test("兜底分支：单条提测整体出错不打断整轮，兜底里那次写库失败也不外抛", async () => {
+  await closeLeftoverReleases();
+
+  const topicId = 90_010;
+  const state = newFakeState(topicId);
+  const base = networkOf(state);
+
+  const broken = await seedRelease({
+    version: "a14-fallback",
+    status: "dispatching",
+    topicId,
+    // 没有快照：下面删这一行时不会被外键 RESTRICT 挡住。
+    snapshots: [],
+  });
+
+  const healthy = await seedRelease({
+    version: "a14-fallback-ok",
+    status: "pending",
+    topicId: null,
+    snapshots: [{ suffix: "a", status: "pending" }],
+  });
+
+  // 假 CRP 回答工作流进度时把这条提测从库里删掉：轮询读到它、写回时行已经不存在，
+  // `pollOne` 的写库就会抛错，正好走到 `pollOneSafely` 的兜底分支。
+  let deleted = false;
+  const network = {
+    ...base,
+    crpFetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!deleted && pathOf(input).endsWith("/workflow/info")) {
+        deleted = true;
+        await prisma.release.delete({ where: { id: broken.releaseId } });
+      }
+
+      return base.crpFetch(input, init);
+    }) as typeof fetch,
+  };
+
+  const { value: summary, logs } = await captureConsoleError(() =>
+    runBuildPoll({ trigger: "schedule", network }),
+  );
+
+  assert.equal(deleted, true, "删除钩子应被触发，这条提测才真的会在轮询中途消失");
+
+  const brokenItem = summary.items.find((item) => item.releaseId === broken.releaseId);
+  const okItem = summary.items.find((item) => item.releaseId === healthy.releaseId);
+
+  assert.ok(brokenItem !== undefined);
+  assert.notEqual(brokenItem.error, null, "整体出错的那条要记进本轮结果");
+  assert.equal(okItem?.error, null, "别的提测不受影响，整轮没有被打断");
+
+  // 兜底分支里那次 `lastPolledAt` 写库也失败了（行已不存在）：只打服务端日志，不外抛。
+  assert.equal(
+    logs.join("\n").includes(`提测 ${broken.releaseId} 的轮询时间写不进去`),
+    true,
+  );
 });
