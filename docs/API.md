@@ -555,3 +555,202 @@ Authorization: Bearer <BUILD_DISPATCH_JOB_TOKEN>
 */2 * * * * curl -fsS -X POST -H "Authorization: Bearer $BUILD_DISPATCH_JOB_TOKEN" \
   http://localhost:3000/api/jobs/build-dispatch
 ```
+
+## GET /api/releases/{id}/update
+
+看这条提测现在能不能改：CRP 工作流进度（现读）、当前每个软件包固化的参数、项目清单里还能补进来的
+包，以及每一轮更新留下的记录。
+
+页面 `app/(app)/releases/[id]/update` 直接读同一个函数（`loadReleaseUpdateView`），接口只是同一份
+数据的 JSON 版本，A13 的提测详情页合入后可以直接搬过去。
+
+### 鉴权
+
+用用户会话，要「只读」及以上角色。工作区从提测归属查出，不采信查询串。
+提测不存在、或账号不在它所属的工作区，都返回 `404 release_not_found`。
+
+### 返回体
+
+`200`：
+
+```json
+{
+  "releaseId": "01a1f0c0-…",
+  "version": "25.0.2",
+  "revision": 2,
+  "status": "dispatching",
+  "projectId": "01a1ee26-…",
+  "projectKey": "kwin-project",
+  "projectName": "KWin 项目",
+  "crpTopicId": "29158",
+  "workProgress": 10,
+  "workProgressLabel": "更新",
+  "workProgressError": null,
+  "lockReason": null,
+  "packages": [
+    {
+      "packageName": "kwin",
+      "attempt": 2,
+      "branch": "develop/eagle",
+      "commitSha": "4f0b1d2e…",
+      "codeVersion": "5.27.13.0-1",
+      "repoVersion": "5.27.12.0-1",
+      "releaseVersion": "5.27.12.0",
+      "snapshotStatus": "building",
+      "crpReleaseId": "107451",
+      "crpBuildId": "600209",
+      "buildStatus": "building",
+      "statusReason": null,
+      "blockedByPackage": null,
+      "jobs": [{ "arch": "amd64", "status": "building" }]
+    }
+  ],
+  "candidates": [
+    { "packageName": "dde-dock", "repoPath": "dde/dde-dock", "trackedBranch": "develop/eagle" }
+  ],
+  "history": [
+    {
+      "id": "01a1f120-…",
+      "action": "replace",
+      "packageNames": ["kwin"],
+      "revisionBefore": 1,
+      "revisionAfter": 2,
+      "abandonedCrpReleaseIds": ["107449", "107450"],
+      "redispatchedPackageNames": ["dde-dock", "kwin"],
+      "createdAt": "2026-11-19T03:10:31.442Z",
+      "operatorName": "张三"
+    }
+  ]
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `workProgress` | **现读** CRP 的 `WorkProgress`；`>= 20` 表示已转测，不能再改。读不到时为 `null` |
+| `workProgressError` | 读不到进度的原因（连不上、认证失败等） |
+| `lockReason` | 现在不能改的原因；能改时为 `null`。判断顺序与 `POST` 的拒绝顺序一致 |
+| `packages` | 当前轮的快照：补包/换包只会新起一轮，历史轮次不在这个列表里 |
+| `candidates` | 项目软件清单里还没进这条提测的包，补包只能从这里挑 |
+| `history` | 每一轮更新的留痕，从新到旧；`action` 是 `append`（补包）或 `replace`（换包） |
+
+## POST /api/releases/{id}/update
+
+更新一条还没转测的提测。
+
+| 请求 | 作用 |
+| --- | --- |
+| `POST …/update?dryRun=1` | 只算不改：把「将放弃 N 个、重投 N 个」的清单算出来 |
+| `POST …/update` | 真正执行：放弃下游 → 新起轮次 → 重投这一条链 |
+
+### 鉴权
+
+用用户会话，要「开发者」及以上角色：这个动作会真的删掉 CRP Release、发出新的投递。
+
+### 请求体
+
+```json
+{
+  "append": [
+    { "packageName": "dde-dock", "branch": "develop/eagle", "commitSha": "4f0b1d2e…", "customTag": null }
+  ],
+  "replace": [
+    { "packageName": "kwin", "branch": "develop/eagle", "commitSha": "9c8b7a6f…", "customTag": null }
+  ]
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `append` | 追加的包：必须已经在项目软件清单里，且此刻不在提测里 |
+| `replace` | 换版本的包：必须此刻已经在提测里 |
+| `branch` / `commitSha` | 固化的分支与提交；提交必须是 7–40 位十六进制 |
+| `customTag` | 提测版本。`replace` 留空表示 **Tag 不变**（只换 Commit 与代码版本）；`append` 留空表示用代码版本 |
+
+两组至少要填一组；同一个包不能既补又换。代码版本由服务端从 Gerrit 现读，不采信请求体。
+
+### 服务端做什么
+
+1. 在事务里 `SELECT … FOR UPDATE` 锁住这条提测（锁等待上限 3 秒），并发的第二次更新排队或收到
+   `409`，绝不会两条更新同时改一条提测；
+2. 现读 CRP 工作流进度：`>= 20` 拒绝；读不到也拒绝（不默认放行）；
+3. 算计划：补包新起第 1 轮；换包新起 `attempt + 1` 轮；按依赖图算出全部**传递**下游
+   （多层，菱形也只算一次），清单外的包不参与；
+4. 逐个删掉这些包在 CRP 侧的旧 Release。**任何一条删不掉就整体中止**：数据库那半边整体回滚；
+   CRP 侧已经删掉的那几条回不来，所以会把对应包的当前轮快照退回 `pending`、提测状态回到
+   `dispatching`，由定时器按原快照参数重投，缺的产物会被补回来（不会留下「显示成功、CRP 缺包」）；
+5. 一个事务里写新轮、把旧轮标 `superseded` 并指向新轮（不物理删除）、提测轮次加一、
+   状态回到 `dispatching`、写一行留痕；
+6. 事务提交后调 `advanceRelease` 推进一次，剩下的由外部定时器接着推。
+
+补包不会重投无关的已成功包：只有 `append` 里新加的包与 `replace` 的那条链会重新投递。
+
+### 返回体
+
+`dryRun`：
+
+```json
+{
+  "action": "preview",
+  "plan": {
+    "releaseId": "01a1f0c0-…",
+    "version": "25.0.2",
+    "revisionBefore": 1,
+    "revisionAfter": 2,
+    "workProgress": 10,
+    "workProgressLabel": "更新",
+    "rounds": [
+      { "packageName": "kwin", "reason": "replace", "supersedesSnapshotId": "01a1f0b0-…", "snapshot": { "packageName": "kwin", "attempt": 2, "branch": "develop/eagle", "commitSha": "9c8b7a6f…", "codeVersion": "5.27.13.0-1", "repoVersion": "5.27.12.0-1", "releaseVersion": "5.27.12.0" } }
+    ],
+    "abandoned": [{ "packageName": "kwin", "crpReleaseId": "107449" }],
+    "order": ["kwin", "dde-dock"],
+    "appendedPackageNames": [],
+    "replacedPackageNames": ["kwin"],
+    "redispatchedPackageNames": ["dde-dock", "kwin"]
+  }
+}
+```
+
+`rounds[].reason` 是 `append`、`replace` 或 `downstream`（换包连带重投的下游）。
+
+正式执行：
+
+```json
+{
+  "action": "update",
+  "revision": 2,
+  "abandonedCrpReleaseIds": ["107449"],
+  "redispatchedPackageNames": ["dde-dock", "kwin"],
+  "plan": { "…": "与 dryRun 的结构一致" },
+  "advance": { "action": "dispatched", "status": "dispatching", "packageName": "kwin", "blocked": [], "polled": null, "crpTopicId": "29158" },
+  "advanceError": null
+}
+```
+
+`advanceError` 不为空表示更新**已经提交**、但紧接着的那次推进没成功（例如 CRP 临时连不上）：
+提测状态已经回到 `dispatching`，外部定时器会继续推进，重试整次更新反而会重复换包。
+
+### 状态码
+
+| 状态码 | `error.code` | 什么情况 |
+| --- | --- | --- |
+| `200` | — | 预览或更新完成 |
+| `400` | `invalid_json` / `invalid_payload` | 请求体不是 JSON，或校验未通过（字段错误在 `details` 里） |
+| `401` | `unauthenticated` | 未登录 |
+| `403` | `forbidden` | 工作区角色低于「开发者」 |
+| `404` | `release_not_found` | 提测不存在，或账号不在它所属的工作区 |
+| `409` | `conflict` | 已转测（`WorkProgress >= 20`）、提测已取消、包不在清单里 / 不在提测里、正在投递、另一个更新正在进行 |
+| `502` | `crp_error` | 读不到 CRP 工作流进度，或放弃旧 Release 失败（整次更新已中止：数据库回滚，CRP 侧已删掉的包退回待投递等重投） |
+
+### 示例
+
+```bash
+# 先看清单
+curl -fsS -X POST -b cookie.txt -H "content-type: application/json" \
+  -d '{"replace":[{"packageName":"kwin","branch":"develop/eagle","commitSha":"9c8b7a6f…"}]}' \
+  "http://localhost:3000/api/releases/01a1f0c0-…/update?dryRun=1"
+
+# 确认后执行
+curl -fsS -X POST -b cookie.txt -H "content-type: application/json" \
+  -d '{"replace":[{"packageName":"kwin","branch":"develop/eagle","commitSha":"9c8b7a6f…"}]}' \
+  "http://localhost:3000/api/releases/01a1f0c0-…/update"
+```

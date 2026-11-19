@@ -12,6 +12,7 @@
  * | 看每个包的投递参数与 CRP Release ID | `loadReleaseDispatch` |
  * | 看这次投递发过哪些 CRP 请求 | `listCrpCallLogs` |
  * | 查一条提测属于哪个工作区（接口鉴权用） | `findReleaseScope` |
+ * | 为一条提测建 CRP 调用记录器（其它模块自己调 CRP 时挂上） | `createCrpCallRecorder` |
  */
 
 export {
@@ -34,4 +35,9 @@ export {
   type RetryResult,
 } from "./service";
 
-export { listCrpCallLogs, type CrpCallLogRow } from "./crpLog";
+export {
+  createCrpCallRecorder,
+  listCrpCallLogs,
+  type CrpCallLogRow,
+  type CrpCallRecorder,
+} from "./crpLog";

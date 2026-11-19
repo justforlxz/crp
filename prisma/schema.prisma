@@ -142,6 +142,7 @@ model User {
   memberships     Membership[]
   projectManagers ProjectManager[]
   createdReleases Release[]        @relation("ReleaseCreatedBy")
+  releaseUpdates  ReleaseUpdateRecord[] @relation("ReleaseUpdateOperator")
   sessions        Session[]
 
   @@map("app_user")
@@ -424,6 +425,7 @@ model Release {
   snapshots         ReleasePackageSnapshot[]
   repositoryRecords ReleaseRepositoryRecord[]
   buildTasks        BuildTask[]
+  updateRecords     ReleaseUpdateRecord[] @relation("ReleaseUpdateRecords")
 
   @@unique([projectId, version])
   @@index([status])
@@ -506,6 +508,47 @@ model ReleaseRepositoryRecord {
   snapshot ReleasePackageSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
 
   @@map("release_repository_record")
+}
+
+/// 一次提测增量更新的动作类型（A17）。
+enum ReleaseUpdateAction {
+  /// 补包：往提测里追加新的软件包。
+  append
+  /// 换包：修改已有软件包的分支 / Commit / 提测版本，并连带重投它的传递下游。
+  replace
+
+  @@map("release_update_action")
+}
+
+/// 提测增量更新的留痕：谁、什么时候、加了什么、放弃了什么、重投了什么（A17）。
+///
+/// 一次更新请求最多写两行：有补包就写一行 `append`，有换包就写一行 `replace`，
+/// 一行只描述一类动作，页面直接按时间倒序列出。
+model ReleaseUpdateRecord {
+  id         String              @id @default(uuid(7))
+  releaseId  String              @map("release_id")
+  /// 发起这次更新的账号。
+  operatorId String              @map("operator_id")
+  action     ReleaseUpdateAction
+
+  /// 本次涉及的软件包名：补包为新加的包，换包为被换版本的包。
+  packageNames String[] @map("package_names")
+  /// 更新前后的提测轮次（`release.revision`）。
+  revisionBefore Int @map("revision_before")
+  revisionAfter  Int @map("revision_after")
+
+  /// 本次在 CRP 侧放弃（删除）的 Release ID。
+  abandonedCrpReleaseIds String[] @map("abandoned_crp_release_ids")
+  /// 本次要重新投递的软件包名：补包是新加的那些，换包是被换的包加上它的全部传递下游。
+  redispatchedPackageNames String[] @map("redispatched_package_names")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  release  Release @relation("ReleaseUpdateRecords", fields: [releaseId], references: [id], onDelete: Restrict)
+  operator User    @relation("ReleaseUpdateOperator", fields: [operatorId], references: [id], onDelete: Restrict)
+
+  @@index([releaseId, createdAt])
+  @@map("release_update_record")
 }
 
 // ---------------------------------------------------------------------------
