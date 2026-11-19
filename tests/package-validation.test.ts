@@ -18,7 +18,9 @@ test("合法单条按字段原样返回", () => {
   const result = parsePackageInput(VALID);
 
   assert.equal(result.ok, true);
-  assert.deepEqual(result.ok && result.value, VALID);
+  // `crpProjectName` 没填就是 `null`，表示与包名相同：解析结果里这一项必须显式存在，
+  // 调用方据此判断「要不要按包名去 CRP 里找」。
+  assert.deepEqual(result.ok && result.value, { ...VALID, crpProjectName: null });
 });
 
 test("currentVersion 可以不填，返回 null", () => {

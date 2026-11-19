@@ -54,14 +54,39 @@ function pkgName(suffix: string): string {
 
 /**
  * 仓库路径：最后一段与包名相同。
- *
- * 这不是巧合，而是真实情况：CRP 的 `ProjectName` 就是包名，Gerrit 的仓库路径最后一段
- * 通常也等于包名。未登记软件包能自动登记，靠的就是「按最后一段找到唯一候选」再验提交。
+ * 大多数情况下仓库路径最后一段等于包名，但这不是必然：CRP 的项目名与包名可以完全不同
+ * （`deepin-kde/kwin` 在 CRP 上就叫带下划线的那个名字），那种情况靠 `crpProjectName` 映射，
+ * 不靠这个后缀猜。只有「还没登记的包」才用最后一段同名的仓库做候选。
  */
 function repoOf(suffix: string): string {
   return `${PREFIX}/${pkgName(suffix)}`;
 }
 
+/**
+ * 两条真实映射：包名与 CRP 项目名不是一个名字。
+ *
+ * 2026-11-19 在分支 108 上实测：`deepin-kde/kwin` 与 `deepin-kde/wayland` 在 CRP 上只有
+ * 带下划线的项目名，而包名不允许下划线。这里只借用这两个**CRP 项目名**，本地包名与仓库路径
+ * 一律带测试前缀 —— 真实包名在别人库里可能已经登记过，占用它们会删到别人的数据。
+ *
+ * `kwin` 用种子数据里那一行，只读（`prisma/seed.ts` 已给它登记了 CRP 项目名），它带的仓库
+ * 路径是真实的 `deepin-kde/kwin`；另一个包由本文件按测试前缀自己登记、自己清。
+ */
+const KWIN_CRP_NAME = "v25_kwin";
+const KWIN_REPO = "deepin-kde/kwin";
+
+/**
+ * 包名与 CRP 项目名不同的那个包：包名、仓库路径与 CRP 项目名**全都落在本文件的测试区间里**。
+ *
+ * CRP 项目名也带前缀，是有意的：真实项目名（如 `deepin-kde/wayland` 那个带下划线的名字）在
+ * 演练库里会被真实登记的包占用，两条记录同时声明同一个 CRP 项目名就是「映射歧义」，
+ * 那是正确行为，但会让这条用例在演练库上失败。真实项目名的映射由只读使用种子 `kwin` 那一段覆盖。
+ */
+const MAPPED_PACKAGE = {
+  name: pkgName("wayland"),
+  repoPath: repoOf("wayland"),
+  crpProjectName: `${PREFIX}_crp_wayland`,
+} as const;
 /** 代码版本必须是 CRP Tag 能接受的形式：数字开头、不含 `-` `_` 空格。 */
 const CODE_VERSIONS: Record<string, string> = {
   [SHA_A]: "1.0.1",
@@ -253,7 +278,12 @@ function newFakeGerrit(): FakeGerrit {
   return { projects: [], versions: new Map(), tags: new Map(), calls: [] };
 }
 
-/** 记事：已登记软件包 a、b 的仓库里都有各自的提交。 */
+/**
+ * 假 Gerrit 里登记好提交的仓库：a、b（包名与 CRP 项目名相同）与 g、h（两者不同）。
+ *
+ * g、h 用来验「CRP 项目名与包名不是一个名字」：它们在 CRP 上的项目名带下划线，
+ * 在本地是合法的 Debian 包名。
+ */
 function gerritWithRegistered(state: FakeGerrit): GerritReader {
   for (const [suffix, sha] of [
     ["a", SHA_A],
@@ -261,6 +291,10 @@ function gerritWithRegistered(state: FakeGerrit): GerritReader {
   ]) {
     state.versions.set(`${repoOf(suffix)}@${sha}`, CODE_VERSIONS[sha]);
   }
+
+  // 两个「包名与 CRP 项目名不同」的包：仓库路径都取自登记的那一行。
+  state.versions.set(`${KWIN_REPO}@${SHA_C}`, CODE_VERSIONS[SHA_C]);
+  state.versions.set(`${MAPPED_PACKAGE.repoPath}@${SHA_D}`, CODE_VERSIONS[SHA_D]);
 
   return gerritOf(state);
 }
@@ -365,6 +399,8 @@ async function cleanup(): Promise<void> {
       ],
     },
   });
+  // 只按 PREFIX 清本文件自己造的数据：`wayland`、`kwin` 这类真实包名库里可能已经登记过，
+  // 按名字全局删会把别人的数据删掉，删除条件碰到外键还整段失败。
   await prisma.package.deleteMany({ where: { name: { startsWith: PREFIX } } });
 }
 
@@ -408,12 +444,22 @@ before(async () => {
     },
   });
 
+  // 映射到 CRP 项目名的那个包也有一份：验「基线的仓库版本按本地包名查，与 CRP 项目名无关」。
+  await prisma.baselinePackageVersion.create({
+    data: {
+      baselineId: baseline.id,
+      packageName: MAPPED_PACKAGE.name,
+      version: "1.2.3-1",
+      fetchedAt: new Date("2026-11-18T00:00:00Z"),
+    },
+  });
+
   const manager = await prisma.projectManager.create({
     data: { workspaceId: workspace.id, name: MANAGER_NAME },
     select: { id: true },
   });
 
-  // 只登记 a、b 两个软件包；c…e 故意不登记，用来验「未登记软件包」的三条分支。
+  // a、b 的包名与 CRP 项目名相同；c…e 故意不登记，用来验「未登记软件包」的三条分支。
   const packageIds = new Map<string, string>();
 
   for (const suffix of ["a", "b"]) {
@@ -423,6 +469,30 @@ before(async () => {
     });
 
     packageIds.set(suffix, created.id);
+  }
+
+  // 包名与 CRP 项目名不同的那个包：名字与仓库路径都带 PREFIX，cleanup() 按前缀清掉。
+  await prisma.package.create({
+    data: {
+      name: MAPPED_PACKAGE.name,
+      repoPath: MAPPED_PACKAGE.repoPath,
+      defaultBranch: BRANCH,
+      crpProjectName: MAPPED_PACKAGE.crpProjectName,
+    },
+    select: { id: true },
+  });
+
+  // kwin 用种子数据里那一行：它已经登记了 CRP 项目名。少了它说明库没跑过 db:seed，
+  // 这条用例就没法证明「包名与 CRP 项目名不同」，所以当场说清楚原因，而不是让它后面报个看不懂的错。
+  const seededKwin = await prisma.package.findUnique({
+    where: { name: "kwin" },
+    select: { crpProjectName: true, repoPath: true },
+  });
+
+  if (seededKwin?.crpProjectName !== KWIN_CRP_NAME || seededKwin.repoPath !== KWIN_REPO) {
+    throw new Error(
+      "种子数据里的 kwin 没有登记 CRP 项目名：本文件依赖 `pnpm db:seed` 的那一行（见 prisma/seed.ts）。",
+    );
   }
 
   const project = await prisma.project.create({
@@ -1028,5 +1098,184 @@ test("接口：项目不存在时返回 404，不进入权限判定", async () =
   );
 });
 
+// ---------------------------------------------------------------------------
+// AC4：CRP 项目名落回本地软件包（CRP 项目名优先、包名兜底）
+// ---------------------------------------------------------------------------
+
+test("AC4 CRP 项目名与包名不同：按 CRP 项目名落回本地包，基线版本按本地包名查", async () => {
+  const state = newFakeCrp();
+  const gerrit = newFakeGerrit();
+  const topicId = addTopic(state, {
+    releases: [
+      { projectName: KWIN_CRP_NAME, tag: "20.0.0", commit: SHA_C },
+      { projectName: MAPPED_PACKAGE.crpProjectName, tag: "20.0.1", commit: SHA_D },
+    ],
+  });
+
+  const preview = await previewReleaseImport({
+    projectId: fixture.projectId,
+    topicId,
+    reader: gerritWithRegistered(gerrit),
+    network: networkOf(state),
+  });
+
+  assert.equal(preview.ready, true);
+  // 落回的是本地包名，而不是把 CRP 项目名当成包名。
+  assert.deepEqual(
+    preview.packages.map((item) => item.packageName),
+    ["kwin", MAPPED_PACKAGE.name],
+  );
+  assert.deepEqual(
+    preview.packages.map((item) => item.repoPath),
+    [KWIN_REPO, MAPPED_PACKAGE.repoPath],
+  );
+  // 两个包都已登记，导入不会顺手建包。
+  assert.deepEqual(
+    preview.packages.map((item) => item.packageId === null),
+    [false, false],
+  );
+  // 基线的仓库版本按本地包名查到：拿 CRP 项目名去查是查不到的。
+  assert.equal(preview.packages[0]?.repoVersion, null);
+  assert.equal(preview.packages[1]?.repoVersion, "1.2.3-1");
+
+  const result = await importReleaseFromTopic({
+    projectId: fixture.projectId,
+    topicId,
+    createdById: fixture.userId,
+    reader: gerritWithRegistered(gerrit),
+    network: networkOf(state),
+  });
+
+  assert.equal(result.version, "20.0.0");
+  assert.deepEqual(result.autoRegisteredPackages, []);
+
+  const snapshots = await prisma.releasePackageSnapshot.findMany({
+    where: { releaseId: result.releaseId },
+    orderBy: { packageName: "asc" },
+    select: { packageName: true, releaseVersion: true, repoVersion: true, commitSha: true },
+  });
+
+  assert.deepEqual(
+    snapshots.map((item) => [item.packageName, item.releaseVersion, item.commitSha]),
+    [
+      ["kwin", "20.0.0", SHA_C],
+      [MAPPED_PACKAGE.name, "20.0.1", SHA_D],
+    ],
+  );
+  assert.equal(snapshots[0]?.repoVersion, null);
+  assert.equal(snapshots[1]?.repoVersion, "1.2.3-1");
+
+  // 库里不许出现以 CRP 项目名命名的软件包：那是 CRP 的名字，不是 Debian 包名。
+  assert.equal(await prisma.package.count({ where: { name: KWIN_CRP_NAME } }), 0);
+  assert.equal(
+    await prisma.package.count({ where: { name: MAPPED_PACKAGE.crpProjectName } }),
+    0,
+  );
+
+  // 导入仍然零写入 CRP。
+  assert.deepEqual(
+    state.calls.filter((call) => !call.startsWith("GET ")),
+    [],
+    "导入不许向 CRP 写任何东西",
+  );
+});
+
+test("AC4 映射歧义：CRP 项目名同时对上一个包的 CRP 项目名和另一个包的包名时报错，不挑一个用", async () => {
+  // 临时造一行：它的 CRP 项目名正好等于另一个包 b 的包名，于是 `b` 这个 CRP 项目名
+  // 同时对上两行 —— 一份数据说「是 b」，另一份说「是 b-dup」，无从判断该用哪个。
+  const dup = await prisma.package.create({
+    data: {
+      name: pkgName("dup"),
+      repoPath: `${PREFIX}/dup`,
+      defaultBranch: BRANCH,
+      crpProjectName: pkgName("b"),
+    },
+    select: { id: true },
+  });
+
+  try {
+    const state = newFakeCrp();
+    const gerrit = newFakeGerrit();
+    const topicId = addTopic(state, {
+      releases: [{ projectName: pkgName("b"), tag: "21.0.0", commit: SHA_B }],
+    });
+
+    const before = await prisma.release.count({ where: { projectId: fixture.projectId } });
+
+    const preview = await previewReleaseImport({
+      projectId: fixture.projectId,
+      topicId,
+      reader: gerritWithRegistered(gerrit),
+      network: networkOf(state),
+    });
+
+    assert.equal(preview.ready, false);
+    assert.deepEqual(preview.packages, []);
+    assert.equal(preview.blocked.length, 1);
+    assert.match(preview.blocked[0]?.reason ?? "", /映射歧义/);
+    assert.match(preview.blocked[0]?.reason ?? "", new RegExp(pkgName("b")));
+    assert.match(preview.blocked[0]?.reason ?? "", new RegExp(pkgName("dup")));
+
+    await assert.rejects(
+      importReleaseFromTopic({
+        projectId: fixture.projectId,
+        topicId,
+        createdById: fixture.userId,
+        reader: gerritWithRegistered(gerrit),
+        network: networkOf(state),
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof ReleaseError, "应当是业务错误，而不是任意异常");
+        assert.match(error.message, /映射歧义/);
+
+        return true;
+      },
+    );
+
+    // 歧义时不落库、不写 CRP。
+    assert.equal(await prisma.release.count({ where: { projectId: fixture.projectId } }), before);
+    assert.deepEqual(
+      state.calls.filter((call) => !call.startsWith("GET ")),
+      [],
+    );
+  } finally {
+    await prisma.package.delete({ where: { id: dup.id } });
+  }
+});
+
+test("AC4 未登记的 CRP 项目名不是合法 Debian 包名：停在预览并点名，不按项目名建包", async () => {
+  const state = newFakeCrp();
+  const gerrit = newFakeGerrit();
+  // 带下划线的 CRP 项目名在库里没有登记：它不能当 Debian 包名用，所以不许自动建包。
+  const unregistered = `${PREFIX}_crp_only`;
+  const topicId = addTopic(state, {
+    releases: [{ projectName: unregistered, tag: "22.0.0", commit: SHA_C }],
+  });
+
+  const preview = await previewReleaseImport({
+    projectId: fixture.projectId,
+    topicId,
+    reader: gerritWithRegistered(gerrit),
+    network: networkOf(state),
+  });
+
+  assert.equal(preview.ready, false);
+  assert.equal(preview.blocked.length, 1);
+  assert.match(preview.blocked[0]?.reason ?? "", /CRP 项目名/);
+  assert.match(preview.blocked[0]?.reason ?? "", /登记/);
+
+  await assert.rejects(
+    importReleaseFromTopic({
+      projectId: fixture.projectId,
+      topicId,
+      createdById: fixture.userId,
+      reader: gerritWithRegistered(gerrit),
+      network: networkOf(state),
+    }),
+    ReleaseError,
+  );
+
+  assert.equal(await prisma.package.count({ where: { name: unregistered } }), 0);
+});
 // GET 的第一件事是鉴权（`requireRole` 要读会话 Cookie），在测试进程里没有请求作用域，
 // 所以这一处只由端到端验收覆盖；上面四条覆盖的是鉴权之前的请求体校验。

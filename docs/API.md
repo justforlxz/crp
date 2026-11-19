@@ -28,6 +28,7 @@ Authorization: Bearer <PACKAGE_API_TOKEN>
 | `repoPath` | string | 是 | 仓库路径，形如 `deepin-kde/kwin`。不允许首尾斜杠与空段。全局唯一。 |
 | `defaultBranch` | string | 是 | 默认跟踪分支，形如 `develop/eagle`。不能包含空白字符。 |
 | `currentVersion` | string | 否 | 当前版本，例如 `5.27.10.2-1`。不能包含空白字符；不传或传空字符串即为空。 |
+| `crpProjectName` | string | 否 | 这个软件包在 CRP 里的**项目名**，例如 `deepin-kde_kwin`（允许下划线）。留空或传空字符串表示「与包名相同」。不能包含空白字符，长度不超过 100；**允许下划线**（Debian 包名不允许）。 |
 
 单条：
 
@@ -36,7 +37,8 @@ Authorization: Bearer <PACKAGE_API_TOKEN>
   "name": "kwin",
   "repoPath": "deepin-kde/kwin",
   "defaultBranch": "develop/eagle",
-  "currentVersion": "5.27.10.2-1"
+  "currentVersion": "5.27.10.2-1",
+  "crpProjectName": "deepin-kde_kwin"
 }
 ```
 
@@ -45,7 +47,7 @@ Authorization: Bearer <PACKAGE_API_TOKEN>
 ```json
 [
   { "name": "kwin", "repoPath": "deepin-kde/kwin", "defaultBranch": "develop/eagle" },
-  { "name": "dde-dock", "repoPath": "deepin/dde-dock", "defaultBranch": "develop/eagle", "currentVersion": "5.11.9-1" }
+  { "name": "dde-dock", "repoPath": "deepin/dde-dock", "defaultBranch": "develop/eagle", "currentVersion": "5.11.9-1", "crpProjectName": "dde-dock" }
 ]
 ```
 
@@ -56,6 +58,30 @@ Authorization: Bearer <PACKAGE_API_TOKEN>
 `repoPath` 也唯一：如果这条仓库路径已经被**另一个** `name` 占用，整批返回 `409`。
 
 改动了 `repoPath` 或 `defaultBranch` 时，原先同步到的「当前 Commit」与「最近同步时间」会被清空 —— 它们属于旧分支，留着会误导页面。
+
+`crpProjectName` 改的是「投递时按哪个名字去 CRP 查项目」，是纯配置：它不清空已同步的 Commit 与版本，也不影响已经投出去的 Release。
+
+### 包名与 CRP 项目名不是一回事
+
+两个名字各管一边，平台**不会**假设它们相同：
+
+| 名字 | 谁用 | 规则 |
+| --- | --- | --- |
+| `name` | Debian 源码包名：`debian/changelog` 解析、基线软件包索引（`baseline_package_version.package_name`）、提测快照 | 小写字母或数字开头，只允许小写字母、数字与 `+` `-` `.`；**不许下划线** |
+| `crpProjectName` | 投递 Release 时按它查 CRP 的 `ProjectID`；从 CRP 导入提测时按它落回本地软件包 | 去空白后非空、不含空白字符、长度不超过 100；**允许下划线** |
+
+`crpProjectName` 留空就退回 `name`（与这一列出现之前的行为完全一致）。填了就必须是 CRP 里那个软件包的项目名，否则投递会在查 `ProjectID` 这一步报错：
+
+```json
+{
+  "error": {
+    "code": "crp_error",
+    "message": "投递「kwin」，CRP 项目名「deepin-kde_kwin」（软件包 kwin 登记的 CRP 项目名）被 CRP 拒绝：CRP 的交付分支 108 里没有名字完全等于 deepin-kde_kwin 的软件包，无法确定 ProjectID。CRP 返回了相近的名字：…"
+  }
+}
+```
+
+`crpProjectName` 不参与基线软件包版本查询：`baseline_package_version.package_name` 来自 Shuttle 的 Debian 源码包索引，与 CRP 项目名无关。
 
 ### 返回体
 
@@ -117,6 +143,12 @@ curl -X POST http://localhost:3000/api/packages \
   -H "Authorization: Bearer $PACKAGE_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name":"kwin","repoPath":"deepin-kde/kwin","defaultBranch":"develop/master","currentVersion":"5.27.11.0-1"}'
+
+# 包名与 CRP 项目名不同：包名给 Debian 源码包名，crpProjectName 给 CRP 里那个项目的名字
+curl -X POST http://localhost:3000/api/packages \
+  -H "Authorization: Bearer $PACKAGE_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"kwin","repoPath":"deepin-kde/kwin","defaultBranch":"develop/master","crpProjectName":"deepin-kde_kwin"}'
 
 # 不带 token，返回 401
 curl -i -X POST http://localhost:3000/api/packages \

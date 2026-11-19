@@ -40,6 +40,8 @@ export default async function PackagesPage() {
               <tr>
                 <th>名称</th>
                 <th data-style-anchor="packages.header-repo-path">仓库路径</th>
+                {/* 空值不是「没有」：表示按包名去 CRP 里找，列表里写清楚，不留一块空白。 */}
+                <th data-style-anchor="packages.header-crp-project-name">CRP 项目名</th>
                 <th>默认分支</th>
                 <th>当前版本</th>
                 <th>当前 Commit</th>
@@ -56,6 +58,8 @@ export default async function PackagesPage() {
                     <Link href={`/packages/${item.id}`}>{item.name}</Link>
                   </td>
                   <td>{item.repoPath}</td>
+                  {/* 与详情页同一句：留空表示与包名相同。 */}
+                  <td>{item.crpProjectName ?? "与包名相同"}</td>
                   <td>{item.defaultBranch}</td>
                   <td>{item.currentVersion ?? "—"}</td>
                   <td>{item.currentCommit ? item.currentCommit.slice(0, 12) : "—"}</td>
