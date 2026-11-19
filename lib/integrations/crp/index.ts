@@ -6,6 +6,12 @@ export {
   type CrpClient,
   type CrpClientOptions,
 } from "./client";
+export type {
+  CrpRequestObservation,
+  CrpRequestObserver,
+  CrpTransport,
+  CrpTransportOptions,
+} from "./request";
 export {
   CRP_DEFAULT_ARCHES,
   CRP_DEFAULT_BASE_URL,
@@ -23,6 +29,7 @@ export {
   CrpError,
   CrpInvalidParameterError,
   CrpNetworkError,
+  responseSnippet,
   type CrpErrorKind,
 } from "./errors";
 export { validateReleaseTag } from "./tag";

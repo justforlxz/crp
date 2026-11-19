@@ -316,3 +316,242 @@ curl -X POST http://localhost:3000/api/releases \
   -H "Cookie: crp_session=$SESSION" \
   -d @release.json
 ```
+
+## GET /api/releases/{id}/dispatch
+
+看一条提测的投递详情：每个软件包投递时用的分支、Commit、提测版本，CRP 给回来的 Release ID 与
+构建 ID，当前的构建状态，以及这条提测最近的 CRP 请求记录。
+
+这是 A12 的验收入口：AC1 要的「请求时间线」就是 `crpCalls`，AC4 要的「每个包的投递参数与 CRP
+Release ID」就是 `packages`。A13 的提测详情页合入后，这些字段直接搬过去，页面不用另写一套查询。
+
+### 鉴权
+
+用用户会话（httpOnly Cookie），要「只读」及以上角色。工作区从提测归属查出，不采信查询串。
+提测不存在、或账号不在它所属的工作区，都返回 `404 release_not_found`。
+
+### 返回体
+
+`200`：
+
+```json
+{
+  "releaseId": "01a1f0c0-…",
+  "version": "25.0.2",
+  "revision": 1,
+  "status": "building",
+  "projectId": "01a1ee26-…",
+  "crpTopicId": "29158",
+  "crpBranchId": "108",
+  "finishedAt": null,
+  "packages": [
+    {
+      "packageName": "kwin",
+      "attempt": 1,
+      "branch": "develop/eagle",
+      "commitSha": "4f0b1d2e8c9a7b6d5e4f3a2b1c0d9e8f7a6b5c4d",
+      "codeVersion": "5.27.12.0-1",
+      "repoVersion": "5.27.11.0-1",
+      "releaseVersion": "5.27.12.0",
+      "snapshotStatus": "building",
+      "crpReleaseId": "107449",
+      "crpBuildId": "600208",
+      "buildStatus": "building",
+      "statusReason": null,
+      "blockedByPackage": null,
+      "jobs": [{ "arch": "amd64", "status": "building" }]
+    },
+    {
+      "packageName": "dde-dock",
+      "attempt": 1,
+      "branch": "develop/eagle",
+      "commitSha": "…",
+      "codeVersion": "5.11.9-1",
+      "repoVersion": null,
+      "releaseVersion": "5.11.9-1",
+      "snapshotStatus": "failed",
+      "crpReleaseId": null,
+      "crpBuildId": null,
+      "buildStatus": "failed",
+      "statusReason": "因上游 kwin 构建失败而阻断，本包没有投递",
+      "blockedByPackage": "kwin",
+      "jobs": []
+    }
+  ],
+  "crpCalls": [
+    {
+      "id": "01a1f10a-…",
+      "createdAt": "2026-11-19T02:10:31.442Z",
+      "method": "POST",
+      "url": "https://crp.uniontech.com/api/topics/29158/new_release",
+      "statusCode": 201,
+      "durationMs": 812,
+      "responseSnippet": "107449",
+      "packageName": "kwin"
+    }
+  ]
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `packages[].releaseVersion` | 本次投给 CRP 的版本（CRP 的 Tag），取自快照 |
+| `packages[].crpReleaseId` | CRP 侧 Release ID；这个包还没投出去时为空 |
+| `packages[].crpBuildId` | CRP Release 上的 `BuildID`，查 Shuttle 构建任务用它 |
+| `packages[].blockedByPackage` | 因哪个上游包失败而被阻断；不是被阻断的为空 |
+| `packages[].statusReason` | 失败或阻断的原因，页面直接显示 |
+| `crpCalls` | 这条提测最近 50 次 CRP 调用，从新到旧；建 Topic、查软件包、投递、删 Release 都在里面 |
+
+`crpCalls` 覆盖的是**每一次真正发出的请求**，包括重试与失败的请求：连不上时 `statusCode` 为空、
+`responseSnippet` 换成失败原因。查库也能核对：`select * from crp_call_log where release_id = '<id>'`。
+
+## POST /api/releases/{id}/dispatch
+
+把一条提测往前推一步。`?action=` 决定做哪件事：
+
+| `action` | 做什么 |
+| --- | --- |
+| 省略或 `dispatch` | 建 CRP Topic（还没有的话），或者投递下一个该投的软件包 |
+| `retry` | 重投失败的构建任务：删掉 CRP 侧旧 Release，按同一份快照参数重投 |
+| `cancel` | 取消整个提测：逐个删 Release，再把 Topic 标成已放弃 |
+
+### 鉴权
+
+用用户会话，要「开发者」及以上角色。工作区从提测归属查出，不采信请求体。
+
+### 一次推进做什么
+
+推进是**一次一步、可重复调用**的：
+
+1. 提测还没有 CRP Topic → 在项目选中的基线上建一个，把 Topic ID 写回提测记录（重复调用不会建第二个）；
+2. 有 Topic → 先轮询已投递包的构建结果，再按依赖链判定；
+3. 有包失败 → 它的全部下游标成阻断并写明原因，提测判 `failed`（一个都没成功）或 `partial_failure`（有成功也有失败）；
+4. 否则投递**一个**上游已全部成功的包；
+5. 没有可投的包 → 提测置 `building`，等下一次调用。
+
+还有两个细节决定看到的行为：
+
+- **终局要等所有人**：只要还有包在构建，就不判 `success` / `failed` / `partial_failure`。
+  否则先投的包失败时，另一个还在构建的包会被一起判掉，它的结果再也写不回来。
+- **并发只走一路**：两次推进同时打到同一条提测时，只有一次能去建 Topic 或投某个包，另一次直接
+  返回 `action: "waiting"`。所以连点两下「提交」也只会有一个 Topic、一条 Release。
+- **中断会自动恢复**：投递发出去之后、写本地记录之前被打断时，那个包会停在「投递中」。超过
+  5 分钟（抢占有效期）后的下一次推进会把它退回待投递，先问 CRP 是不是已经收下这个包：
+  收下了就补写记录（不再发第二条），没收到才重新投递。
+
+后续步骤由外部定时器调 `POST /api/jobs/build-dispatch` 推进。
+
+### 返回体
+
+`dispatch`：
+
+```json
+{
+  "action": "dispatched",
+  "status": "dispatching",
+  "crpTopicId": "29158",
+  "packageName": "kwin",
+  "blocked": [],
+  "polled": { "checked": 0, "succeeded": [], "failed": [], "building": [] }
+}
+```
+
+`action` 的取值：`idle`（提测已到终局）、`topic_created`、`dispatched`、`finished`、`waiting`。
+
+`retry`：
+
+```json
+{
+  "action": "retry",
+  "resetPackageNames": ["kwin"],
+  "unblockedPackageNames": ["dde-dock", "dde-launchpad"],
+  "failures": [],
+  "advance": { "action": "dispatched", "status": "dispatching", "packageName": "kwin", "blocked": [], "polled": null, "crpTopicId": "29158" }
+}
+```
+
+`failures` 是**没能重投的包**：删不掉它在 CRP 侧的旧 Release（CRP 连不上，或者那条 Release 已经
+被人手工删了）时，这个包保持原状、原因写在这里，其它包照常重投。逐个包处理，不会因为一个包失败就
+把整次重试停在半路。
+
+`cancel`：
+
+```json
+{
+  "action": "cancel",
+  "deletedReleaseIds": ["107449", "107450"],
+  "abandonedTopicId": "29158",
+  "failures": []
+}
+```
+
+`deletedReleaseIds` 是 CRP 侧实际删掉的 Release；`failures` 是删不掉或放弃不掉的项，带原因。
+CRP 没有删除 Topic 的接口，所以「取消」只能是删 Release + 放弃 Topic，Topic 本身仍能在 CRP 里查到
+（`Abandoned: true`）。
+
+### 状态码
+
+| 状态码 | `error.code` | 什么情况 |
+| --- | --- | --- |
+| `200` | — | 动作执行完成 |
+| `400` | `invalid_action` | `action` 不是 `dispatch`、`retry`、`cancel` |
+| `401` | `unauthenticated` | 未登录 |
+| `403` | `forbidden` | 工作区角色低于「开发者」 |
+| `404` | `release_not_found` | 提测不存在，或账号不在它所属的工作区 |
+| `409` | `conflict` | 没有可重试的失败任务、提测已取消、缺基线分支 ID 等。个别包的重投失败不报错，见 `failures` |
+| `502` | `crp_error` | 调 CRP 失败（凭据不对、CRP 拒绝、网络不通），原因看服务端日志与 `crpCalls` |
+
+## POST /api/jobs/build-dispatch
+
+投递的定时入口。本仓库没有常驻调度进程，也没有队列：外部定时器每隔几分钟 POST 一次，把在跑的
+提测（`pending`、`dispatching`、`building`）各往前推一步。
+
+### 鉴权
+
+```
+Authorization: Bearer <BUILD_DISPATCH_JOB_TOKEN>
+```
+
+- token 取自服务端环境变量 `BUILD_DISPATCH_JOB_TOKEN`，与用户会话、`SYNC_JOB_TOKEN`、
+  `PACKAGE_API_TOKEN` 都无关。
+- 没配置这个变量时接口一律返回 `401`：这个接口会真的向 CRP 建 Topic、发 Release，不能退化成「谁都能触发」。
+
+### 请求体
+
+无。
+
+### 返回
+
+`200`：本轮每条提测的推进结果。
+
+```json
+{
+  "trigger": "schedule",
+  "releaseCount": 2,
+  "createdTopics": 0,
+  "dispatched": 2,
+  "failed": 0,
+  "items": [
+    {
+      "releaseId": "01a1f0c0-…",
+      "version": "25.0.2",
+      "action": "dispatched",
+      "status": "dispatching",
+      "packageName": "dde-dock",
+      "blocked": [],
+      "error": null
+    }
+  ]
+}
+```
+
+单条提测推进失败不影响整轮，仍是 `200`：失败原因在 `items[].error` 里，下一轮会再试同一条。
+只有整轮都跑不起来（数据库异常）才回 `500`。
+
+### 示例
+
+```bash
+# 每 2 分钟推一次（crontab 写法）
+*/2 * * * * curl -fsS -X POST -H "Authorization: Bearer $BUILD_DISPATCH_JOB_TOKEN" \
+  http://localhost:3000/api/jobs/build-dispatch
+```

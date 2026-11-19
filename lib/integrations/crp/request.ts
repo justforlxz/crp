@@ -34,6 +34,25 @@ const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 /** 重试等待的基数，毫秒。 */
 const BACKOFF_BASE_MS = 300;
 
+/** 一次请求的观察结果。字段与 `crp_call_log` 的列一一对应。 */
+export type CrpRequestObservation = {
+  /** HTTP 方法。 */
+  method: CrpRequest["method"];
+  /** 完整地址，含接口前缀与查询串。 */
+  url: string;
+  /** HTTP 状态码；连不上、超时这类没有响应的情况为空。 */
+  statusCode: number | null;
+  /** 本次请求的耗时（毫秒）。 */
+  durationMs: number;
+  /** 响应体摘要（截断 500 字）；没有响应时是失败原因。 */
+  responseSnippet: string | null;
+};
+
+/** 请求观察者。可以是异步的，请求层会等它结束再继续。 */
+export type CrpRequestObserver = (
+  observation: CrpRequestObservation,
+) => void | Promise<void>;
+
 export type CrpTransportOptions = {
   /** 接口前缀，默认 `https://crp.uniontech.com/api`。 */
   baseUrl?: string;
@@ -55,6 +74,14 @@ export type CrpTransportOptions = {
   sleepImpl?: (ms: number) => Promise<void>;
   /** 注入用，便于测试伪造当前时间（毫秒）。 */
   now?: () => number;
+  /**
+   * 每次请求的观察者：给调用方记调用日志用。
+   *
+   * 每一次真正发出的请求都会回调一次（含重试的每一次、以及登录），
+   * 成功、HTTP 失败、连不上三种情况都有回调，其中连不上时 `statusCode` 为 `null`。
+   * 观察者抛错只打进程日志，不影响这次请求本身。
+   */
+  onRequest?: CrpRequestObserver;
 };
 
 export type CrpTransport = {
@@ -133,13 +160,28 @@ export function createCrpTransport(options: CrpTransportOptions = {}): CrpTransp
   };
   const rawTokenPath = options.tokenPath === undefined ? CRP_DEFAULT_TOKEN_PATH : options.tokenPath;
 
+  const now = options.now ?? Date.now;
+
+  /** 记一次请求。观察者自己出问题时只打进程日志，不影响这次调用。 */
+  async function observe(record: CrpRequestObservation): Promise<void> {
+    if (options.onRequest === undefined) {
+      return;
+    }
+
+    try {
+      await options.onRequest(record);
+    } catch (error) {
+      console.error(`[crp] 记录 ${record.method} ${record.url} 的调用失败：`, error);
+    }
+  }
+
   const session: CrpSession = createCrpSession({
     username: options.username,
     password: options.password,
     token: options.token,
     // 调用方直接传进来的路径也展开 `~`，不只照顾环境变量那条路。
     tokenPath: rawTokenPath === null ? null : expandHomePath(rawTokenPath),
-    now: options.now ?? Date.now,
+    now,
     postLogin: (body) =>
       request<{ Token?: unknown }>({
         method: "POST",
@@ -168,11 +210,21 @@ export function createCrpTransport(options: CrpTransportOptions = {}): CrpTransp
 
     for (;;) {
       const token = useAuth ? await session.authorize() : null;
+      const startedAt = now();
 
       let outcome: { status: number; text: string };
       try {
         outcome = await sendRequest(init, token, sendContext);
       } catch (error) {
+        // 连不上也算一次调用：没有状态码，把失败原因当响应摘要记下来。
+        await observe({
+          method: init.method,
+          url: `${baseUrl}${init.path}`,
+          statusCode: null,
+          durationMs: Math.max(0, Math.round(now() - startedAt)),
+          responseSnippet: error instanceof Error ? error.message : String(error),
+        });
+
         if (error instanceof CrpNetworkError && attempt < retries) {
           attempt += 1;
           await sleep(BACKOFF_BASE_MS * 2 ** (attempt - 1));
@@ -181,6 +233,14 @@ export function createCrpTransport(options: CrpTransportOptions = {}): CrpTransp
 
         throw error;
       }
+
+      await observe({
+        method: init.method,
+        url: `${baseUrl}${init.path}`,
+        statusCode: outcome.status,
+        durationMs: Math.max(0, Math.round(now() - startedAt)),
+        responseSnippet: responseSnippet(outcome.text),
+      });
 
       // token 过期时 CRP 回 401：有凭据就换一次新 token，只换一次。
       if (outcome.status === 401 && useAuth && !relogged && session.canLogin()) {

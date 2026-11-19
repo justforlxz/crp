@@ -620,3 +620,122 @@ test("只模糊匹配到同名前缀的别的包时拒绝投递，并列出候�
 
   assert.equal(calls.filter((call) => call.url.endsWith("/new_release")).length, 0);
 });
+
+// ---------------------------------------------------------------------------
+// 调用观察者：A12 的「每次对 CRP 的调用都有记录」靠它
+// ---------------------------------------------------------------------------
+
+test("每次请求都会回调观察者一次，带地址、状态码与耗时", async () => {
+  const { fetchImpl } = makeFetch([
+    ["GET /branches", new Response(JSON.stringify([{ ID: 108, Name: "eagle-1071" }]))],
+  ]);
+
+  const observations: Array<{ url: string; statusCode: number | null; durationMs: number }> = [];
+
+  const client = createCrpClient({
+    baseUrl: "https://crp.example/api",
+    token: TEST_TOKEN,
+    tokenPath: null,
+    fetchImpl,
+    onRequest: (record) => {
+      observations.push({
+        url: record.url,
+        statusCode: record.statusCode,
+        durationMs: record.durationMs,
+      });
+    },
+  });
+
+  await client.listBranches();
+
+  assert.equal(observations.length, 1);
+  assert.equal(observations[0]?.url, "https://crp.example/api/branches");
+  assert.equal(observations[0]?.statusCode, 200);
+  assert.ok((observations[0]?.durationMs ?? -1) >= 0);
+});
+
+test("被 CRP 拒绝的请求照样留下记录，状态码与响应摘要都在", async () => {
+  const { fetchImpl } = makeFetch([
+    ["POST /topics/1/new_release", new Response(JSON.stringify({ message: "project not found" }), { status: 500 })],
+  ]);
+
+  const observations: Array<{
+    statusCode: number | null;
+    responseSnippet: string | null;
+  }> = [];
+
+  const client = createCrpClient({
+    baseUrl: "https://crp.example/api",
+    token: TEST_TOKEN,
+    tokenPath: null,
+    fetchImpl,
+    retries: 0,
+    onRequest: (record) => {
+      observations.push({ statusCode: record.statusCode, responseSnippet: record.responseSnippet });
+    },
+  });
+
+  await assert.rejects(() =>
+    client.submitRelease({
+      topicId: 1,
+      projectName: "kwin",
+      branch: "develop/eagle",
+      commit: "abc",
+      branchId: 108,
+      projectId: 8,
+      tag: "9.9.9",
+    }),
+  );
+
+  assert.equal(observations.length, 1);
+  assert.equal(observations[0]?.statusCode, 500);
+  assert.match(observations[0]?.responseSnippet ?? "", /project not found/);
+});
+
+test("连不上时也留一条记录，状态码为空、摘要是失败原因", async () => {
+  const networkFetch = (async () => {
+    throw new Error("connect ECONNREFUSED");
+  }) as unknown as typeof fetch;
+
+  const observations: Array<{
+    statusCode: number | null;
+    responseSnippet: string | null;
+  }> = [];
+
+  const client = createCrpClient({
+    baseUrl: "https://crp.example/api",
+    token: TEST_TOKEN,
+    tokenPath: null,
+    fetchImpl: networkFetch,
+    retries: 0,
+    onRequest: (record) => {
+      observations.push({ statusCode: record.statusCode, responseSnippet: record.responseSnippet });
+    },
+  });
+
+  await assert.rejects(() => client.listBranches(), (error: unknown) => error instanceof CrpNetworkError);
+
+  assert.equal(observations.length, 1);
+  assert.equal(observations[0]?.statusCode, null);
+  assert.match(observations[0]?.responseSnippet ?? "", /ECONNREFUSED/);
+});
+
+test("观察者自己抛错不影响这次请求", async () => {
+  const { fetchImpl } = makeFetch([
+    ["GET /branches", new Response(JSON.stringify([{ ID: 108, Name: "eagle-1071" }]))],
+  ]);
+
+  const client = createCrpClient({
+    baseUrl: "https://crp.example/api",
+    token: TEST_TOKEN,
+    tokenPath: null,
+    fetchImpl,
+    onRequest: () => {
+      throw new Error("记录写不进去");
+    },
+  });
+
+  const branches = await client.listBranches();
+
+  assert.equal(branches.length, 1);
+});
