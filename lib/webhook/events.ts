@@ -1,7 +1,7 @@
 /**
  * Webhook 事件的唯一定义处。
  *
- * 事件清单只有这五项：提测创建、构建开始、构建完成、构建失败、提测状态同步。
+ * 事件清单只有这六项：提测创建、构建开始、构建完成、构建失败、认领失败、提测状态同步。
  * 页面上的订阅选项、端点保存时的校验、投递正文里的 `type` 字段全部从这里取，
  * 其他地方不得再抄一份清单。
  */
@@ -11,6 +11,7 @@ export const WEBHOOK_EVENT_TYPES = [
   "build.started",
   "build.succeeded",
   "build.failed",
+  "build.claim_failed",
   "release.status_synced",
 ] as const;
 
@@ -22,6 +23,7 @@ export const WEBHOOK_EVENT_LABELS: Record<WebhookEventType, string> = {
   "build.started": "构建开始",
   "build.succeeded": "构建完成",
   "build.failed": "构建失败",
+  "build.claim_failed": "认领失败",
   "release.status_synced": "提测状态同步",
 };
 

@@ -361,7 +361,7 @@ export async function pollReleaseBuilds(
           packageName: true,
           status: true,
           repositoryRecord: { select: { crpReleaseId: true } },
-          buildTask: { select: { id: true, status: true } },
+          buildTask: { select: { id: true, status: true, startedAt: true } },
         },
       },
     },
@@ -425,6 +425,10 @@ export async function pollReleaseBuilds(
     const verdict = summarizeBuild({
       taskState: task.status,
       jobStates: task.jobs.map((job) => job.status),
+      // 「任务成功、作业列表一直为空」原本没有出口，这里把等待起点与本次查询时间交给纯函数兜底。
+      // 还没有构建任务行时先用本次查询时间：那一行就是这一轮建出来的，期限从这一刻算。
+      waitingSince: snapshot.buildTask?.startedAt ?? now,
+      observedAt: now,
     });
 
     await applyBuildResult({
@@ -870,7 +874,7 @@ async function dispatchSnapshot(
   }
 
   const crpReleaseId = String(submitted.releaseId);
-  const taskId = await recordSubmission({
+  const taskId = await recordSubmissionWithAlert({
     release,
     snapshot,
     crpReleaseId,
@@ -899,9 +903,15 @@ async function dispatchSnapshot(
  *
  * 四个条件都要对：只按包名认，会把上一次不同 Commit 的 Release 错认成这一次的。
  *
+ * 另外还要确认这条 Release 没有已经挂在本地**别的**那一轮快照上：A17 换包、补包之后，
+ * 旧轮次的 Release 可能还留在 CRP 侧，参数与新轮逐字相同。只看四个字段会把它认领成这一轮的，
+ * 结果要么把旧构建挂到新轮上，要么撞本地 `crp_release_id` 唯一约束、每 5 分钟报错一次。
+ * 这种情形按「CRP 侧没有」处理，让投递层正常发一条新的。
+ *
  * 返回 `true` 表示已经认领（不再重复投递），`false` 表示 CRP 侧没有，需要正常投递。
  *
  * 补写记录时不发 `build.started`：那次投递在中断之前已经发过事件了，重发会让订阅方收到重复通知。
+ * 这条取舍写在 `docs/WEBHOOK.md` 的「认领不重发构建开始事件」一节。
  */
 async function adoptExistingRelease(
   release: LoadedRelease,
@@ -922,14 +932,70 @@ async function adoptExistingRelease(
     return false;
   }
 
-  await recordSubmission({
+  const crpReleaseId = String(existing.releaseId);
+  const bound = await prisma.releaseRepositoryRecord.findUnique({
+    where: { crpReleaseId },
+    select: { snapshotId: true },
+  });
+
+  if (bound !== null && bound.snapshotId !== snapshot.id) {
+    // 这条 Release 已经属于本地另一轮快照（旧轮留下的），不能认领成本轮的。
+    return false;
+  }
+
+  await recordSubmissionWithAlert({
     release,
     snapshot,
-    crpReleaseId: String(existing.releaseId),
+    crpReleaseId,
     crpBuildId: existing.buildId > 0 ? String(existing.buildId) : null,
   });
 
   return true;
+}
+
+/**
+ * 记下一次投递，写库失败时先发一条 `build.claim_failed` 告警再抛出。
+ *
+ * 「抢占超时 + 接手」能把这个包退回待投递，所以数据异常（例如 `crp_release_id` 唯一约束冲突）
+ * 不会让提测卡死；但它会每 5 分钟重来一次，只在进程日志里留一行谁也看不见。
+ * 告警走仓库已有的 Webhook 事件机制，订阅方据此发现「这条提测一直投不出去」。
+ */
+async function recordSubmissionWithAlert(
+  input: Parameters<typeof recordSubmission>[0],
+): Promise<string> {
+  try {
+    return await recordSubmission(input);
+  } catch (error) {
+    const full = `${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`.slice(
+      0,
+      500,
+    );
+
+    // 告警正文只留最后一行（真正的原因，例如「唯一约束冲突」）：
+    // 像 Prisma 那样把整段调用栈和文件路径推给外部系统，订阅方读不出结论。
+    const reason = (full.split("\n").map((line) => line.trim()).filter(Boolean).pop() ?? full).slice(
+      0,
+      300,
+    );
+
+    console.error(
+      `[build] 提测 ${input.release.id} 的包 ${input.snapshot.packageName} 认领写库失败：${full}`,
+    );
+
+    await emitEvent(
+      "build.claim_failed",
+      {
+        releaseId: input.release.id,
+        snapshotId: input.snapshot.id,
+        packageName: input.snapshot.packageName,
+        crpReleaseId: input.crpReleaseId,
+        reason,
+      },
+      { workspaceId: input.release.project.workspaceId },
+    );
+
+    throw error;
+  }
 }
 
 /**

@@ -12,7 +12,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
+    "test": "tsx --test --test-concurrency=1 tests/baseline-sync.test.ts tests/build-dispatch.test.ts tests/build-poll.test.ts && tsx --test --test-concurrency=4 $(ls tests/*.test.ts | grep -vE '/(baseline-sync|build-dispatch|build-poll)\\.test\\.ts$')",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "prisma db seed",

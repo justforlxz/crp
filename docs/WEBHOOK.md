@@ -4,7 +4,7 @@
 
 ## 事件清单
 
-清单定义在 `lib/webhook/events.ts`，固定这五项，页面上的订阅选项、端点保存时的校验、投递正文里的 `type` 字段都从那里取：
+清单定义在 `lib/webhook/events.ts`，固定这六项，页面上的订阅选项、端点保存时的校验、投递正文里的 `type` 字段都从那里取：
 
 | 事件类型 | 名称 | 什么时候发 | `data` 里通常带的字段 |
 | --- | --- | --- | --- |
@@ -12,6 +12,7 @@
 | `build.started` | 构建开始 | 构建任务开始编译 | `releaseId`、`buildTaskId` |
 | `build.succeeded` | 构建完成 | 构建任务成功 | `releaseId`、`buildTaskId` |
 | `build.failed` | 构建失败 | 构建任务失败 | `releaseId`、`buildTaskId`、`reason` |
+| `build.claim_failed` | 认领失败 | 认领 CRP 上已有的投递后写本地记录失败（例如数据异常撞唯一约束） | `releaseId`、`snapshotId`、`packageName`、`crpReleaseId`、`reason` |
 | `release.status_synced` | 提测状态同步 | 从 CRP 同步到新的提测状态 | `releaseId`、`status`、`crpWorkProgress` |
 
 调用方式（A11–A14 用这一个入口，不要各自发 HTTP）：
@@ -23,6 +24,19 @@ await emitEvent("release.created", { releaseId, projectId, version, revision });
 ```
 
 `emitEvent` 只等「投递记录写完」就返回，不等外部响应；投递失败不抛给调用方，也不改提测状态。还可以传 `{ workspaceId }` 只投该工作区的端点。
+
+### 认领不重发构建开始事件
+
+投递时如果发现 CRP 上已经有同一个包、同一个分支、同一个 Commit、同一个提测版本的 Release（上一次投递发出去之后、写本地记录之前被打断），平台补写本地记录后直接往下走，**不再补发 `build.started`**：
+
+- 中断发生在发事件之前（极少数）：订阅方会漏掉这个包的开始事件；
+- 中断发生在发事件之后（常态）：补发就是对同一次投递的重复通知。
+
+两者只能选一个，这里选「不重发」：`build.started` 是「一个包开始构建」的通知，重复通知会让订阅方重复建单、重复统计，而漏一次可以由订阅方主动查 `GET /api/releases/{id}/dispatch` 补齐。取舍记录在此，不另做可判别的事件类型。
+
+### 认领失败会发告警
+
+认领之后写本地记录失败（例如 `crp_release_id` 撞唯一约束）时，平台发一条 `build.claim_failed`，正文带包名、快照、CRP Release ID 与失败原因。这类异常会让那个包每 5 分钟重来一次（抢占超时后重新推进），只在进程日志里留一行谁也看不见，所以走与其它构建事件同一条 Webhook 通道，订阅方据此发现「这条提测一直投不出去」。数据修好之后下一轮自动恢复，不需要人工干预投递本身。
 
 ## 请求格式
 

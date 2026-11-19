@@ -113,7 +113,7 @@ type FakeCrp = {
 };
 
 /** 每个测试用一段独立的 ID 区间：Topic、Release、构建任务的 ID 在库里都是唯一的。 */
-let fakeIdBase = 41_000;
+let fakeIdBase = 300_000;
 
 function newFakeCrp(): FakeCrp {
   const base = fakeIdBase;

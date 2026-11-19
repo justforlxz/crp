@@ -66,7 +66,7 @@
 | `pnpm build` / `pnpm start` | 生产构建 / 启动生产服务 |
 | `pnpm lint` | ESLint 检查 |
 | `pnpm typecheck` | TypeScript 类型检查（`tsc --noEmit`） |
-| `pnpm test` | 单元测试（Node 内置测试运行器，经 tsx 执行 TypeScript）。**测试文件串行执行**：都连同一个数据库，而基线同步的用例会全局改写 `baseline` 的「已消失」标记，并发跑会互相误伤 |
+| `pnpm test` | 单元测试（Node 内置测试运行器，经 tsx 执行 TypeScript）。分两组跑：会读到全库在跑提测的三个文件（`baseline-sync`、`build-dispatch`、`build-poll`，它们调用的定时任务是跨工作区挑活的）一次只跑一个；其余文件 4 个并行，靠各自的数据区间隔开（工作区前缀、假 CRP 的 Topic / Release ID 区间起点，两段重叠会让唯一约束凭空失败）。新增用例时：碰全库的函数只能加进第一组，其余用例只管自己的数据 |
 | `pnpm db:migrate` | 应用已提交的迁移（`prisma migrate deploy`），空库建表用它 |
 | `pnpm db:migrate:dev` | 开发时新建迁移（`prisma migrate dev --name <名称>`） |
 | `pnpm db:reset` | 清空数据库、重放全部迁移并跑种子（`prisma migrate reset --force && prisma db seed`）；Prisma 7 的 reset 不再自动跑种子，所以这里显式接上；会丢数据，只对本地开发库用 |

@@ -10,12 +10,17 @@
  *
  * 单条提测推进失败不中断整轮：CRP 偶尔超时是常态，一条失败不该让别的提测跟着停下。
  * 失败原因留在本轮返回体里，下一轮定时器还会再试同一条。
+ *
+ * 单轮只推进固定条数，挑活按「最久没被推进的优先」（`release.last_advanced_at` 从旧到新，
+ * 为空的最先）：活跃提测多于上限时各条轮流轮到。**不要改回按创建时间取最早的 N 条** ——
+ * 那样后创建的提测永远排在后面、永远轮不到（A14 功能检测在 61 条活跃提测下实测复现过）。
  */
 
 import { checkBearerAuth, readBearerToken } from "../auth/bearer";
 import {
   ACTIVE_RELEASE_STATES,
   advanceRelease,
+  pruneCrpCallLogs,
   type AdvanceResult,
   type BuildOptions,
 } from "../build";
@@ -83,7 +88,13 @@ export async function runBuildDispatch(
 ): Promise<BuildDispatchSummary> {
   const releases = await prisma.release.findMany({
     where: { status: { in: [...ACTIVE_RELEASE_STATES] } },
-    orderBy: { createdAt: "asc" },
+    orderBy: [
+      // 为空表示还没被推进过，排最前。
+      { lastAdvancedAt: { sort: "asc", nulls: "first" } },
+      // 同一时刻入队的按创建时间、再按主键定序，保证每一轮挑出来的名单稳定可复现。
+      { createdAt: "asc" },
+      { id: "asc" },
+    ],
     take: options.limit ?? DEFAULT_LIMIT,
     select: { id: true, version: true, status: true },
   });
@@ -134,7 +145,33 @@ export async function runBuildDispatch(
         blocked: [],
         error: message,
       });
+    } finally {
+      // 不管这一条推进成功还是失败，都记上「这一轮处理过它了」：
+      // 一条一直失败的提测不能永远占住队首。
+      // 这一步写失败只记一行日志：这一条没记上，下一轮会重复推进它，代价很小；
+      // 让它把整轮抛掉，后面的提测这一轮都拿不到处理，本轮汇总也一起丢了。
+      try {
+        await prisma.release.updateMany({
+          where: { id: release.id },
+          data: { lastAdvancedAt: new Date() },
+        });
+      } catch (error) {
+        console.warn(
+          `[build-dispatch] 提测 ${release.id} 记录推进时间失败：${errorSummary(error)}`,
+        );
+      }
     }
+  }
+
+  // CRP 调用记录只留最近一段时间：顺带在每轮清理一次，不另建定时器。
+  try {
+    const pruned = await pruneCrpCallLogs();
+
+    if (pruned > 0) {
+      console.info(`[build-dispatch] 清理过期调用记录 ${pruned} 条`);
+    }
+  } catch (error) {
+    console.warn(`[build-dispatch] 清理过期调用记录失败：${errorSummary(error)}`);
   }
 
   console.info(

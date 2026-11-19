@@ -58,6 +58,34 @@ export function createCrpCallRecorder(releaseId: string): CrpCallRecorder {
   };
 }
 
+/**
+ * `crp_call_log` 的保留期（天）。
+ *
+ * 这张表只追加、没有上限：投递与轮询每跑一轮都写几行，放着不管会一直涨。
+ * 保留策略是「留最近 30 天」——调用记录只用于排查最近几次投递为什么失败，
+ * 更早的记录没有查询场景。清理由投递定时任务每轮顺带做一次（`pruneCrpCallLogs`），
+ * 不需要另建定时器或归档通道。策略写在 `docs/DATA_MODEL.md` 4.20 一节。
+ */
+export const CRP_CALL_LOG_RETENTION_DAYS = 30;
+
+/**
+ * 删掉超过保留期的调用记录，返回删掉的条数。
+ *
+ * 在投递定时任务里调用：那里本来就周期性跑，不必再引一个定时器。
+ * 失败不抛出（调用方按「清理没做成」记一行日志即可）：清理是维护动作，不能拖垮投递。
+ */
+export async function pruneCrpCallLogs(now = new Date()): Promise<number> {
+  const cutoff = new Date(
+    now.getTime() - CRP_CALL_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+  );
+
+  const { count } = await prisma.crpCallLog.deleteMany({
+    where: { createdAt: { lt: cutoff } },
+  });
+
+  return count;
+}
+
 /** 一条提测的调用记录，页面与接口直接展示。 */
 export type CrpCallLogRow = {
   id: string;

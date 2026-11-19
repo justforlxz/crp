@@ -11,18 +11,19 @@ import {
   type WebhookEventType,
 } from "../lib/webhook/events";
 
-test("事件清单固定五项，顺序与中文名固定", () => {
+test("事件清单固定六项，顺序与中文名固定", () => {
   assert.deepEqual([...WEBHOOK_EVENT_TYPES], [
     "release.created",
     "build.started",
     "build.succeeded",
     "build.failed",
+    "build.claim_failed",
     "release.status_synced",
   ]);
 
   assert.deepEqual(
     WEBHOOK_EVENT_TYPES.map((type) => WEBHOOK_EVENT_LABELS[type]),
-    ["提测创建", "构建开始", "构建完成", "构建失败", "提测状态同步"],
+    ["提测创建", "构建开始", "构建完成", "构建失败", "认领失败", "提测状态同步"],
   );
 
   // 清单是唯一来源：每个类型都有中文名，且没有重复项。
