@@ -3,8 +3,8 @@
 统信 CRP（crp.uniontech.com）之上的提测平台：补上项目化的提测归属、按软件依赖自动排队、可审计的提测快照。产品需求见 [docs/PRD.md](docs/PRD.md)，数据模型初稿见 [docs/DATA_MODEL.md](docs/DATA_MODEL.md)。
 
 当前仓库已有项目骨架与账号体系：能安装、能迁移、能灌种子、能跑检查与测试。页面有登录、注册、工作台、
-软件包（`/packages`）、Webhook 端点（`/webhooks`）与基线（`/baselines`）；外部系统（CRP、Gerrit、Shuttle）
-的客户端只被对应的领域模块与 Route Handler 调用。
+软件包（`/packages`）、Webhook 端点（`/webhooks`）、基线（`/baselines`）与构建队列（`/queue`）；
+外部系统（CRP、Gerrit、Shuttle）的客户端只被对应的领域模块与 Route Handler 调用。
 
 ## 环境要求
 
@@ -155,6 +155,43 @@
 页面上或接口里的手动动作（`POST /api/releases/{id}/dispatch`，可用 `?action=retry|cancel`）走的是同一个
 `advanceRelease`，没有第二份推进逻辑。
 
+## 构建队列与状态轮询
+
+页面：`/queue`（构建队列）。回答三个问题：哪些包还在排队、各自卡在哪个上游、这一轮调度做了什么。
+
+页面是**只读**的：状态由服务端定时轮询写进库，页面不自己调 CRP / Shuttle，也不用前端轮询去驱动写入。
+提测按创建时间从新到旧列出，刚投递的排在最前；只列未完结的提测，所以不设条数上限
+（加了上限会把最新投递的挤掉——这个坑在功能检测里踩过一次）。
+
+数据全在 `lib/build/`：
+
+| 能力 | 入口 |
+| --- | --- |
+| 轮询一轮（构建结果 + 工作流进度 + 事件流水） | `runBuildPoll({ trigger })` |
+| 队列页与详情区块的只读数据 | `loadBuildQueue(workspaceId)`、`loadReleaseBuildStatus(releaseId)` |
+| 调度事件流水 | `recordPollEvent()`、`listPollEvents(workspaceId)` |
+| 提测详情页的只读区块组件 | `components/build-status.tsx` 的 `BuildStatusBlock` |
+
+**定时轮询**：外部定时器每隔几分钟 POST 一次接口。已完结的提测（`success`、`partial_failure`、
+`failed`、`abandoned`）自动不再轮询，一条请求都不发。单轮最多处理 50 条，挑活按
+`release.lastPolledAt` 从旧到新（为空的最先），活跃提测更多时各条轮流轮到，最新投递的下一轮就会被轮到。
+
+```bash
+# cron：每 5 分钟轮询一次
+*/5 * * * * curl -fsS -X POST -H "Authorization: Bearer $BUILD_POLL_JOB_TOKEN" \
+  http://localhost:3000/api/jobs/build-poll
+```
+
+**手动轮询**：`/queue` 页面的「立即轮询」按钮，走的是同一个 `runBuildPoll()`。
+
+两条边界不靠约定、靠代码：
+
+- 轮询失败（Shuttle 超时、CRP 认证失败）**不改任何状态**，只记一条同步错误：查不到不等于构建失败。
+- 取不到 CRP 工作流进度时**保留上一次的值**并记同步错误，绝不写 0 —— `Release.crpWorkProgress` 是
+  A17 判断「还能不能改包」的唯一依据，写 0 会让已转测的提测被误判成还能改。
+
+调度事件流水落在 `build_poll_event`：时间、软件包、事件、触发条件、结果五列，队列页按工作区展示最近 30 条。
+
 ## 项目与项目经理
 
 页面：`/projects`（项目卡片列表）、`/projects/new`（新建）、`/projects/[id]`（详情、清单、复制、删除）、
@@ -226,6 +263,7 @@
 | `PACKAGE_API_TOKEN` | 用 `POST /api/packages` 时必需 | 外部系统提交软件包用的独立 token，与用户会话无关；没配置时该接口一律返回 401。接口细节见 [docs/API.md](docs/API.md) |
 | `SYNC_JOB_TOKEN` | 用 `POST /api/jobs/baseline-sync` 时必需 | 定时任务触发基线同步用的独立 token，与用户会话、`PACKAGE_API_TOKEN` 都无关；没配置时该接口一律返回 401 |
 | `BUILD_DISPATCH_JOB_TOKEN` | 用 `POST /api/jobs/build-dispatch` 时必需 | 定时任务推进提测投递用的独立 token；这个接口会真的向 CRP 建 Topic、发 Release，没配置时一律返回 401 |
+| `BUILD_POLL_JOB_TOKEN` | 用 `POST /api/jobs/build-poll` 时必需 | 定时任务轮询构建状态与 CRP 工作流进度用的独立 token；没配置时该接口一律返回 401 |
 | `SHUTTLE_BASE_URL` | 否 | Shuttle 接口前缀，默认 `https://shuttle.uniontech.com/api/shuttle`；基线软件包版本从它读 |
 | `CRP_BASE_URL` | 否 | CRP 接口前缀，默认 `https://crp.uniontech.com/api`；基线分支列表从它读，**不需要认证** |
 
@@ -248,8 +286,9 @@ lib/integrations/    CRP、Shuttle、Gerrit 客户端（职责边界见其 READM
 lib/integrations/gerrit/  Gerrit 与 gitiles 客户端、changelog 解析、实测记录 FINDINGS.md
 lib/webhook/         Webhook 事件清单、签名、投递与端点读写（约定见 docs/WEBHOOK.md）
 lib/baselines/       基线读取：列表、同步记录、给其它节点用的版本查询（状态判定见 status.ts）
-lib/build/           投递与构建：依赖链推进、CRP 投递、构建轮询回写、调用记录（入口见 index.ts）
-lib/jobs/            定时任务的服务端逻辑：baseline-sync.ts（基线同步）、build-dispatch.ts（推进投递）
+lib/build/           投递与构建：依赖链推进、CRP 投递、构建轮询回写、调用记录、队列读模型（入口见 index.ts）
+lib/jobs/            定时任务的服务端逻辑：baseline-sync.ts（基线同步）、build-dispatch.ts（推进投递）、build-poll.ts（轮询鉴权）
+components/          跨页面复用的服务端组件：build-status.tsx（提测详情页的构建状态区块）
 lib/projects/        项目经理与项目：输入校验、清单排序、读写与业务规则
 lib/releases/        创建提测：阻断条件、快照组装、输入校验与写库（Gerrit 读取见 gerrit.ts）
 scripts/             接真实外部系统的验证脚本，不经 CI 执行

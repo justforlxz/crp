@@ -421,6 +421,13 @@ model Release {
   /// 提测结束（成功或失败）的时间。
   finishedAt   DateTime? @map("finished_at") @db.Timestamptz(3)
 
+  /// 最近一次被构建轮询看到的时间（A14 追加）。
+  ///
+  /// 轮询按这一列从旧到新挑活（为空的最先），所以活跃提测多于单轮上限时是**轮流轮到**，
+  /// 而不是「创建最早的永远排前面、最新投递的永远轮不到」。轮询失败也会写这一列：
+  /// 它表示「这一轮看过它了」，否则一条一直失败的提测会占住队首把别的提测饿死。
+  lastPolledAt DateTime? @map("last_polled_at") @db.Timestamptz(3)
+
   // 第二版预留（回退与复盘），本版只建字段，不写任何流程，也不建外键。
   /// v2 预留：被回退的那次提测 ID。
   rollbackOfId        String? @map("rollback_of_id")
@@ -439,6 +446,7 @@ model Release {
   repositoryRecords ReleaseRepositoryRecord[]
   buildTasks        BuildTask[]
   updateRecords     ReleaseUpdateRecord[] @relation("ReleaseUpdateRecords")
+  pollEvents        BuildPollEvent[]
 
   @@unique([projectId, version])
   @@index([status])
@@ -620,6 +628,37 @@ model BuildJob {
 
   @@index([buildTaskId])
   @@map("build_job")
+}
+
+/// 构建调度事件流水：轮询这一轮做了什么、结果如何（A14 追加）。
+///
+/// 设计契约 MUST 要求「调度事件流水记录：时间、软件包、事件、触发条件、结果」。
+/// 现有表都放不下这件事：`crp_call_log` 记的是单个 CRP 请求，`sync_run` 记的是一整批同步，
+/// `build_task` 只保留最新状态 —— 谁也说不清「什么时候、因为哪个条件、对哪个包做了什么」。
+///
+/// 只追加、不改：事件是流水，写进去就不该再变。
+model BuildPollEvent {
+  id          String  @id @default(uuid(7))
+  releaseId   String  @map("release_id")
+  /// 这条事件针对哪一轮快照；整条提测级别的事件（轮询、进度同步）为空。
+  snapshotId  String? @map("snapshot_id")
+  /// 软件包名。冗余存一份：快照可能被替换或清理，流水本身要能独立读懂。
+  packageName String? @map("package_name")
+
+  /// 事件类型：`poll`（轮询一轮）、`status`（某个包的状态变了）、`progress`（工作流进度回写）。
+  event     String
+  /// 触发条件：为什么做了这件事，例如「周期到期」「轮询取到 Shuttle 的构建结论」。
+  condition String
+  /// 结果：成功了没、得到了什么；失败时是错误摘要。
+  result    String
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  release Release @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+
+  @@index([releaseId, createdAt])
+  @@index([createdAt])
+  @@map("build_poll_event")
 }
 
 // ---------------------------------------------------------------------------

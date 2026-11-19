@@ -13,6 +13,9 @@
  * | 看这次投递发过哪些 CRP 请求 | `listCrpCallLogs` |
  * | 查一条提测属于哪个工作区（接口鉴权用） | `findReleaseScope` |
  * | 为一条提测建 CRP 调用记录器（其它模块自己调 CRP 时挂上） | `createCrpCallRecorder` |
+ * | 定时轮询构建结果与工作流进度（A14） | `runBuildPoll` |
+ * | 队列页 / 详情区块的只读数据 | `loadBuildQueue`、`loadReleaseBuildStatus` |
+ * | 调度事件流水 | `recordPollEvent`、`listPollEvents` |
  */
 
 export {
@@ -41,3 +44,45 @@ export {
   type CrpCallLogRow,
   type CrpCallRecorder,
 } from "./crpLog";
+
+export {
+  pickWorkflowProgress,
+  runBuildPoll,
+  type BuildPollItem,
+  type BuildPollOptions,
+  type BuildPollSummary,
+  type BuildPollTrigger,
+  type WorkflowRaw,
+} from "./poller";
+
+export {
+  listPollEvents,
+  recordPollEvent,
+  type BuildPollEventInput,
+  type BuildPollEventName,
+  type BuildPollEventRow,
+} from "./pollEvent";
+
+export {
+  formatDuration,
+  loadBuildQueue,
+  loadReleaseBuildStatus,
+  type BuildArchView,
+  type BuildQueueStats,
+  type BuildQueueView,
+  type BuildStatusTaskView,
+  type BuildStatusView,
+  type LoadBuildQueueOptions,
+  type QueueReleaseView,
+  type QueueTaskRow,
+} from "./queue";
+
+export {
+  buildStatusLabel,
+  queueStageOf,
+  releaseStatusLabel,
+  snapshotStatusLabel,
+  type QueueStage,
+  type QueueStageInput,
+  type StagePhase,
+} from "./stage";
