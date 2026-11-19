@@ -5,7 +5,9 @@
  * 下游包能不能投（`lib/build/chain.ts` 只看快照状态）。
  *
  * 映射表里只写实测见过的值（`lib/integrations/shuttle/FINDINGS.md`）：
- * 任务状态见过 `UPLOAD_GIVEUP`，作业状态见过 `BUILD_OK`、`FAILED`。没见过的值一律算「还在构建」，
+ * 映射表里只写实测见过的值（`lib/integrations/shuttle/FINDINGS.md`）：
+ * 任务状态见过 `UPLOAD_OK`、`UPLOAD_FAILED`、`UPLOAD_GIVEUP`、`APPLY_FAILED`、`UNKNOWN`，
+ * 作业状态见过 `BUILD_OK`、`FAILED`、`WAIT`、`BUILDING`。没见过的值一律算「还在构建」，
  * 这几条断言就是防止有人日后把「未知当失败」改回来 —— 那会让下游被错误阻断。
  */
 
@@ -30,6 +32,19 @@ test("实测见过的失败状态映射为 failed，含 Shuttle 原样的 UPLOAD
   }
 });
 
+test("实测的 APPLY_FAILED 算失败 —— CRP 在 apply 阶段拒绝执行，一个作业都没起", () => {
+  assert.equal(mapShuttleState("APPLY_FAILED"), "failed");
+  assert.equal(mapShuttleState("apply_failed"), "failed");
+});
+
+test("APPLY_FAILED 判失败时带上原始状态值，并说明这不是编译失败", () => {
+  const verdict = summarizeBuild({ taskState: "APPLY_FAILED", jobStates: [] });
+
+  assert.equal(verdict.status, "failed");
+  assert.match(verdict.reason ?? "", /APPLY_FAILED/);
+  assert.match(verdict.reason ?? "", /不是编译失败/);
+});
+
 test("终止类状态映射为 canceled", () => {
   for (const state of ["TERMINATED", "CANCELLED", "KILLED"]) {
     assert.equal(mapShuttleState(state), "canceled", state);
@@ -37,7 +52,7 @@ test("终止类状态映射为 canceled", () => {
 });
 
 test("没见过的状态与空状态都算「还在构建」，不当成失败", () => {
-  for (const state of ["", "APPLYING", "WAITING_FOR_SLAVE", "某天新加的状态"]) {
+  for (const state of ["", "APPLYING", "WAITING_FOR_SLAVE", "TOTALLY_MADE_UP_STATE", "某天新加的状态"]) {
     assert.equal(mapShuttleState(state), "building", state);
   }
 });

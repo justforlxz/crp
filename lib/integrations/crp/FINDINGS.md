@@ -22,6 +22,7 @@
 | 能删 Topic 吗 | 不能。CRP 没有删除 Topic 的接口，只能 `PUT` 置 `Abandoned=true` |
 | 能重试失败的 Release 吗 | 当前部署上 `/topic_releases/{id}/retry` 一律 404，未打通；重试请走 Shuttle 的 `/job/rebuild`（A4） |
 | 新 Topic 的 WorkProgress | `0`（未开始），`>= 20` 即已转测、不能再改包 |
+| `Arches` 用哪套架构名 | 用 Shuttle 的写法（`sw_64`、`loongarch64`），改名成 `sw64`、`loong64` 会 `APPLY_FAILED`。见第十二节 |
 
 ## 二、登录
 
@@ -120,7 +121,7 @@ GET /api/topics/29158/releases → 200 []
 
 ```
 POST /api/topics/29158/new_release
-{"Arches": "amd64;mips64el;arm64;sw64;loong64", "BaseTag": null, "Branch": "develop/eagle",
+{"Arches": "amd64;arm64", "BaseTag": null, "Branch": "develop/eagle",
  "BuildID": 0, "BuildState": null, "Changelog": [""], "Commit": "f8e9527a…", "History": null,
  "ID": 0, "ProjectID": 8, "ProjectName": "dde-file-manager", "ProjectRepoUrl": null,
  "SlaveNode": null, "Tag": "9.9.9", "TagSuffix": null, "TopicID": 29158, "TopicType": "test",
@@ -129,6 +130,9 @@ POST /api/topics/29158/new_release
 ```
 
 注意两个类型细节：`BranchID` 是**字符串**，`ProjectID` 是**数字**。按 CRP 原生写就对了。
+
+`Arches` 不写死：它来自提测所属基线（Shuttle `repo/info` 的 `repoarch["release-candidate"].arches`），
+名字必须用 Shuttle 的写法。这里写 `amd64;arm64` 只是当时实测能过的一组，不是默认值 —— 详见第十二节。
 
 ### 5.2 ProjectID 必须查出来，不能传 0
 
@@ -493,3 +497,68 @@ topic 28866  kernel          Commit "uploadcrp"
 所以导入时先判断 `Commit` 是不是 7–40 位十六进制；不是就当作「CRP 没有给提交号」，
 转去按 `Tag` 在 Gerrit 反查（见 `lib/integrations/gerrit/FINDINGS.md` 第 9 节）。
 两条都拿不到就停在预览，绝不把 `uploadcrp` 之类写进快照。
+
+## 十二、A16 追加：投递架构集合 `Arches`（2026-11-20 实测）
+
+这一节回答一个问题：**CRP 的 apply 阶段认哪一套架构名**。它决定了投递时是「把 Shuttle 的名字原样发」
+还是「先改名再发」，两种做法不一样，必须先测再写（MKACG-912）。
+
+### 12.1 结论
+
+**CRP 认的就是 Shuttle 那一套名字，不改名。** `sw_64`、`loongarch64` 原样发就能进构建；
+改成平台过去用的 `sw64`、`loong64` 反而在 apply 阶段直接失败，一个构建作业都不起。
+
+所以投递用的架构集合是「Shuttle `repo/info` 的 `repoarch["release-candidate"].arches`，
+去掉 `source`、去重、按字母排序」，转换只有一个入口：`lib/integrations/crp/arches.ts` 的
+`toCrpArchList` / `toCrpArches`。
+
+### 12.2 实测条件
+
+- 交付分支：`eagle-1071`，CRP 分支 ID `108`
+- 软件包：`deepin-kde/wayland`（CRP 项目名见 `docs/API.md` 的登记说明），分支 `develop/eagle`
+- 提交：`587bde6b1d3f61c4d634603fe8c8f7210d255a9a`（40 位；传短号 CRP 回
+  `HTTP 500 commitID 长度异常 请重新提交`）
+- 版本号（`Tag`）：`2:1.21.0.10`，`ChangeLogMode=false`
+- 做法：建一个临时 Topic（`29186`、`29187`），每投一条就删掉上一条再投下一条，只改 `Arches`。
+
+### 12.3 逐条结果
+
+| 请求里的 `Arches` | Release ID | Shuttle 任务 | `BuildState` | 构建作业 |
+| --- | --- | --- | --- | --- |
+| `amd64;sw_64` | 107509 | 600318 | 进入构建 | `amd64:WAIT`、`sw_64:BUILDING` |
+| `amd64;sw64` | 107510 | 600319 | `APPLY_FAILED` | 空 |
+| `amd64;loongarch64` | 107511 | 600320 | 进入构建 | `amd64:WAIT`、`loongarch64:WAIT` |
+| `amd64;loong64` | 107512 | 600321 | `APPLY_FAILED` | 空 |
+| `amd64;i386` | 107513 | 600322 | 进入构建 | `amd64:WAIT`、`i386:WAIT` |
+| `amd64;mips64el` | 107514 | 600323 | 进入构建 | `amd64:WAIT`、`mips64el:FAILED`（编译失败，不是 apply 失败） |
+
+`BuildState` 取自 `GET /topics/{id}/releases` 的 `BuildState.state`，作业列表取自
+`POST /task/list` 的同一条任务（`total` 183162 的服务上按 `key` 找 600318–600323）。
+
+> 说明：这几条任务最后停在 `UPLOAD_FAILED` / `UPLOAD_GIVEUP`，是因为**测试脚本删掉了 Release**
+> 做清理，不是架构的问题。`APPLY_FAILED` 的那两条从投递到删除之间始终没有出现过任何作业。
+
+### 12.4 顺带澄清的两点
+
+1. **不是「这条分支不支持那三个架构」。** 同一分支的 `repoarch["release-candidate"].arches`
+   实测就是
+   `["loongarch64","source","sw_64","arm64","i386","amd64","mips64el"]`，
+   它确实对 `mips64el`、`sw_64`、`loongarch64` 出包 —— 失败的原因是名字对不上，不是不支持。
+2. **架构列表要取 `release-candidate`，不是 `release` 或 `commit`。** 依据是 Shuttle 构建任务里
+   的 `action` 字段：`eagle-1071` 上这些提测任务实测 `action = "release-candidate"`
+   （任务 600323 等）。`release` 是稳定仓库、`commit` 是实验仓库，两者都不是提测构建的去处。
+
+### 12.5 复现方式
+
+脚本走的都是本仓库的客户端，不手写 HTTP：
+
+```
+CRP_ACCOUNT_RAW 从 ~/.config/crp/test.env 读，按第一个 "(" 切成账号与密码
+→ createCrpClient(...).createTopic({ branchId: 108 })
+→ 对每个架构组合：submitRelease({ arches: <组合>, changeLogMode: false, ... })
+→ listReleases(topicId) 轮询 BuildState；POST /task/list 按 key 看 jobs
+→ deleteRelease / abandonTopic 清理
+```
+
+基线里存的架构列表与 Shuttle 逐项对照的结果见 A16 的验收评论；同步写入点见
+`lib/jobs/baseline-sync.ts` 的 `syncOneBaselinePackages`。

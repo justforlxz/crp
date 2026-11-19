@@ -8,6 +8,7 @@ export { parseAptSourceLine, parseSourcesIndex, sourcesIndexUrl } from "./debInd
 export type { AptSource } from "./debIndex";
 export type {
   BaselinePackage,
+  BaselineRepository,
   ShuttleBuildTask,
   ShuttleBuildTaskPage,
   ShuttleJob,

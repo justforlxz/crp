@@ -13,7 +13,6 @@ export type {
   CrpTransportOptions,
 } from "./request";
 export {
-  CRP_DEFAULT_ARCHES,
   CRP_DEFAULT_BASE_URL,
   CRP_DEFAULT_RETRIES,
   CRP_DEFAULT_TIMEOUT_MS,
@@ -32,6 +31,7 @@ export {
   responseSnippet,
   type CrpErrorKind,
 } from "./errors";
+export { toCrpArches, toCrpArchList } from "./arches";
 export { validateReleaseTag } from "./tag";
 export { getTopic, normalizeTopic, searchTopics, TOPIC_SEARCH_LIMIT } from "./topics";
 export {

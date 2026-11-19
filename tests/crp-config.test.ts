@@ -62,6 +62,7 @@ test("投递请求体按 CRP 原生约定组装：BranchID 是字符串、Change
       commit: "f8e9527a",
       branchId: 108,
       tag: "9.9.9",
+      arches: "amd64;arm64",
     },
     8,
     "9.9.9",
@@ -76,6 +77,6 @@ test("投递请求体按 CRP 原生约定组装：BranchID 是字符串、Change
   assert.equal(payload.Tag, "9.9.9");
   assert.equal(payload.TopicType, "test");
   assert.equal(payload.RepoType, "deb");
-  // 默认架构集合与 CRP 前端一致，别改成只投一个架构。
-  assert.equal(payload.Arches, "amd64;mips64el;arm64;sw64;loong64");
+  // 架构集合原样来自调用方（提测所属基线），请求体里不再有代码里的默认值。
+  assert.equal(payload.Arches, "amd64;arm64");
 });

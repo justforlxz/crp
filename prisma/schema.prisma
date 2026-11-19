@@ -240,6 +240,12 @@ model Baseline {
   isCheck     Boolean   @default(false) @map("is_check")
   /// 最近一次同步成功的时间；为空或过旧即「基线未同步」，创建提测要被阻断。
   syncedAt    DateTime? @map("synced_at") @db.Timestamptz(3)
+  /// 这条基线对外发布的 CPU 架构列表，投递 Release 时原样用（分号拼成 `Arches`）。
+  ///
+  /// 来自 Shuttle `GET /repo/info` 的 `repoarch["release-candidate"].arches`，由基线同步写入：
+  /// 去掉 `source` 这类非 CPU 项、去重、按字母排序（`toCrpArchList`）。空数组表示「还没同步到」，
+  /// 此时不允许投递，也不允许退回代码里的默认架构。
+  arches      String[]  @default([]) @map("arches")
   /// 从 CRP 分支列表里消失的时间；为空表示这条分支目前仍在 CRP 里。
   ///
   /// 消失不删行：项目可能还指着这条基线，历史提测记录也要查得到它。重新出现时清空。

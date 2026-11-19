@@ -122,6 +122,7 @@ export default async function BaselinesPage({ searchParams }: BaselinesPageProps
                 <th>说明</th>
                 <th>是否可用于打包（IsCheck）</th>
                 <th>可选软件包数</th>
+                <th>投递架构</th>
                 <th>最近同步</th>
                 <th>状态</th>
               </tr>
@@ -135,6 +136,15 @@ export default async function BaselinesPage({ searchParams }: BaselinesPageProps
                   <td>{item.description ?? "—"}</td>
                   <td>{isCheckLabel(item)}</td>
                   <td>{item.packageCount}</td>
+                  <td>
+                    {item.arches.length === 0 ? (
+                      <span title="同步成功后才会写进来；为空时提测投递会被拒绝，不退回任何默认架构">
+                        未同步（不能投递）
+                      </span>
+                    ) : (
+                      <code>{item.arches.join(";")}</code>
+                    )}
+                  </td>
                   <td>{formatTime(item.syncedAt)}</td>
                   <td>
                     <span className={stateBadgeClass(item.state)}>{stateLabel(item)}</span>

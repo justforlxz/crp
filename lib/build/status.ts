@@ -5,7 +5,8 @@
  * 映射表只在 `build_task.status` / `build_job.status` 这一处定义，投递、轮询、构建队列页共用。
  *
  * 只有实测见过的值才写进明确的那一档（见 `lib/integrations/shuttle/FINDINGS.md`）：
- * 任务状态见过 `UPLOAD_GIVEUP`，作业状态见过 `BUILD_OK`、`FAILED`。
+ * 任务状态见过 `UPLOAD_OK`、`UPLOAD_FAILED`、`UPLOAD_GIVEUP`、`APPLY_FAILED`、`UNKNOWN`，
+ * 作业状态见过 `BUILD_OK`、`FAILED`、`WAIT`、`BUILDING`。
  * **没见过的状态一律当「还在构建」**：把未知状态当成失败会让下游被错误阻断，
  * 而当成构建中最多是等下一轮再查，代价小得多。
  */
@@ -29,10 +30,20 @@ const FAILED_STATES = new Set([
   "FAILED",
   "BUILD_FAILED",
   "BUILD_ERROR",
+  // CRP 在 apply 阶段就拒绝执行：任务建出来了，一个构建作业都没起（实测见 FINDINGS.md）。
+  "APPLY_FAILED",
   "UPLOAD_FAILED",
   "UPLOAD_GIVEUP",
   "UPLOAD_ERROR",
 ]);
+
+/**
+ * apply 阶段就被 CRP 拒绝时，补一句操作者能照着做的下一步。
+ *
+ * 这类失败与编译无关，看到「构建失败」就去翻编译日志会白找一趟；
+ * 真正要看的是 Shuttle 任务的 `uploadlog`，原因通常写在里面（实测是架构不支持、打包命令报错）。
+ */
+const APPLY_FAILED_HINT = "投递参数或仓库配置有问题，不是编译失败；去 Shuttle 看这个任务的日志";
 
 /** Shuttle 表示「已取消 / 已终止」的状态。 */
 const CANCELED_STATES = new Set([
@@ -111,6 +122,22 @@ function waitedTooLong(snapshot: BuildSnapshot): boolean {
  * 只要有一个作业失败，这个包就算构建失败——部分架构缺包不能当成功投给下游。
  * 任务自身状态与作业状态都要看：实测出现过任务 `UPLOAD_GIVEUP` 而作业 `FAILED` 的组合。
  */
+/**
+ * 任务状态判失败时给操作者看的原因。
+ *
+ * 原样带上 Shuttle 的状态值，操作者才能拿它去搜 Shuttle 与 CRP 的记录；
+ * apply 阶段被拒的再补一句下一步，免得有人照着「构建失败」去翻并不存在的编译日志。
+ */
+function failureReason(taskState: string): string {
+  const reason = `Shuttle 任务状态为 ${taskState || "未知"}，构建失败`;
+
+  if (taskState.trim().toUpperCase() === "APPLY_FAILED") {
+    return `${reason}（${APPLY_FAILED_HINT}）`;
+  }
+
+  return reason;
+}
+
 export function summarizeBuild(snapshot: BuildSnapshot): BuildVerdict {
   const taskState = mapShuttleState(snapshot.taskState);
   const jobStates = snapshot.jobStates.map(mapShuttleState);
@@ -119,7 +146,7 @@ export function summarizeBuild(snapshot: BuildSnapshot): BuildVerdict {
   if (taskState === "failed") {
     return {
       status: "failed",
-      reason: `Shuttle 任务状态为 ${snapshot.taskState || "未知"}，构建失败`,
+      reason: failureReason(snapshot.taskState),
     };
   }
 

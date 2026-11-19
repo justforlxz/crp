@@ -173,8 +173,14 @@ export type CrpSubmitReleaseInput = {
   changeLogMode?: boolean;
   /** 默认空字符串。 */
   changelog?: string;
-  /** 默认 `CRP_DEFAULT_ARCHES`。 */
-  arches?: string;
+  /**
+   * 投递用的架构集合，分号分隔，例如 `amd64;arm64`。
+   *
+   * 必填：来自提测所属基线的架构列表（`baseline.arches`），由 `toCrpArches` 转换。
+   * 不再有代码里的默认值 —— 写死一套架构时，基线不支持的架构会让 CRP 在 apply
+   * 阶段拒掉整批投递（MKACG-912）。
+   */
+  arches: string;
   tagSuffix?: string;
   /** 默认 true。 */
   custom?: boolean;

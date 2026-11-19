@@ -447,6 +447,8 @@ before(async () => {
     data: {
       crpBranchId: CRP_BRANCH_ID,
       name: `${PREFIX}-baseline`,
+      // 投递用的架构集合来自基线（MKACG-912）：空数组会让投递当场被拒。
+      arches: ["amd64", "arm64"],
       syncedAt: new Date("2026-11-18T00:00:00Z"),
     },
     select: { id: true },

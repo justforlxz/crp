@@ -35,9 +35,18 @@ GET https://shuttle.uniontech.com/api/shuttle/repo/info?type=deb&reponame=eagle-
     "reponame": "eagle-1071",
     "repotype": "deb",
     "repoarch": {
-      "release":           { "division": false, "dist": "unstable" },
-      "commit":            { "division": false, "dist": "experimental" },
-      "release-candidate": { "division": true,  "dist": "unstable" }
+      "release": {
+        "division": false, "dist": "unstable",
+        "arches": ["i386", "arm64", "amd64", "mips64el", "sw_64", "loongarch64", "source"]
+      },
+      "commit": {
+        "division": false, "dist": "experimental",
+        "arches": ["i386", "amd64", "mips64el", "sw_64", "loongarch64", "arm64"]
+      },
+      "release-candidate": {
+        "division": true, "dist": "unstable",
+        "arches": ["loongarch64", "source", "sw_64", "arm64", "i386", "amd64", "mips64el"]
+      }
     },
     "repoaddr": [
       {
@@ -122,6 +131,27 @@ Version: 5.7.28.2-1
 | `pools.uniontech.com/desktop-professional`（`eagle/1071`，基础系统仓库） | 12 732 749 字节 | 6.05 秒 | 28 736 |
 
 基础系统仓库有 2.8 万个源码包、单次 6 秒，每小时刷新一次每个基线都要付这个代价。当前实现没有把这一层纳入，因为平台登记的软件包都在团队 ppa 侧。**如果 A9 或 A11 需要「构建机看到的全部源」，需要改这里，代价如上表。**
+
+### 2.6 架构列表也在 `repo/info` 里
+
+`repoarch` 的每一项都带一个 `arches` 数组（2026-11-20 实测 `eagle-1071`）：
+
+```
+repoarch["release-candidate"].arches
+= ["loongarch64","source","sw_64","arm64","i386","amd64","mips64el"]
+```
+
+三点要注意：
+
+1. **提测构建走的是 `release-candidate`。** 依据是构建任务的 `action` 字段就是
+   `release-candidate`（见第三节的响应片段），所以架构列表也从这一项取，不取 `release` 或 `commit`。
+2. **列表里有 `source`。** 它不是 CPU 架构，是源码包索引的「架构」，发给 CRP 只会让 apply 失败，
+   使用方要自己去掉。
+3. **名字是 `sw_64`、`loongarch64`，不是 `sw64`、`loong64`。** 这一套名字必须原样发给 CRP，
+   改名会在 apply 阶段被拒；对照实验见 `lib/integrations/crp/FINDINGS.md` 第十二节。
+
+`getBaselineRepository` 把架构列表与软件包版本放在一次调用里返回，两者共用同一次 `repo/info`，
+所以刷新一条基线仍然是 2 次请求。
 
 ## 三、构建任务
 
@@ -250,3 +280,65 @@ pnpm tsx scripts/verify-shuttle.ts 599971 600127   # 指定 CRP Release 里拿�
 ```
 
 脚本退出码：两个基线都查回不少于 10 个软件包且构建任务段执行完成为 `0`，否则为 `1`。
+
+## 八、构建任务与构建作业的状态取值（2026-11-20 补充）
+
+平台的 `lib/build/status.ts` 只把这里实测见过的值写进明确的分类。这一段记录取值从哪来，加新值前先在这里留下证据。
+
+### 8.1 实测的取值分布
+
+`POST /task/list`，`params` 传 `null`（不过滤）、`pageSize` 50，从 `current=1` 取 10 页（约 500 条最近的构建任务）：
+
+| 任务状态 `status` | 条数 | 作业状态 `jobs[].status` | 条数 |
+| --- | --- | --- | --- |
+| `UPLOAD_OK` | 363 | `BUILD_OK` | 351 |
+| `UPLOAD_FAILED` | 83 | `FAILED` | 62 |
+| `UPLOAD_GIVEUP` | 40 | `WAIT` | 38 |
+| `APPLY_FAILED` | 10 | `BUILDING` | 28 |
+| `UNKNOWN` | 4 | — | — |
+
+这批数据里没有出现 `CONFIG_FAILED`、`SOURCE_FAILED` 这类名字，所以没有按名字相似把它们加进失败集合：没见过的值继续走「算作构建中」的兜底。
+
+### 8.2 `APPLY_FAILED`：CRP 在 apply 阶段拒绝执行
+
+`APPLY_FAILED` 的任务有以下共同点，说明它发生在构建开始之前：
+
+- `jobs` 为 `null`（一个构建作业都没有），`pkgver` 为空；
+- 原因写在 `uploadlog` 里，不需要看构建日志；
+- 任务建出来了，所以 CRP 侧能看到 `BuildID`，但那条 `BuildID` 下面没有任何架构在跑。
+
+实测样本（同一批数据里的全部 10 条里取 4 条）：
+
+| 任务号 | 包名 | `status_changed`（+0800） | `uploadlog` 摘要 |
+| --- | --- | --- | --- |
+| 600257 | `uos-remote-assistance` | 2026-11-19 13:10:44 | `exec [[-c dpkg-source -b …]] failed, err: signal: killed` |
+| 600216 | `dde-file-manager` | 2026-11-19 01:29:21 | `not support this arch sw64, please check!!!` |
+| 600210 | `dde-file-manager` | 2026-11-19 01:20:16 | `not support this arch sw64, please check!!!` |
+| 600126 | `deepin-installer-reborn` | 2026-11-18 16:25:27 | `dpkg-source: error: can't build with source format '3.0 (quilt)'…` |
+
+两类原因（架构不支持、打包命令失败）都出现在 apply 阶段，与编译无关。平台侧对这两种原因给出的提示必须指向 Shuttle 任务的 `uploadlog`，而不是让人去翻并不存在的编译日志。
+
+### 8.3 A16 演练的那条 `wayland`
+
+A16 演练（2026-11-19，`eagle-1071`）投出去的 `wayland` Release 对应任务 **600315**，投出约 30 秒后进入 `APPLY_FAILED`，一个构建作业都没起。当时的取值记录：
+
+- 2026-11-19 18:11:59 UTC（北京时间 2026-11-20 02:11:59）`status_changed`，`status` 为 `APPLY_FAILED`；
+- CRP 侧同一时刻的 `BuildState` 也是 `APPLY_FAILED`。
+
+2026-11-20 02:26 再查同一条任务，`status` 已经变成 `UPLOAD_FAILED`，`status_changed` 仍是 `2026-11-20 02:11:59`，`uploadlog` 为：
+
+```
+ToolDealTaskApply: not support this arch sw64, please check!!!
+```
+
+也就是说同一次 apply 阶段的拒绝，Shuttle 用 `APPLY_FAILED` 与 `UPLOAD_FAILED` 两个标签都报过。平台侧两个都判失败，不依赖其中某一个。复现：
+
+```bash
+curl -s https://shuttle.uniontech.com/api/shuttle/task/list \
+  -X POST -H 'Content-Type: application/json' \
+  -d '{"params":{"taskid":"600315"},"pageSize":5,"current":1}'
+```
+
+### 8.4 `UNKNOWN` 不是终态
+
+4 条 `UNKNOWN` 的任务都有 `jobs`（例如 `amd64:WAIT`、`arm64:WAIT`），`uploadlog` 只写到「加构建参数」这一步。它是任务刚建出来、作业还在排队的中间态，必须继续等，不能当失败也不能当成功。平台的兜底（未识别状态算构建中）对它正好合适，`lib/build/status.ts` 的单测把这条行为固定住了。

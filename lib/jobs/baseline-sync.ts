@@ -6,7 +6,7 @@
  * | 动作 | 数据来源 | 请求数 |
  * | --- | --- | --- |
  * | `syncBaselineList`：分支列表落库，标记消失的分支 | CRP `GET /branches`（无需认证） | 固定 1 次 |
- * | `syncBaselinePackages`：每个基线的软件包版本 | Shuttle 仓库信息 + apt 索引 | 每个基线 2 次 |
+ * | `syncBaselinePackages`：每个基线的软件包版本与架构列表 | Shuttle 仓库信息 + apt 索引 | 每个基线 2 次 |
  *
  * 三条硬约束，改动时不要破坏：
  *
@@ -15,6 +15,7 @@
  *    绝不能让一次失败的同步看起来像同步过。
  * 2. 不逐包发请求：整条基线的版本来自 Shuttle 的一个索引文件，一次取回全部。基线只刷新
  *    「被项目选中、且缓存已过期（默认 1 小时）」的那些，不对 108 条分支全量拉取。
+ *    架构列表与版本来自同一次 `repo/info`，不额外多发请求。
  * 3. 不依赖 CRP 凭据：分支列表接口匿名即可访问，同步不能因为没配 `CRP_USERNAME` 就整个失败。
  *
  * 本仓库没有常驻调度进程，每小时由外部定时器 `POST /api/jobs/baseline-sync` 触发；
@@ -27,6 +28,7 @@ import {
   createCrpClient,
   CRP_DEFAULT_BASE_URL,
   CRP_ENV,
+  toCrpArchList,
   type CrpClient,
 } from "../integrations/crp";
 import {
@@ -103,7 +105,7 @@ export type BaselineSyncOptions = {
   /** 注入用，便于测试替换网络层。 */
   now?: Date;
   crp?: Pick<CrpClient, "listBranches">;
-  shuttle?: Pick<ShuttleClient, "listBaselinePackages">;
+  shuttle?: Pick<ShuttleClient, "getBaselineRepository">;
 };
 
 /** 事务超时：一条 488 个包的基线要逐条 upsert，默认 5 秒不够。 */
@@ -153,7 +155,9 @@ function createBranchClient(log: SyncRequestLog): Pick<CrpClient, "listBranches"
   return createCrpClient({ baseUrl, fetchImpl: trackedFetch(log, "crp") });
 }
 
-function createPackageClient(log: SyncRequestLog): Pick<ShuttleClient, "listBaselinePackages"> {
+function createPackageClient(
+  log: SyncRequestLog,
+): Pick<ShuttleClient, "getBaselineRepository"> {
   return createShuttleClient({
     ...readShuttleEnv(),
     fetchImpl: trackedFetch(log, "shuttle"),
@@ -267,7 +271,7 @@ export async function syncBaselineList(
 }
 
 /**
- * 刷新一条基线的软件包版本。
+ * 刷新一条基线的软件包版本与架构列表。
  *
  * Shuttle 返回整条基线的全部源码包（`eagle-1071` 124 个、`snipe-2500u2` 488 个），
  * 所以这里是「一次取全部、逐条写缓存」，不是逐包查询。
@@ -277,7 +281,7 @@ export async function syncBaselineList(
  * 真正的失败会以异常形式抛出来，走下面的 catch 分支，一行缓存都不动。
  */
 async function syncOneBaselinePackages(
-  shuttle: Pick<ShuttleClient, "listBaselinePackages">,
+  shuttle: Pick<ShuttleClient, "getBaselineRepository">,
   baseline: PackageRefreshCandidate,
   options: { trigger: BaselineSyncTrigger; now: Date },
 ): Promise<BaselinePackageSyncResult> {
@@ -292,7 +296,10 @@ async function syncOneBaselinePackages(
   });
 
   try {
-    const packages = await shuttle.listBaselinePackages(baseline.name);
+    const repository = await shuttle.getBaselineRepository(baseline.name);
+    const packages = repository.packages;
+    // 架构列表与版本一起落库：投递时直接读这里，不在投递路径上再查一次 Shuttle。
+    const arches = toCrpArchList(repository.info.arches);
 
     await prisma.$transaction(async (tx) => {
       for (const item of packages) {
@@ -320,7 +327,7 @@ async function syncOneBaselinePackages(
 
       await tx.baseline.update({
         where: { id: baseline.id },
-        data: { syncedAt: options.now },
+        data: { syncedAt: options.now, arches },
       });
 
       await tx.syncRun.update({
@@ -363,7 +370,7 @@ async function syncOneBaselinePackages(
 
 /** 逐条刷新一批基线，串行：Shuttle 是共享服务，不为了一次同步去并发压它。 */
 export async function syncBaselinePackages(
-  shuttle: Pick<ShuttleClient, "listBaselinePackages">,
+  shuttle: Pick<ShuttleClient, "getBaselineRepository">,
   baselines: readonly PackageRefreshCandidate[],
   options: { trigger: BaselineSyncTrigger; now: Date },
 ): Promise<BaselinePackageSyncResult[]> {

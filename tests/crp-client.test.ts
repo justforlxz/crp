@@ -296,6 +296,7 @@ test("投递时不带 Tag 且 ChangeLogMode 默认 false，本地就拦下，请
         branch: "develop/eagle",
         commit: "abc123",
         branchId: 108,
+        arches: "amd64;arm64",
       }),
     (error: unknown) => {
       assert.ok(error instanceof CrpInvalidParameterError);
@@ -318,6 +319,7 @@ test("Tag 含实测会被拒的字符时本地拦下", async () => {
         branch: "develop/eagle",
         commit: "abc123",
         branchId: 108,
+        arches: "amd64;arm64",
         tag: "9.9.9-rc1",
       }),
     CrpInvalidParameterError,
@@ -339,6 +341,7 @@ test("投递时缺 ProjectID 会先按软件包名查，请求体里 BranchID �
     commit: "f8e9527a",
     branchId: 108,
     tag: "9.9.9",
+    arches: "amd64;arm64",
   });
 
   assert.equal(release.releaseId, 107438);
@@ -366,6 +369,7 @@ test("查不到软件包时抛业务错误，并说明查的是哪个分支", as
         commit: "abc",
         branchId: 108,
         tag: "9.9.9",
+        arches: "amd64;arm64",
       }),
     (error: unknown) => {
       assert.ok(error instanceof CrpBusinessError);
@@ -388,6 +392,7 @@ test("ChangeLogMode=true 时不校验 Tag，请求体里 ChangeLogMode 为 true"
     commit: "abc",
     branchId: 108,
     projectId: 8,
+    arches: "amd64;arm64",
     changeLogMode: true,
   });
 
@@ -608,6 +613,7 @@ test("只模糊匹配到同名前缀的别的包时拒绝投递，并列出候�
         commit: "abc",
         branchId: 108,
         tag: "9.9.9",
+        arches: "amd64;arm64",
       }),
     (error: unknown) => {
       assert.ok(error instanceof CrpBusinessError);
@@ -683,6 +689,7 @@ test("被 CRP 拒绝的请求照样留下记录，状态码与响应摘要都在
       commit: "abc",
       branchId: 108,
       projectId: 8,
+      arches: "amd64;arm64",
       tag: "9.9.9",
     }),
   );

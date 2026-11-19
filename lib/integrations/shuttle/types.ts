@@ -50,4 +50,17 @@ export type ShuttleRepoInfo = {
   reponame: string;
   repotype: string;
   addresses: ShuttleRepoAddress[];
+  /**
+   * 这条基线的提测仓库（`repoarch["release-candidate"]`）对外发布的架构列表，原样保留。
+   *
+   * 含 `source` 这类不是 CPU 架构的项，改名与去项由使用方决定（投递要按 CRP 的实测口径
+   * 转换，见 `lib/integrations/crp/arches.ts`）。
+   */
+  arches: string[];
+};
+
+/** 一条基线的仓库快照：仓库信息与仓库索引里的软件包版本，一次取回。 */
+export type BaselineRepository = {
+  info: ShuttleRepoInfo;
+  packages: BaselinePackage[];
 };

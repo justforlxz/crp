@@ -3,7 +3,7 @@
  *
  * 只做「调用 + 返回结构化数据」，不写数据库，不触发构建。
  *
- * `listBaselinePackages` 的取数路径是两步，两步都有真实响应为证（见 FINDINGS.md）：
+ * `getBaselineRepository` 的取数路径是两步，两步都有真实响应为证（见 FINDINGS.md）：
  *
  * 1. `GET /repo/info?type=deb&reponame=<基线>` 拿到该基线仓库的 apt 源地址，
  *    其中 `name` 为 `release` 的那条是稳定仓库。
@@ -12,6 +12,9 @@
  * Shuttle 没有「按基线列出全部软件包」的接口，所以版本号直接从 Shuttle 自己
  * 发布的 apt 索引里读。一次基线的请求数是「1 + 组件数」，组件实测只有 1 个，
  * 合计 2 次请求。
+ *
+ * 架构列表与软件包版本来自同一次 `repo/info`，所以两者一起返回（`getBaselineRepository`）。
+ * 分成两次调用会把 `repo/info` 请求发两遍。
  */
 
 import { gunzipSync } from "node:zlib";
@@ -20,6 +23,7 @@ import { parseAptSourceLine, parseSourcesIndex, sourcesIndexUrl } from "./debInd
 import { SHUTTLE_DEFAULT_BASE_URL } from "./config";
 import type {
   BaselinePackage,
+  BaselineRepository,
   ShuttleBuildTask,
   ShuttleBuildTaskPage,
   ShuttleJob,
@@ -29,6 +33,12 @@ import type {
 
 /** 里程碑仓库的地址名，取 `release` 表示稳定仓库。 */
 const RELEASE_ADDRESS_NAME = "release";
+
+/**
+ * 提测构建落到哪个仓库：实测 Shuttle 的构建任务里 `action` 就是 `release-candidate`
+ * （见 FINDINGS.md 第 3 节），所以架构列表也从这一项取。
+ */
+const RELEASE_CANDIDATE_AREA = "release-candidate";
 
 /** `repo/info` 只认 `deb` 类型。 */
 const DEB_REPO_TYPE = "deb";
@@ -60,6 +70,9 @@ export type ShuttleClientOptions = {
 };
 
 export type ShuttleClient = {
+  /** 一条基线的仓库信息与全部软件包版本：一次 `repo/info` 加一次索引下载。 */
+  getBaselineRepository(baseline: string): Promise<BaselineRepository>;
+  /** 只要软件包版本时的简写，内部走 `getBaselineRepository`。 */
   listBaselinePackages(baseline: string): Promise<BaselinePackage[]>;
   getRepoInfo(baseline: string): Promise<ShuttleRepoInfo>;
   /** 不传 `buildId` 表示不加过滤，按最近构建取第一页。 */
@@ -142,8 +155,15 @@ export function createShuttleClient(options: ShuttleClientOptions = {}): Shuttle
     assertOk(envelope, path);
 
     const data = envelope.data as
-      | { reponame?: string; repotype?: string; repoaddr?: Array<{ name?: string; address?: string }> }
+      | {
+          reponame?: string;
+          repotype?: string;
+          repoaddr?: Array<{ name?: string; address?: string }>;
+          repoarch?: Record<string, { arches?: unknown } | undefined>;
+        }
       | undefined;
+
+    const candidateArches = data?.repoarch?.[RELEASE_CANDIDATE_AREA]?.arches;
 
     return {
       reponame: data?.reponame ?? baseline,
@@ -153,6 +173,10 @@ export function createShuttleClient(options: ShuttleClientOptions = {}): Shuttle
           Boolean(item?.name && item?.address),
         )
         .map((item) => ({ name: item.name, address: item.address })),
+      // 取不到就是空列表：调用方（投递）据此判错，不在这里编一套默认架构。
+      arches: Array.isArray(candidateArches)
+        ? candidateArches.filter((item): item is string => typeof item === "string")
+        : [],
     };
   }
 
@@ -180,7 +204,7 @@ export function createShuttleClient(options: ShuttleClientOptions = {}): Shuttle
     }
   }
 
-  async function listBaselinePackages(baseline: string): Promise<BaselinePackage[]> {
+  async function getBaselineRepository(baseline: string): Promise<BaselineRepository> {
     const info = await getRepoInfo(baseline);
     const release = info.addresses.find((item) => item.name === RELEASE_ADDRESS_NAME);
 
@@ -209,9 +233,15 @@ export function createShuttleClient(options: ShuttleClientOptions = {}): Shuttle
       }
     }
 
-    return [...merged.entries()]
+    const packages = [...merged.entries()]
       .map(([name, version]) => ({ name, version }))
       .sort((left, right) => left.name.localeCompare(right.name));
+
+    return { info, packages };
+  }
+
+  async function listBaselinePackages(baseline: string): Promise<BaselinePackage[]> {
+    return (await getBaselineRepository(baseline)).packages;
   }
 
   async function listBuildTasks(
@@ -259,7 +289,13 @@ export function createShuttleClient(options: ShuttleClientOptions = {}): Shuttle
     return { jobId: Number(jobId), log };
   }
 
-  return { listBaselinePackages, getRepoInfo, listBuildTasks, getJobLog };
+  return {
+    getBaselineRepository,
+    listBaselinePackages,
+    getRepoInfo,
+    listBuildTasks,
+    getJobLog,
+  };
 }
 
 function toBuildTask(raw: Record<string, unknown>): ShuttleBuildTask {

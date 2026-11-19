@@ -27,6 +27,16 @@ const REPO_INFO_JSON = JSON.stringify({
         name: "commit",
       },
     ],
+    // 真实响应里就有这一段：提测构建落到 release-candidate 仓库，架构列表从这里取。
+    repoarch: {
+      release: { division: false, dist: "unstable", arches: ["amd64", "arm64", "source"] },
+      commit: { division: false, dist: "experimental", arches: ["amd64", "arm64"] },
+      "release-candidate": {
+        division: true,
+        dist: "unstable",
+        arches: ["loongarch64", "source", "sw_64", "arm64", "i386", "amd64", "mips64el"],
+      },
+    },
   },
 });
 
@@ -160,6 +170,71 @@ test("listBaselinePackages 走 repo/info 再读 Sources 索引，返回按名字
       SOURCES_URL,
     ],
   );
+});
+
+test("getRepoInfo 取 release-candidate 仓库的架构列表，原样保留（含 source）", async () => {
+  const { impl } = fakeFetch({
+    "https://shuttle.test/api/shuttle/repo/info?type=deb&reponame=eagle-1071": {
+      body: REPO_INFO_JSON,
+    },
+  });
+  const client = createShuttleClient({ baseUrl: "https://shuttle.test/api/shuttle", fetchImpl: impl });
+
+  const info = await client.getRepoInfo("eagle-1071");
+
+  // 不取 release / commit 那两组，也不在这里改名或去项：这些由投递侧按实测口径处理。
+  assert.deepEqual(info.arches, [
+    "loongarch64",
+    "source",
+    "sw_64",
+    "arm64",
+    "i386",
+    "amd64",
+    "mips64el",
+  ]);
+});
+
+test("repo/info 里没有 repoarch 时架构列表是空数组，不编默认值", async () => {
+  const { impl } = fakeFetch({
+    "https://shuttle.test/api/shuttle/repo/info?type=deb&reponame=eagle-1071": {
+      body: JSON.stringify({
+        code: 0,
+        message: "ok",
+        data: {
+          reponame: "eagle-1071",
+          repoaddr: [
+            {
+              address: "deb http://aptly-dev.uniontech.com/pkg/eagle-1071/release unstable main",
+              name: "release",
+            },
+          ],
+        },
+      }),
+    },
+  });
+  const client = createShuttleClient({ baseUrl: "https://shuttle.test/api/shuttle", fetchImpl: impl });
+
+  assert.deepEqual((await client.getRepoInfo("eagle-1071")).arches, []);
+});
+
+test("getBaselineRepository 一次取回架构列表与软件包版本，只发两次请求", async () => {
+  const { impl, seen } = fakeFetch({
+    "https://shuttle.test/api/shuttle/repo/info?type=deb&reponame=eagle-1071": {
+      body: REPO_INFO_JSON,
+    },
+    [SOURCES_URL]: { body: gzipSync(Buffer.from(SOURCES_INDEX)) },
+  });
+  const client = createShuttleClient({ baseUrl: "https://shuttle.test/api/shuttle", fetchImpl: impl });
+
+  const repository = await client.getBaselineRepository("eagle-1071");
+
+  assert.equal(repository.info.reponame, "eagle-1071");
+  assert.ok(repository.info.arches.includes("sw_64"));
+  assert.deepEqual(repository.packages, [
+    { name: "dde-dock", version: "5.7.28.2-1" },
+    { name: "kwin", version: "4:5.27.2.213-1" },
+  ]);
+  assert.equal(seen.length, 2);
 });
 
 test("repo/info 返回业务错误时抛 ShuttleError 并带上原因", async () => {
