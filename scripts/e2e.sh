@@ -3,7 +3,8 @@
 # A16 全链路演练的入口（在仓库根执行）。
 #
 # 它做三件事：检查必备的环境变量 → 起一个真实服务（`next build` + `next start`）→
-# 调 `scripts/e2e.ts` 在真实 CRP 上跑完整链路。参数原样透传给 `scripts/e2e.ts`：
+# 调 `scripts/e2e.ts` 在真实 CRP 上跑完整链路（含一次基线同步，投递用的架构来自基线）。
+# 参数原样透传给 `scripts/e2e.ts`：
 #
 #   scripts/e2e.sh                        # 跑完整演练（含 A17），跑完自动清理
 #   scripts/e2e.sh --skip-a17             # 只跑主链路
@@ -22,6 +23,7 @@
 #   CRP_USERNAME / CRP_PASSWORD   CRP 登录用 LDAP 账号（投递与轮询会真的调 CRP）
 #   GERRIT_USERNAME / GERRIT_HTTP_PASSWORD   Gerrit HTTP 凭据（读分支、提交与 changelog）
 #   PACKAGE_API_TOKEN             POST /api/packages 的独立 token
+#   SYNC_JOB_TOKEN                POST /api/jobs/baseline-sync 的独立 token
 #   BUILD_DISPATCH_JOB_TOKEN      POST /api/jobs/build-dispatch 的独立 token
 #   BUILD_POLL_JOB_TOKEN          POST /api/jobs/build-poll 的独立 token
 #
@@ -46,7 +48,7 @@ die() {
 # 缺变量时一次列全，不要跑到一半才失败。
 missing=()
 for name in DATABASE_URL CRP_USERNAME CRP_PASSWORD GERRIT_USERNAME GERRIT_HTTP_PASSWORD \
-  PACKAGE_API_TOKEN BUILD_DISPATCH_JOB_TOKEN BUILD_POLL_JOB_TOKEN; do
+  PACKAGE_API_TOKEN SYNC_JOB_TOKEN BUILD_DISPATCH_JOB_TOKEN BUILD_POLL_JOB_TOKEN; do
   if [ -z "${!name:-}" ]; then
     missing+=("$name")
   fi

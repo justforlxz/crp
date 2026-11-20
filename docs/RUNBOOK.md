@@ -281,14 +281,28 @@ systemctl enable --now crp-dispatch.timer crp-poll.timer crp-sync.timer
 一条命令在真实 CRP 上跑完整链路，并在结束时自己清理：
 
 1. 建项目经理 → 建项目（基线 `eagle-1071`）；
-2. `POST /api/packages` 登记两个包，配一条 `kwin → wayland` 依赖；
-3. `POST /api/releases` 创建提测，断言依赖拓扑顺序是「wayland 在前」；
-4. 循环调 `build-dispatch` 与 `build-poll`，断言先投 wayland、wayland 成功后才投 kwin；
-5. 断言提测到达 `success`，核对提测详情页与构建队列页；
-6. 演练 A17：补一个包 + 换掉 wayland 的 Commit，断言旧 Release 被放弃、按新轮次重投（`--skip-a17` 跳过）；
-7. 取消提测（删 CRP Release + 放弃 Topic），删掉本次建的项目与经理。
+2. 同步一次基线，拿到投递要用的架构（`Baseline.arches`），打印出来；
+3. `POST /api/packages` 登记软件包（`name` + `crpProjectName` 两个名字）；
+4. 配依赖，`kwin` 依赖 `wayland`（加 `--with-build-deps` 时同时依赖 `plasma-wayland-protocols`）；
+5. `POST /api/releases` 创建提测，断言 `kwin` 排在全部上游之后；
+6. 循环调 `build-dispatch` 与 `build-poll`，断言 `kwin` 只在其全部上游成功后才投递；
+7. 断言提测到达 `success`，核对提测详情页与构建队列页；
+8. 演练 A17：往提测里补一个包（`deepin-kde/xwayland` → CRP 项目 `v25_xwayland`）+ 换掉 wayland 的 Commit，断言旧 Release 被放弃、按新轮次重投（`--skip-a17` 跳过）；
+9. 取消提测（删 CRP Release + 放弃 Topic），删掉本次建的项目与经理。
 
 项目经理、项目、软件清单、依赖关系在平台里只有页面表单（Server Action），没有对外 HTTP 接口，所以脚本直接调用表单所用的同一份服务层函数；从「创建提测」开始全部走真实 HTTP 端点。
+
+### 6.1.1 两个名字与提测版本
+
+脚本会把每个包的版本号按 CRP 侧的实际规则换算一次，并在日志里写清楚换算了什么：
+
+| 情况 | 换算 | 例子 |
+| --- | --- | --- |
+| CRP 项目带 `PkgVerPrefix`，且代码版本以同一个 epoch 开头 | 去掉 epoch（CRP 自己拼前缀） | `4:6.1.57` → `6.1.57` |
+| 代码版本带 Debian 修订号（含 `-`） | 截到第一个 `-` 之前 | `1.10.0.32-deepin33-1` → `1.10.0.32` |
+| 其他 | 原样使用 | `2:1.21.0.10` |
+
+换算结果通过 `customTag` 传给 `POST /api/releases`。原因见第十一节「待确认的两处」。
 
 ### 6.2 前置条件
 
@@ -303,20 +317,34 @@ scripts/style-check/container.sh
 #    BUILD_DISPATCH_JOB_TOKEN、BUILD_POLL_JOB_TOKEN
 ```
 
+> **种子数据里的提测会被定时任务真的推进。** 种子把 `1.4.0`、`2.1.0` 这类提测写成「投递中 / 构建中」，
+> 定时任务一跑就会去建 Topic、投 Release。2026-11-20 的演练里就出现过：种子提测 `1.4.0` 领到 Topic
+> 29206、投出 Shuttle 任务 600347（`deepin-terminal`，`APPLY_FAILED`）。所以在能连真实 CRP 的环境里
+> **必须用一次性库**（例如 `docker run -d --name crp-pg ... -p 56090:5432 postgres:17-alpine`），
+> 演练完把库删掉。不这么做会往别人的交付分支上留下 Topic 与 Release。
+
 ### 6.3 跑
 
 ```bash
-scripts/e2e.sh                          # 完整演练，跑完自动清理
-scripts/e2e.sh --skip-a17               # 只跑主链路
-scripts/e2e.sh --poll-seconds=9000      # 等 CRP 构建更久（默认 5400 秒）
-scripts/e2e.sh --keep                   # 保留本次记录与 CRP Topic，便于人工看详情页
+scripts/e2e.sh                                # 完整演练，跑完自动清理
+scripts/e2e.sh --skip-a17                     # 只跑主链路
+scripts/e2e.sh --with-build-deps              # 连带 plasma-wayland-protocols 一起提测（kwin 要它才能编译）
+scripts/e2e.sh --fault=upstream               # 故障演练：故意让上游失败，验证下游被阻断
+scripts/e2e.sh --poll-seconds=9000            # 等 CRP 构建更久（默认 5400 秒）
+scripts/e2e.sh --keep                         # 保留本次记录与 CRP Topic，便于人工看详情页
 ```
+
+**kwin 一定要带 `--with-build-deps`。** `eagle-1071` 里的 `plasma-wayland-protocols` 是 `1.10.0.28`，
+比 `develop/snipe` 上的 kwin 需要的旧，不带这个上游时 kwin 会编译失败（原因见第十一节「环境事实」）。
+
+`--fault=upstream` 会把基线架构临时换成这条分支没有的 `sparc64`，让第一个上游包在 apply 阶段失败，
+再断言下游被阻断、提测到终局、原因写清楚；结束时无论成败都把架构还原。
 
 脚本自己 `next build` + `next start`（默认 3200 端口）；`E2E_BASE_URL=http://...` 可以复用已有服务。完整输出同时写进 `~/.cache/crp/e2e-<时间戳>.log`。
 
 ### 6.4 结果怎么看
 
-- 退出码 0：链路成立。最后会打印 Topic ID、每个包的 Release ID / Build ID / 版本 / 构建作业状态；
+- 退出码 0：链路成立（或故障演练按预期失败）。最后会打印 Topic ID、每个包的 Release ID / Build ID / 版本 / 构建作业状态；
 - 退出码 1：会打印「期望 … 实际 …」，并**仍然尝试清理**在 CRP 与库里留下的残留；
 - 退出码 2：环境变量缺失或服务起不来，什么都没做。
 
@@ -330,6 +358,79 @@ scripts/e2e.sh --keep                   # 保留本次记录与 CRP Topic，便�
 | 软件包登记 | 保留（按名字幂等覆盖，不影响下一次） |
 
 跑完是「该 Topic 里不再有任何 Release，Topic 本身标记为已放弃」，不是「CRP 里查不到」。
+
+### 6.6 四个故障场景怎么自己跑一遍
+
+判定口径只有两条：**错误可读**（人能从返回体或日志看出哪一环坏了）、**不留脏数据**（业务状态不变）。
+每个场景前后各取一次库状态做对照，`before.json` 与 `after.json` 除时间戳列外应当一致：
+
+```bash
+snapshot() {
+  pnpm exec tsx -e 'import {prisma} from "./lib/db"; (async()=>{
+    console.log(JSON.stringify({
+      releases: await prisma.release.findMany({select:{version:true,status:true,crpWorkProgress:true,updatedAt:true}}),
+      tasks: await prisma.buildTask.findMany({select:{status:true,statusReason:true}}),
+      baselines: await prisma.baseline.findMany({select:{name:true,arches:true}}),
+      deliveries: await prisma.webhookDelivery.count(),
+    }, null, 2));
+    await prisma.$disconnect();
+  })()'
+}
+snapshot > before.json
+```
+
+**一、CRP 认证过期。** 用一个错误密码起一份服务，再触发两个定时入口：
+
+```bash
+rm -f ~/.cache/crp/jwt                     # 有缓存 token 就不会再走登录，先删掉
+CRP_PASSWORD=故意写错 pnpm exec next start -p 3205 &
+curl -s -X POST -H "Authorization: Bearer $BUILD_POLL_JOB_TOKEN"   http://127.0.0.1:3205/api/jobs/build-poll
+curl -s -X POST -H "Authorization: Bearer $BUILD_DISPATCH_JOB_TOKEN" http://127.0.0.1:3205/api/jobs/build-dispatch
+```
+
+算通过：两个入口都是 HTTP 200，`items[].error` 是
+`CrpAuthError: POST /login 失败（HTTP 401）：Unauthorized`；`release.status`、`snapshot.status`、
+`crp_work_progress` 一个都没动，只有 `updated_at` 变（「这一轮看过它了」）。
+
+**二、Shuttle 超时。** 前提是库里至少有一条提测处在「构建中」（有 `build_task`、有 `shuttle_task_id`），否则轮询根本不会问 Shuttle。起一个只接连接、永不回应的监听，把 Shuttle 指过去：
+
+```bash
+node -e 'require("node:net").createServer(()=>{}).listen(3211,"127.0.0.1")' &
+SHUTTLE_BASE_URL=http://127.0.0.1:3211/api/shuttle pnpm exec next start -p 3206 &
+time curl -s -X POST -H "Authorization: Bearer $BUILD_POLL_JOB_TOKEN" http://127.0.0.1:3206/api/jobs/build-poll
+```
+
+算通过：HTTP 200，`items[].error` 是
+`ShuttleError: 请求 Shuttle 失败：POST http://127.0.0.1:3211/api/shuttle/task/list：The operation was aborted due to timeout`
+（单次请求的超时是 30 秒；有 2 条在跑的提测时整轮大约 60 秒）。`release.status`、`snapshot.status`、
+`build_task.status` 都没变，只有 `last_polled_at` 刷新 —— 查不到结果不等于构建失败，这一点和 8.1 一致。
+
+> 这条错误信息是上层库的原文（英文），比 CRP 那条「30000 毫秒内没有响应，已超时」朴素一些，
+> 但指出了出事的接口与原因，够定位。已作为 nit 报给 PL，没有在本单改。
+
+**三、Webhook 端点 500。** 这条不需要服务，直接跑投递的验收脚本：
+
+```bash
+pnpm tsx scripts/verify-webhook.ts
+```
+
+算通过：脚本自己起一个本机接收端，最后打印「全部通过」。其中「AC2 端点返回 500」一节断言了：
+接收端收到 5 次请求（1s→2s→4s→8s 退避）、`webhook_delivery` 记录 `status=failed`、`attempts=5`、
+`httpStatus=500`、响应片段入库，且 `emitEvent` 不阻塞主流程；脚本结束后临时工作区与端点被删掉。
+
+**四、上游失败导致阻断。** 用演练脚本的故障开关跑一遍：
+
+```bash
+scripts/e2e.sh --fault=upstream --poll-seconds=600
+```
+
+算通过：退出码 0，日志里有 `=== 演练结论（故障：上游失败） ===`，上游包是 `failed` 且原因可读
+（`Shuttle 任务状态为 APPLY_FAILED…`），下游包的 `阻断自=` 指向上游包名、`原因=因上游 … 构建失败而阻断`，
+提测到终局。结束时无论成败都把基线架构还原。
+
+> 这个场景是**注入**的：脚本先把基线架构临时改成这条交付分支没有的 `sparc64`，让第一个上游包在
+> apply 阶段失败。除此之外三个场景都是真的把依赖弄坏（错密码、不响应的端点、500 接收端），
+> 没有替身实现。写结果时要把「真实链路的证据」与「注入造成的证据」分开标注。
 
 ---
 
@@ -437,22 +538,24 @@ sudo chown -R "$(id -u):$(id -g)" .next next-env.d.ts
 - 任务状态成功但作业列表一直为空，等满 15 分钟后平台判失败（没有产物不能给下游用）；
 - 需要人工确认构建到底在不在跑，去 Shuttle 按 BuildID 看。
 
-**先按 BuildID 到 Shuttle 看任务状态，不要只看页面。** 2026-11-19 的演练撞到过两种情况，页面都会一直显示「构建中」：
+**先按 BuildID 到 Shuttle 看任务状态，不要只看页面。** 三种失败形态，平台的处理各不相同：
 
-| Shuttle 任务状态 | 含义 | 平台当前的处理 |
+| Shuttle 任务状态 | 含义 | 平台的处理 |
 | --- | --- | --- |
-| `APPLYING` → `APPLY_FAILED` | 申请把这次提测应用到仓库这一步就失败了，一个构建作业都没起来 | **当成「还在构建」**，提测永远停在构建中，下游永不被阻断 |
-| `UPLOAD_FAILED` / `UPLOAD_GIVEUP` | 构建失败 | 判失败，正常阻断下游 |
+| `APPLYING` → `APPLY_FAILED` | 申请把这次提测应用到仓库这一步失败了，一个构建作业都没起来 | 判失败，下游被阻断（MKACG-911 之后） |
+| `UPLOAD_FAILED` / `UPLOAD_GIVEUP` | 编译或上传失败 | 判失败，下游被阻断 |
+| `BUILD_OK` + 没有任何作业 | 任务说成功但没有产物 | 等满 15 分钟判失败 |
 
-`APPLY_FAILED` 的实测原因是**投递时带了这条交付分支不支持的架构**：平台固定发
-`amd64;mips64el;arm64;sw64;loong64`（`lib/integrations/crp/config.ts` 的 `CRP_DEFAULT_ARCHES`），
-而 `eagle-1071` 只支持 `amd64`、`i386`、`arm64`。同一提交、同一版本号：
+`APPLY_FAILED` 的常见原因是**投递时带了这条交付分支不支持的架构**。架构取自基线
+（`Baseline.arches`，由基线同步从 Shuttle 的 release-candidate 仓库读出来），所以先确认基线同步过：
 
-- 带 5 个架构 → `APPLY_FAILED`，`pkgver` 为空、作业列表为空；
-- 只带 `amd64;arm64` → apply 通过，`pkgver` 变成 `2:1.21.0.10-1`，作业排队。
+```sql
+-- 期望看到 6 个：amd64;arm64;i386;loongarch64;mips64el;sw_64
+select name, arches, synced_at from baseline where name = 'eagle-1071';
+```
 
-当前版本没有配置架构列表的入口（恒量与请求体都没有对应字段），遇到 `APPLY_FAILED` 只能
-到 Shuttle 上看状态、人工把这条提测取消，等缺陷单修完再演练。见第十一节。
+架构为空时推进提测会直接 409 并提示「还没有架构列表」。补的办法是在基线页点「立即同步」，
+或 `curl -X POST -H "Authorization: Bearer $SYNC_JOB_TOKEN" .../api/jobs/baseline-sync`。
 
 ---
 
@@ -483,42 +586,74 @@ sudo chown -R "$(id -u):$(id -g)" .next next-env.d.ts
 - [ ] 上游失败时下游被阻断，`blockedByPackage` 与 `statusReason` 正确
 - [ ] Webhook 端点返回 500 时投递记录为 `failed`，业务不受影响
 - [ ] 提测详情页、构建队列页、工作台数据与数据库一致
-- [ ] 全链路演练 `scripts/e2e.sh` 退出码 0
+- [ ] 全链路演练 `scripts/e2e.sh --with-build-deps` 退出码 0，提测到 `success`，Topic 链接与详情页截图留证
 - [ ] 本文档被另一位同学按步骤复现成功（复现人签字）
 
 ---
 
 ## 十一、已知缺陷与限制
 
-### 缺陷 A：投递固定写死 5 个架构，交付分支不支持的架构会让 apply 直接失败
+### 已修复（A16 验收过程中发现并由独立缺陷单修复）
 
-- 现象：`POST /new_release` 里 `Arches` 恒为 `amd64;mips64el;arm64;sw64;loong64`
-  （`lib/integrations/crp/releases.ts:58` 用的是 `CRP_DEFAULT_ARCHES`）。`eagle-1071` 只支持
-  `amd64`、`i386`、`arm64`，多出来的 `mips64el`、`sw64`、`loong64` 让 CRP 在 apply 阶段就失败。
-- 证据：同一提交（`deepin-kde/wayland` `develop/eagle` `587bde6b`）、同一版本号（`2:1.21.0.10`）：
+| 缺陷 | 现象 | 修复 |
+| --- | --- | --- |
+| 软件包名与 CRP 项目名混用 | 带 `v25_` 前缀的 CRP 项目登记不进来，或投到同名的旧项目上 | MKACG-910：`Package.crpProjectName`，登记方式见第四节 |
+| `APPLY_FAILED` 被当成「还在构建」 | CRP 已失败，平台一直显示构建中，提测永不结束 | MKACG-911：`mapShuttleState` 把 `APPLY_FAILED` 判为失败，并给可操作提示 |
+| 投递架构写死成常量 | `eagle-1071` 上 apply 直接失败 | MKACG-912：`Baseline.arches` 由基线同步写入，投递按基线取 |
 
-  | 请求里的 `Arches` | CRP `BuildState` | Shuttle 任务 | 构建作业 |
-  | --- | --- | --- | --- |
-  | `amd64;mips64el;arm64;sw64;loong64` | `APPLY_FAILED` | 600315 `APPLY_FAILED`，`pkgver` 空 | 空 |
-  | `amd64;arm64` | 通过 | 600317，`pkgver=2:1.21.0.10-1` | `amd64:WAIT, arm64:WAIT` |
+### 待确认的两处（A16 演练发现，尚未开单）
 
-- 影响：只要交付分支不支持这 5 个架构里的任何一个，这条提测的每个包都会在 apply 阶段失败。
-- 当前没有办法在配置里绕开：`CRP_DEFAULT_ARCHES` 是常量，`CrpSubmitReleaseInput.arches` 没有供
-  调用方填写的入口，`.env` 里也没有对应变量。
+**一、CRP 项目的版本前缀会把 epoch 发两遍**
 
-### 缺陷 B：未识别的终态被当成「构建中」，提测会永久卡住
+- 现象：`v25_kwin`（`deepin-kde/kwin` 在 `eagle-1071` 上的 CRP 项目）带 `PkgVerPrefix = "4:"`。
+  平台把 `debian/changelog` 的版本原样当提测版本发出去（`4:6.1.57`），CRP 在前面再拼一次前缀，
+  apply 阶段就失败：Shuttle 任务 `APPLY_FAILED`、`pkgver` 为空、一个构建作业都没起来。
+- 实测（2026-11-20，`scripts/verify-crp.ts` 直接投一条，跑完自己删 Release 与放弃 Topic）：
 
-- 现象：`lib/build/status.ts` 的 `mapShuttleState` 只认 `UPLOAD_FAILED`、`UPLOAD_GIVEUP`、
-  `FAILED` 等几个失败值，`APPLY_FAILED` 不在其中，被归成「还在构建」。而「任务成功但作业为空」
-  的那条 15 分钟兜底只在**任务状态为成功**时才生效，`APPLY_FAILED` 走不到。
-- 证据：本轮演练里 Shuttle 任务 600315 从 `02:11:59` 起就是 `APPLY_FAILED`，平台连续 40 分钟
-  把这条提测报成 `building`、把 `wayland` 报成 `building`，`kwin` 一直停在「待投递」。
-- 影响：CRP 侧已经失败，平台却认为还在构建，提测永远不结束、下游永不被阻断，页面只能靠人盯着 Shuttle 才能发现。
+  ```bash
+  CRP_VERIFY_PROJECT="v25_kwin" \
+  CRP_VERIFY_PROJECT_BRANCH=develop/snipe \
+  CRP_VERIFY_COMMIT=10ec09fcfbd40a1e8ac15bfd8ad299c318a1abd5 \
+  CRP_VERIFY_BRANCH=eagle-1071 \
+  CRP_VERIFY_TAG="4:6.1.57" \
+  pnpm exec tsx scripts/verify-crp.ts
+  ```
 
-**已修复**：2026-11-19 的全链路验收发现「软件包名与 CRP 项目名不是一个名字，投递与导入都对不上」，
-由 MKACG-910 修复（`Package.crpProjectName` 字段 + `lib/packages/crpProject.ts` 统一解析），
-登记方式见本文第四节。
+  结果：Topic 29208 → Release 107535 → Shuttle 任务 600345 `APPLY_FAILED`，`pkgver` 为空，作业 0 个。
+  同一提交用 `6.1.57` 投（全链路演练 Topic 29207 里就是这条）能进构建，Shuttle 侧 `pkgver` 变成
+  `4:6.1.57-1` —— 说明前缀是 CRP 拼的，调用方不该重复带。
+- 当前处理：演练脚本查一次 CRP 的项目前缀，前缀与代码版本的 epoch 相同时用 `customTag` 去掉 epoch
+  （见第六节）。产品侧是否要把这件事做成默认行为，待定。
+- 影响范围：只影响带 `PkgVerPrefix` 的 CRP 项目（KDE 升级那条线基本都是）。
 
+**二、代码版本带 Debian 修订号时无法投递**
+
+- 现象：`plasma-wayland-protocols` 的 `debian/changelog` 版本是 `1.10.0.32-deepin33-1`，含 `-`；
+  `lib/integrations/crp/tag.ts` 的 `validateReleaseTag` 直接拒绝（建提测返回 400）。
+- 但 CRP 自己的主题里就有带 `-` 的 Tag（2026-11-20 查主题 29123 的 Release：`mpv` 是
+  `0.34.1.10-deepin10`、`base/gtk3.0` 是 `3.24.5.28-deepin28`、`v25_xwayland` 是
+  `2:23.1.0.151-deepin151`、`dde-wayland-config` 是 `1.2.16-1`、`base/os-config` 是
+  `3000.0.511-deepin1`）。所以不是「CRP 不接受这种版本号」，而是**调用方显式给 Tag 时**
+  `POST /new_release` 会拒（`lib/integrations/crp/FINDINGS.md` 里实测 `7.7.7-rc1` →
+  `版本中不能包含'-'字符`）；那些带 `-` 的 Tag 是 CRP 从 changelog 自己取的。
+- 当前处理：演练脚本把版本截到第一个 `-` 之前（`1.10.0.32`），仍高于仓库里的 `1.10.0.28-1`。
+- 影响范围：所有 `debian/changelog` 版本带修订号的包（Debian 包里很常见）。
+
+### 环境事实（不是缺陷，但演练必须知道）
+
+- **kwin 在 `develop/snipe` 上编译需要更新的 `plasma-wayland-protocols`。**
+  依据是源码对照，不是猜测：
+
+  | 事实 | 怎么核对的 |
+  | --- | --- |
+  | kwin 这条分支用到 `ORG_KDE_KWIN_OUTPUTCONFIGURATION_SET_COLOR_MODE_SINCE_VERSION` | `kwin_6.1.52.tar.xz`（`snipe-2500u2` 仓库，与 `develop/snipe` 同一条线）里 `src/wayland/outputmanagement_v1_interface.cpp:339` |
+  | `eagle-1071` 里的协议包是 `1.10.0.28`，且整套协议 XML 里没有 `color_mode` | `eagle-1071` 源仓库的 `plasma-wayland-protocols_1.10.0.28.orig.tar.xz`，`grep -r color_mode src/protocols/` 无结果 |
+  | 带 `1.10.0.32` 的协议包一起提测后，kwin 构建成功 | 见第六节演练结果（Topic 29207 / 29203） |
+
+  「不带协议包时 kwin 一定编译失败」这一步是按上面两条推出来的，**没有单独跑一次编译失败来做对照**
+  （单次真实构建 20 分钟以上）。所以「kwin 依赖 wayland」这两层链在真实环境里跑不到 `success`，
+  要把 `plasma-wayland-protocols` 也放进清单（`--with-build-deps`）；这件事按**推断**看待，
+  等有人愿意花一次构建时间再做实测对照。
 下面列的是仍然存在的限制。
 
 ### 其它限制
@@ -527,3 +662,29 @@ sudo chown -R "$(id -u):$(id -g)" .next next-env.d.ts
 - 平台不推进 CRP 的转测 / 转发布工作流，只读 `WorkProgress`。
 - 种子数据里的 `crp_topic_id`（`8901`、`8844` 等）在真实 CRP 上**确实存在**。在没有独立演练库的环境里跑定时任务，会真的读到别人的主题。演练请用一次性库。
 - 生产环境的第一个工作区目前只能手工建（`/api/workspaces` 只有 GET，没有创建接口），见 3.6。
+
+---
+
+## 十二、复现检查表（给复现人）
+
+按顺序做，每一步都写了「看什么现象算通过」。哪一步对不上就停在那一步，把现象与日志路径贴进 issue，
+不要跳过去做下一步。
+
+| # | 做什么 | 看什么现象算通过 | 大约耗时 |
+| --- | --- | --- | --- |
+| 1 | 第三节从零部署（3.1 → 3.5） | `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/login` 是 `200`；打开 `/dashboard` 看到的是种子数据（3 个工作区、5 条提测） | 20 分钟 |
+| 2 | `scripts/style-check/container.sh` | 最后一行是 `失败 0 项`，六个页面都显示「通过」 | 2 分钟（镜像已拉过） |
+| 3 | 不带 token 打三个定时入口：`POST /api/jobs/baseline-sync`、`/build-dispatch`、`/build-poll` | 三个都返回 `401` | 1 分钟 |
+| 4 | 带 `SYNC_JOB_TOKEN` 打 `POST /api/jobs/baseline-sync` | 返回 `200` 且 `list.itemCount > 0`；`/baselines` 页 `eagle-1071` 的架构列是 6 个（`amd64;arm64;i386;loongarch64;mips64el;sw_64`） | 1 分钟 |
+| 5 | `scripts/e2e.sh --with-build-deps` | 退出码 `0`；日志最后有 `提测到达 success`、`AC1 证据：Topic …`；打开那个 Topic 与提测详情页，三个包都是成功、顺序是 `plasma-wayland-protocols → wayland → kwin` | 60–90 分钟（真实构建，别中途打断） |
+| 6 | 6.6 场景一：CRP 认证过期 | 见 6.6 的「算通过」 | 2 分钟 |
+| 7 | 6.6 场景二：Shuttle 超时 | 见 6.6 的「算通过」 | 3 分钟 |
+| 8 | 6.6 场景三：Webhook 端点 500 | 脚本最后打印「全部通过」 | 1 分钟 |
+| 9 | 6.6 场景四：上游失败导致阻断 | 见 6.6 的「算通过」 | 5 分钟 |
+| 10 | 第十节「上线前检查清单」逐条过 | 12 条全部能勾上 | 10 分钟 |
+
+第 5 步是唯一的长尾：真实 CRP 构建一条链大约一小时。等不到就按第十一节的办法先看卡在哪个包，
+把 Topic 号与日志贴出来，不要用「本地能跑」替代。
+
+**签字的写法。** 在 issue MKACG-890 回一条评论，写清「我按第十二节做完了，第几步的现象是 ……」，
+附上你跑出来的日志文件路径、Topic 号、以及第 5 步的详情页截图。签字由复现人本人发，Coder 不代签。
