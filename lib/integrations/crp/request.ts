@@ -1,9 +1,12 @@
 /**
  * 请求策略层：超时、重试、错误分类，以及把登录态接进每一次请求。
  *
- * 三条策略：
+ * 四条策略：
  *
  * - 30 秒超时，失败重试 3 次，退避 300 / 600 / 1200 毫秒。
+ * - 429 是限流，单独归成 `CrpRateLimitedError`，**一次都不重试**：按定义等一个窗口，
+ *   立刻重发只会让限流窗口继续延长。等多久由调用方的定时器决定，消息里带上 CRP 给的
+ *   `Retry-After`。此前把 429 当网络错误连试三次，实测把限流拖成了四十多分钟。
  * - CRP 明确拒绝的请求（响应里带 `message`）不重试：同一份请求体重试一百次，结果一样。
  * - 401 且有凭据时，只换一次新 token 再重放原请求。
  *
@@ -22,14 +25,15 @@ import {
   CrpBusinessError,
   CrpError,
   CrpNetworkError,
+  CrpRateLimitedError,
   responseSnippet,
 } from "./errors";
 import { parseBody, sendRequest, type CrpRequest, type CrpSendContext } from "./http";
 import { readMessage } from "./response";
 import { createCrpSession, type CrpSession } from "./session";
 
-/** 可以安全重试的状态码：服务端临时故障或限流。 */
-const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+/** 可以安全重试的状态码：服务端临时故障。429 是限流，单独处理，见 `toHttpError`。 */
+const RETRYABLE_STATUS = new Set([408, 425, 500, 502, 503, 504]);
 
 /** 重试等待的基数，毫秒。 */
 const BACKOFF_BASE_MS = 300;
@@ -97,14 +101,31 @@ function sleepDefault(ms: number): Promise<void> {
   });
 }
 
-/** 把失败响应翻译成四类错误里合适的那一类。 */
-function toHttpError(init: CrpRequest, status: number, text: string, retries: number): CrpError {
+/** 把失败响应翻译成五类错误里合适的那一类。 */
+function toHttpError(
+  init: CrpRequest,
+  status: number,
+  text: string,
+  retries: number,
+  retryAfter: string | null,
+): CrpError {
   const snippet = responseSnippet(text);
   const label = `${init.method} ${init.path} 失败（HTTP ${status}）`;
   const message = readMessage(text);
 
   if (status === 401 || status === 403) {
     return new CrpAuthError(`${label}：${message ?? "凭据被拒绝或没有权限"}`, {
+      status,
+      responseSnippet: snippet,
+    });
+  }
+
+  // 限流要先于「响应带 message」判定：429 的响应体可能也带 message，
+  // 那种情况仍然是限流，不是 CRP 拒绝了这份请求。
+  if (status === 429) {
+    const wait = retryAfter === null ? "" : `（Retry-After: ${retryAfter}）`;
+
+    return new CrpRateLimitedError(`${label}：CRP 限流，请稍后重试${wait}`, {
       status,
       responseSnippet: snippet,
     });
@@ -212,7 +233,7 @@ export function createCrpTransport(options: CrpTransportOptions = {}): CrpTransp
       const token = useAuth ? await session.authorize() : null;
       const startedAt = now();
 
-      let outcome: { status: number; text: string };
+      let outcome: { status: number; text: string; retryAfter: string | null };
       try {
         outcome = await sendRequest(init, token, sendContext);
       } catch (error) {
@@ -262,7 +283,13 @@ export function createCrpTransport(options: CrpTransportOptions = {}): CrpTransp
         continue;
       }
 
-      throw toHttpError(init, outcome.status, outcome.text, retries);
+      throw toHttpError(
+        init,
+        outcome.status,
+        outcome.text,
+        retries,
+        outcome.retryAfter,
+      );
     }
   }
 

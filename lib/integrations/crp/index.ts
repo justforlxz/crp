@@ -28,6 +28,7 @@ export {
   CrpError,
   CrpInvalidParameterError,
   CrpNetworkError,
+  CrpRateLimitedError,
   responseSnippet,
   type CrpErrorKind,
 } from "./errors";

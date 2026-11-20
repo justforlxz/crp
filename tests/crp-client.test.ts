@@ -10,6 +10,7 @@ import {
   CrpBusinessError,
   CrpInvalidParameterError,
   CrpNetworkError,
+  CrpRateLimitedError,
 } from "../lib/integrations/crp/errors";
 
 const TEST_TOKEN = "test.jwt.token";
@@ -238,6 +239,45 @@ test("5xx 带 message 时视为业务拒绝，不重试", async () => {
 
   assert.equal(calls.length, 1);
   assert.deepEqual(sleeps, []);
+});
+
+test("429 归为限流而不是网络错误：文案说明限流、带上 Retry-After，且一次都不重试", async () => {
+  const { client, sleeps, calls } = mockClient([
+    ["GET /user", new Response("", { status: 429, headers: { "Retry-After": "120" } })],
+  ]);
+
+  await assert.rejects(
+    () => client.getCurrentUser(),
+    (error: unknown) => {
+      assert.ok(error instanceof CrpRateLimitedError);
+      assert.equal(error.kind, "rate_limited");
+      assert.equal(error.status, 429);
+      assert.match(error.message, /限流/);
+      assert.match(error.message, /Retry-After: 120/);
+      // 不能再描述成「服务端异常」：那会让人去排查代码，实际只要等。
+      assert.equal(error.message.includes("服务端异常"), false);
+      return true;
+    },
+  );
+
+  assert.equal(calls.length, 1, "429 不重试：限流窗口里再发一次只是加大压力");
+  assert.deepEqual(sleeps, []);
+});
+
+test("429 带 message 也还是限流，不被当成业务拒绝", async () => {
+  const { client, calls } = mockClient([
+    ["GET /user", json({ message: "too many requests" }, 429)],
+  ]);
+
+  await assert.rejects(
+    () => client.getCurrentUser(),
+    (error: unknown) => {
+      assert.ok(error instanceof CrpRateLimitedError);
+      return true;
+    },
+  );
+
+  assert.equal(calls.length, 1);
 });
 
 test("连不上网络时重试后抛网络错误，消息说明是超时还是连接失败", async () => {

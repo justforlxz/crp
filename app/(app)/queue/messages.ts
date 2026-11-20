@@ -9,8 +9,17 @@
  * 需要看原文的地方从那里取，不再从页面提示里取。
  */
 
-/** 一条失败的提测：页面只要版本号，错误原文只进日志。 */
-export type PollFailureInput = { version: string; error: string | null };
+/**
+ * 一条失败的提测：页面只要版本号与它属于哪一类失败，错误原文只进日志。
+ *
+ * `rateLimited` 为真表示这次失败是 CRP 限流（429）。它属于「等一等」，不属于「去查」，
+ * 所以页面上要与其它失败分开说。
+ */
+export type PollFailureInput = {
+  version: string;
+  error: string | null;
+  rateLimited?: boolean;
+};
 
 /**
  * 一整轮都跑不起来时的页面提示。
@@ -26,7 +35,10 @@ export function reportPollCrash(error: unknown): string {
 /**
  * 部分提测轮询失败时的页面提示。
  *
- * 只报是哪几条提测出了问题：它们的状态已保持原样，用户要做的只是稍后再点一次。
+ * 按失败类型分组说：限流只要等，其它失败要查。混成一句「失败」会让人去查链路，
+ * 而限流窗口里唯一正确的做法是等。
+ *
+ * 只报是哪几条提测、属于哪一类：它们的状态已保持原样，错误原文留在服务端日志。
  */
 export function reportItemFailures(failed: readonly PollFailureInput[]): string {
   console.error(
@@ -34,8 +46,17 @@ export function reportItemFailures(failed: readonly PollFailureInput[]): string 
       failed.map((item) => `${item.version}（${item.error ?? "原因未知"}）`).join("；"),
   );
 
+  const limitWaiting = failed.filter((item) => item.rateLimited === true);
+  const otherFailures = failed.filter((item) => item.rateLimited !== true);
+  const versions = (picked: readonly PollFailureInput[]): string =>
+    picked.map((item) => item.version).join("、");
+  const groups = [
+    limitWaiting.length === 0 ? null : `限流等待：${versions(limitWaiting)}`,
+    otherFailures.length === 0 ? null : `其它失败：${versions(otherFailures)}`,
+  ].filter((group): group is string => group !== null);
+
   return (
-    `部分提测轮询失败，状态已保持原样：${failed.map((item) => item.version).join("、")}。` +
+    `部分提测轮询失败，状态已保持原样（${groups.join("；")}）。` +
     "明细见服务端日志。"
   );
 }
