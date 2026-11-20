@@ -588,6 +588,28 @@ test("字段校验未通过时返回 400，details 里逐条给出字段", async
   );
 });
 
+test("12 位短提交号在接口层被拒成 400，提示需要完整 40 位（MKACG-927）", async () => {
+  const response = await POST(
+    request({
+      projectId: "00000000-0000-7000-8000-000000000001",
+      version: "25.2.9",
+      packages: [
+        { packageName: pkgName("a"), branch: "develop/eagle", commitSha: "587bde6b1d3f" },
+      ],
+    }),
+  );
+
+  // 短号此前能建提测、能建 Topic，投递时才被 CRP 拒掉，留下空 Topic。
+  assert.equal(response.status, 400);
+  const body = (await response.json()) as {
+    error: { code: string; details: Array<{ field: string; message: string }> };
+  };
+  assert.equal(body.error.code, "invalid_payload");
+  assert.equal(body.error.details[0]?.field, "packages[0].commitSha");
+  // 不能只说「无效」，要能直接看出要 40 位。
+  assert.match(body.error.details[0]?.message ?? "", /完整的 40 位/);
+});
+
 test("项目不存在时返回 404，不进入权限判定", async () => {
   const response = await POST(
     request({

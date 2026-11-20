@@ -10,7 +10,6 @@
  */
 
 import { validateReleaseTag } from "../integrations/crp/tag";
-import { isCommitSha } from "../integrations/gerrit";
 import type { FieldError, ParseResult } from "../projects/validation";
 
 /** 一个软件包本次要固化的分支与 Commit，以及可选的自定义 Tag。 */
@@ -39,6 +38,12 @@ export type ReleaseInput = {
 
 /** Topic 版本号：不能包含空白字符，长度不超过 CRP 侧能接受的范围。 */
 const VERSION_MAX_LENGTH = 100;
+
+/**
+ * CRP 只认完整 40 位提交号：短号能建提测、能建 Topic，投递时才被 CRP 拒成
+ * `commitID 长度异常 请重新提交`（MKACG-927）。所以入口就按 40 位校验。
+ */
+const FULL_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
 
 function asRecord(raw: unknown): Record<string, unknown> | null {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
@@ -141,10 +146,10 @@ function parsePackage(
     hint: "请为这个软件包选择要提测的 Commit。",
   });
 
-  if (commitSha !== null && !isCommitSha(commitSha)) {
+  if (commitSha !== null && !FULL_COMMIT_SHA_PATTERN.test(commitSha)) {
     errors.push({
       field: `${prefix}.commitSha`,
-      message: `Commit 必须是十六进制提交号（7 位以上），当前是：${commitSha}。`,
+      message: `Commit 必须是完整的 40 位十六进制提交号（短提交号投递时会被 CRP 拒绝），当前是：${commitSha}。`,
     });
   }
 

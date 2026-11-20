@@ -261,7 +261,7 @@ Authorization: Bearer <SYNC_JOB_TOKEN>
 | `packages` | array | 是 | 项目清单里的**全部**软件包，不多不少；顺序不参与判定 |
 | `packages[].packageName` | string | 是 | 源码包名，例如 `kwin` |
 | `packages[].branch` | string | 是 | 固化的分支，不能包含空白字符 |
-| `packages[].commitSha` | string | 是 | 固化的 Commit，十六进制提交号（7 位以上）；分支名不算 |
+| `packages[].commitSha` | string | 是 | 固化的 Commit，完整的 40 位十六进制提交号（短号投递时会被 CRP 拒绝）；分支名不算 |
 | `packages[].customTag` | string \| null | 否 | 自定义 Tag。填了它，提测版本就是它本身；不填则等于代码版本 |
 
 **代码版本由服务端现读**：每个包都按 `repoPath` 与 `commitSha` 去 Gerrit 读
@@ -783,7 +783,7 @@ Authorization: Bearer <BUILD_POLL_JOB_TOKEN>
 | --- | --- |
 | `append` | 追加的包：必须已经在项目软件清单里，且此刻不在提测里 |
 | `replace` | 换版本的包：必须此刻已经在提测里 |
-| `branch` / `commitSha` | 固化的分支与提交；提交必须是 7–40 位十六进制 |
+| `branch` / `commitSha` | 固化的分支与提交；提交必须是完整的 40 位十六进制 |
 | `customTag` | 提测版本。`replace` 留空表示 **Tag 不变**（只换 Commit 与代码版本）；`append` 留空表示用代码版本 |
 
 两组至少要填一组；同一个包不能既补又换。代码版本由服务端从 Gerrit 现读，不采信请求体。

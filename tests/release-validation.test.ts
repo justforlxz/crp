@@ -1,7 +1,7 @@
 /**
  * 创建提测的输入校验单元测试。
  *
- * 锁的是「提交什么才算一次合法提测」：项目与版本号必填、每个包必须给分支与十六进制提交号、
+ * 锁的是「提交什么才算一次合法提测」：项目与版本号必填、每个包必须给分支与完整的 40 位十六进制提交号、
  * 自定义 Tag 必须满足 CRP 实测出来的四条格式限制、提交的软件包清单必须与项目清单完全一致。
  *
  * 自定义 Tag 的规则不在这里重写，直接对照 `lib/integrations/crp/tag.ts` 的四条实测结论。
@@ -136,14 +136,24 @@ test("Commit 必须是十六进制提交号，分支名不算", () => {
   assert.match(parsed.errors[0].message, /十六进制提交号/);
 });
 
-test("短提交号（7 位）也接受", () => {
-  const parsed = parseReleaseInput(
-    payload({
-      packages: [{ packageName: "kwin", branch: "develop/eagle", commitSha: "4f0b1d2" }],
-    }),
-  );
+test("短提交号被拒绝：CRP 只认完整 40 位，短号投递时会被它退回", () => {
+  // 12 位短号是线上真实撞到的形态（MKACG-927）：能建提测、能建 Topic，投递时才被 CRP 拒掉。
+  for (const short of ["4f0b1d2", "4f0b1d2e8c9a"]) {
+    const parsed = parseReleaseInput(
+      payload({
+        packages: [{ packageName: "kwin", branch: "develop/eagle", commitSha: short }],
+      }),
+    );
 
-  assert.equal(parsed.ok, true);
+    assert.equal(parsed.ok, false);
+
+    if (parsed.ok) {
+      return;
+    }
+
+    assert.equal(parsed.errors[0].field, "packages[0].commitSha");
+    assert.match(parsed.errors[0].message, /完整的 40 位/);
+  }
 });
 
 test("自定义 Tag 的四条 CRP 限制全部当场拒绝，并说明规则", () => {

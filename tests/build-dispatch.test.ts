@@ -107,6 +107,8 @@ type FakeCrp = {
   failDelete: Set<number>;
   /** 非空时 `POST /project` 按这个 HTTP 状态码失败（响应体带 message），用来验 5xx 与 4xx 的区别。 */
   projectFailureStatus: number | null;
+  /** 非空时 `POST /topics/{id}/new_release` 按这个状态码与说明失败，用来验投递被 CRP 拒绝时的错误分类。 */
+  newReleaseFailure: { status: number; message: string } | null;
 };
 
 /**
@@ -129,6 +131,7 @@ function makeFakeCrp(base: number): FakeCrp {
     received: [],
     failDelete: new Set(),
     projectFailureStatus: null,
+    newReleaseFailure: null,
   };
 }
 
@@ -200,6 +203,14 @@ function crpFetchOf(state: FakeCrp): typeof fetch {
         Tag: string;
         Arches: string;
       };
+
+      if (state.newReleaseFailure !== null) {
+        // 实测：短提交号被 CRP 回 `HTTP 500 commitID 长度异常 请重新提交`。
+        return json(
+          JSON.stringify({ message: state.newReleaseFailure.message }),
+          state.newReleaseFailure.status,
+        );
+      }
 
       const jobId = state.nextJobId++;
       const buildId = state.nextBuildId++;
@@ -2041,4 +2052,39 @@ test("CRP 返回 4xx 时按「拒绝」上报，重试也没用", async () => {
 
     return true;
   });
+});
+
+test("历史数据里的短提交号被 CRP 拒绝时，投递回 409 并说明要完整 40 位", async () => {
+  const state = newFakeCrp();
+  const network = networkOf(state);
+  const releaseId = await createReleaseWithChain("short-commit");
+
+  // Topic 在投递之前就建好了，与线上一致：这条提测停在「已建 Topic、还没投递」。
+  await advanceRelease(releaseId, { network });
+
+  // 绕过接口校验直接写库：模拟修复前用短提交号建出来、留在库里的历史数据。
+  await prisma.releasePackageSnapshot.updateMany({
+    where: { releaseId, packageName: pkgName("a") },
+    data: { commitSha: "587bde6b1d3f" },
+  });
+
+  state.newReleaseFailure = { status: 500, message: "commitID 长度异常 请重新提交" };
+
+  await assert.rejects(advanceRelease(releaseId, { network }), (error: unknown) => {
+    assert.ok(error instanceof BuildError, "提交号长度问题应当是可读的业务错误，不是 502");
+    assert.equal(error.status, 409);
+    // 用户要能直接看出「要 40 位」，并且知道是哪个包。
+    assert.match(error.message, /完整的 40 位/);
+    assert.match(error.message, new RegExp(pkgName("a")));
+
+    return true;
+  });
+
+  // 没投成：这个包退回待投递，不会卡在「投递中」，也不会留下半条 Release。
+  const snapshot = await prisma.releasePackageSnapshot.findFirstOrThrow({
+    where: { releaseId, packageName: pkgName("a") },
+    select: { status: true },
+  });
+  assert.equal(snapshot.status, "pending");
+  assert.equal(state.releases.length, 0, "被拒的提交号一条 Release 都不该留下");
 });
