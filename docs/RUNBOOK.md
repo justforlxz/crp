@@ -396,6 +396,7 @@ scripts/e2e.sh --keep                         # 保留本次记录与 CRP Topic�
   | 构建队列页始终没有出现本次提测的版本 | `构建队列页里没有出现本次提测的版本 …（采样结果 queueSeen=false）` |
   | A17 补进来的包没有进新一轮快照 | `新一轮快照里没有补进来的 <包名>：实际有 …` |
   | A17 更新接口的补包名单里没有要补的包 | `更新接口的补包名单里没有 <包名>：实际有 …` |
+  | CRP 侧限流或抖动：`POST /topics/<id>/new_release` 返回 `HTTP 429` / `HTTP 500`（`CrpNetworkError`、`CrpBusinessError`，重试 3 次仍失败） | `POST /api/jobs/build-dispatch 里本次提测（…）报错：CrpNetworkError: … （HTTP 429）：CRP 服务端异常，重试 3 次后仍失败`；**不是平台的问题**，等几分钟再跑一次，演练失败时也会自行清理 |
 - 退出码 2：环境变量缺失或服务起不来，什么都没做。
 
 ### 6.5 清理边界
@@ -697,7 +698,7 @@ select name, arches, synced_at from baseline where name = 'eagle-1071';
 - [ ] Webhook 端点返回 500 时投递记录为 `failed`，业务不受影响
 - [ ] 提测详情页、构建队列页、工作台数据与数据库一致
 - [ ] 全链路演练 `scripts/e2e.sh --with-build-deps` 退出码 0，提测到 `success`，Topic 链接与详情页截图留证
-- [ ] 第十二节的复现检查表 10 条，逐条的现象都对得上（执行者自己走一遍）
+- [ ] 第十二节的复现检查表 11 条，逐条的现象都对得上（执行者自己走一遍）
 
 > **复现人签字不在这 12 条里，它是另一道门。** AC3「RUNBOOK 被另一位同学按步骤复现成功」由复现人本人
 > 在 issue 里发签字评论，执行者与 PL 都不代签，所以它不能作为这张清单的一项 —— 否则清单永远勾不满，
