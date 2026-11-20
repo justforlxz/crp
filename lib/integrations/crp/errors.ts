@@ -1,15 +1,15 @@
 /**
- * CRP 客户端的四类错误。
+ * CRP 客户端的五类错误。
  *
- * 调用方要按类别做不同的事：网络错误可以排队重试，认证错误要重新登录，
- * 业务拒绝要把 CRP 的原话给用户看，参数非法压根不该发请求。所以分类做成四个类，
+ * 调用方要按类别做不同的事：网络错误可以排队重试，限流只能等，认证错误要重新登录，
+ * 业务拒绝要把 CRP 的原话给用户看，参数非法压根不该发请求。所以分类做成五个类，
  * 用 `instanceof` 判断，不靠字符串标签。
  *
  * 每类都带 `responseSnippet`（CRP 原始响应的片段），方便直接把服务器的话显示出来。
  * 片段里不会出现 token 或密码：请求头从不进错误消息。
  */
 
-export type CrpErrorKind = "network" | "auth" | "business" | "invalid";
+export type CrpErrorKind = "network" | "rate_limited" | "auth" | "business" | "invalid";
 
 /** 响应片段最多留这么多字符，够看清 CRP 的报错，又不会把整页塞进日志。 */
 const SNIPPET_LIMIT = 500;
@@ -49,6 +49,20 @@ export class CrpNetworkError extends CrpError {
   constructor(message: string, options: CrpErrorOptions = {}) {
     super(message, "network", options);
     this.name = "CrpNetworkError";
+  }
+}
+
+/**
+ * CRP 在限流（HTTP 429）：请求本身没有错，只是这个窗口里发得太密。
+ *
+ * 与网络错误分开：网络错误可以排队重试，限流只能等 —— 立刻重发只会延长限流窗口；
+ * 而运维看到「网络错误」会去查链路，方向就错了。重发交给调用方的定时器，
+ * 请求层一次都不重试（见 `request.ts`）。
+ */
+export class CrpRateLimitedError extends CrpError {
+  constructor(message: string, options: CrpErrorOptions = {}) {
+    super(message, "rate_limited", options);
+    this.name = "CrpRateLimitedError";
   }
 }
 

@@ -26,7 +26,7 @@
  */
 
 import { prisma } from "../db";
-import { workProgressLabel } from "../integrations/crp";
+import { CrpRateLimitedError, workProgressLabel } from "../integrations/crp";
 import { prunePollEvents, recordPollEvent } from "./pollEvent";
 import {
   ACTIVE_RELEASE_STATES,
@@ -56,6 +56,13 @@ export type BuildPollItem = {
   workProgressLabel: string | null;
   /** 本轮的错误摘要。有值时上面那些状态一个都没被改。 */
   error: string | null;
+  /**
+   * 失败原因是不是 CRP 限流（429）。
+   *
+   * 页面据此把「限流等待」与网络失败分开说：限流唯一的正确做法是等，
+   * 与「链路有问题、要排查」不是同一件事。
+   */
+  rateLimited: boolean;
 };
 
 export type BuildPollSummary = {
@@ -169,7 +176,7 @@ export function pickWorkflowProgress(
 type WorkProgressResult =
   | { status: "skipped" }
   | { status: "synced"; workProgress: number; workProgressLabel: string }
-  | { status: "failed"; error: string; previous: number | null };
+  | { status: "failed"; error: string; previous: number | null; rateLimited: boolean };
 
 type PollTarget = {
   id: string;
@@ -201,6 +208,7 @@ async function syncWorkProgress(
       status: "failed",
       error: `CRP Topic ID 不是数字：${release.crpTopicId}`,
       previous: release.crpWorkProgress,
+      rateLimited: false,
     };
   }
 
@@ -215,6 +223,7 @@ async function syncWorkProgress(
         status: "failed",
         error: WORKFLOW_PROGRESS_PENDING_MESSAGE,
         previous: release.crpWorkProgress,
+        rateLimited: false,
       };
     }
 
@@ -229,7 +238,12 @@ async function syncWorkProgress(
 
     return { status: "synced", ...picked };
   } catch (error) {
-    return { status: "failed", error: errorSummary(error), previous: release.crpWorkProgress };
+    return {
+      status: "failed",
+      error: errorSummary(error),
+      previous: release.crpWorkProgress,
+      rateLimited: error instanceof CrpRateLimitedError,
+    };
   }
 }
 
@@ -330,11 +344,13 @@ async function pollOne(
 
   let polled: PollSummary | null = null;
   let pollError: string | null = null;
+  let pollRateLimited = false;
 
   try {
     polled = await pollReleaseBuilds(release.id, { network: options.network });
   } catch (error) {
     pollError = errorSummary(error);
+    pollRateLimited = error instanceof CrpRateLimitedError;
   }
 
   // 轮询抛错时也读一次：出错前它可能已经回写成功了一部分包的状态，
@@ -359,6 +375,10 @@ async function pollOne(
   const error =
     pollError ?? (progress.status === "failed" ? progress.error : null);
 
+  // 限流可能发生在轮询（读 Release）或工作流同步（读工作流进度）任一步。
+  const rateLimited =
+    pollRateLimited || (progress.status === "failed" && progress.rateLimited);
+
   // 记「这一轮看过它了」，轮询挑活按这一列从旧到新轮转。
   // 失败也照写：不写的话一条一直失败的提测会永远占住队首，把别的提测饿死。
   await prisma.release.update({ where: { id: release.id }, data: { lastPolledAt: new Date() } });
@@ -374,6 +394,7 @@ async function pollOne(
     workProgress: progress.status === "synced" ? progress.workProgress : null,
     workProgressLabel: progress.status === "synced" ? progress.workProgressLabel : null,
     error,
+    rateLimited,
   };
 }
 
@@ -409,6 +430,7 @@ async function pollOneSafely(
       workProgress: null,
       workProgressLabel: null,
       error: errorSummary(error),
+      rateLimited: false,
     };
   }
 }

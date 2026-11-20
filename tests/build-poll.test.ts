@@ -91,6 +91,8 @@ type FakeState = {
   received: string[];
   /** 为真时 Shuttle 一律「请求超时」。 */
   shuttleDown: boolean;
+  /** 为真时 `workflow/info` 一律回 `HTTP 429` + `Retry-After`（CRP 限流的场景）。 */
+  crpRateLimited: boolean;
   nextReleaseId: number;
   nextBuildId: number;
   nextJobId: number;
@@ -110,6 +112,7 @@ function newFakeState(topicId: number): FakeState {
     workflow: { TopicID: topicId, WorkProgress: 10 },
     received: [],
     shuttleDown: false,
+    crpRateLimited: false,
     nextReleaseId: base,
     nextBuildId: base + 500,
     nextJobId: base + 700,
@@ -152,6 +155,11 @@ function crpFetchOf(state: FakeState): typeof fetch {
     const workflow = /^\/topics\/(\d+)\/workflow\/info$/.exec(path);
 
     if (method === "GET" && workflow !== null) {
+      if (state.crpRateLimited) {
+        // CRP 限流的形态：429 + Retry-After，响应体没有 message。
+        return new Response("", { status: 429, headers: { "Retry-After": "120" } });
+      }
+
       // 实测：还没走过工作流的 Topic 返回全零对象，而不是 404。
       return json(JSON.stringify(state.workflow));
     }
@@ -943,6 +951,72 @@ test("MUST 取不到工作流进度时保留上一次的值，不写 0", async (
   assert.ok(progressEvent !== undefined);
   assert.equal(progressEvent.result.startsWith("失败："), true);
   assert.equal(progressEvent.result.includes("保留上一次的值 20"), true);
+});
+
+test("AC1/AC3 CRP 429：归为限流、一次不重试，页面提示与网络失败分开", async () => {
+  await closeLeftoverReleases();
+
+  const topicId = 90_012;
+  const state = newFakeState(topicId);
+  state.crpRateLimited = true;
+
+  const seeded = await seedRelease({
+    version: "a14-rate-limited",
+    status: "building",
+    topicId,
+    workProgress: 20,
+    snapshots: [
+      {
+        suffix: "a",
+        status: "success",
+        crpReleaseId: 5_701,
+        crpBuildId: 2_701,
+        buildTask: { status: "success", startedAt: new Date(), finishedAt: new Date() },
+        jobs: [{ arch: "amd64", status: "success" }],
+      },
+    ],
+  });
+
+  stageBuildInChain(state, 5_701, 2_701, "a");
+
+  const summary = await runBuildPoll({ trigger: "schedule", network: networkOf(state) });
+  const item = summary.items.find((entry) => entry.releaseId === seeded.releaseId);
+
+  assert.ok(item !== undefined);
+  assert.equal(item.rateLimited, true, "CRP 429 是限流，不是网络错误");
+  assert.match(item.error ?? "", /CrpRateLimitedError/);
+  assert.match(item.error ?? "", /限流/);
+  assert.equal(
+    state.received.filter((request) =>
+      request === `GET /topics/${topicId}/workflow/info`,
+    ).length,
+    1,
+    "429 不重试：一轮只发一次",
+  );
+
+  // 限流不等于「取到了进度」，上一次的值照旧保留。
+  const release = await releaseRow(seeded.releaseId);
+  assert.equal(release.crpWorkProgress, 20);
+
+  // 调度事件流水里也要能认出是限流，并带上 CRP 给的 Retry-After。
+  const events = await listPollEvents(fixture.workspaceId, 100);
+  const progressEvent = events.find(
+    (event) => event.event === "progress" && event.releaseId === seeded.releaseId,
+  );
+  assert.ok(progressEvent !== undefined);
+  assert.match(progressEvent.result, /限流/);
+  assert.match(progressEvent.result, /Retry-After: 120/);
+
+  // 队列页提示：限流与其它失败分开说。
+  const { value: hint } = await captureConsoleError(async () =>
+    reportItemFailures([
+      { version: "a14-rate-limited", error: item.error, rateLimited: true },
+      { version: "a14-net-down", error: "CrpNetworkError: 请求失败", rateLimited: false },
+    ]),
+  );
+
+  assert.match(hint, /限流等待：a14-rate-limited/);
+  assert.match(hint, /其它失败：a14-net-down/);
 });
 
 // ---------------------------------------------------------------------------

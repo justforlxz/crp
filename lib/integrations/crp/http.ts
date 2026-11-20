@@ -48,12 +48,16 @@ function describeFailure(cause: unknown, timeoutMs: number): string {
   return String(cause);
 }
 
-/** 发一次请求。连不上、超时、读不出响应体都算网络错误。 */
+/**
+ * 发一次请求。连不上、超时、读不出响应体都算网络错误。
+ *
+ * 响应头里的 `Retry-After` 原样带出去：只有上层（`request.ts`）知道限流该等多久。
+ */
 export async function sendRequest(
   init: CrpRequest,
   token: string | null,
   context: CrpSendContext,
-): Promise<{ status: number; text: string }> {
+): Promise<{ status: number; text: string; retryAfter: string | null }> {
   const headers: Record<string, string> = {};
   if (token) {
     headers.Authorization = `Bearer ${token}`;
@@ -78,7 +82,12 @@ export async function sendRequest(
   }
 
   try {
-    return { status: response.status, text: await response.text() };
+    // `Retry-After` 是 CRP 在 429 里给出的等待时间，原样带上去，由上层决定怎么用。
+    return {
+      status: response.status,
+      text: await response.text(),
+      retryAfter: response.headers.get("retry-after"),
+    };
   } catch (cause) {
     throw new CrpNetworkError(
       `${init.method} ${init.path} 读取响应失败：${describeFailure(cause, context.timeoutMs)}`,
