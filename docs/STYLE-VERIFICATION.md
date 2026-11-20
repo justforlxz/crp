@@ -272,6 +272,16 @@ color, backgroundColor, border, borderRadius, boxShadow, width, height
 | `CRP_STYLE_EMAIL` | `admin@uniontech.com` | 取样用的种子账号 |
 | `CRP_STYLE_SKIP_BUILD` | 空 | 设为 `1` 时跳过 `next build`（只给反复调脚本时用） |
 
+走容器时（`scripts/style-check/container.sh`）这些变量会按原样透传给容器；两份目录类变量即便透传了，
+路径也必须在仓库内 —— 容器只挂载仓库，指到仓库外会直接报错退出。
+
+**取样的输入由门禁自己固定，不看操作者配了什么凭据。** 仓库根的 `.env` 会跟仓库一起进容器并被
+Next 自己加载：配了 CRP / Gerrit 凭据时，提测详情页会多出「提交信息 / 工作流进度」那一段，整段
+下压 12.4px，与提交进仓库的基线（在没有这些凭据的环境里生成）对不上。所以容器启动时用一份
+**只含 `DATABASE_URL`** 的文件只读盖住 `.env`，取样结果与操作者有没有配业务凭据无关。
+要改这件事，只能改门禁怎么固定取样输入；**不要**在配好凭据的环境里重生成基线 —— 那会让没有凭据的
+CI 变红，方向正好反了。
+
 默认会先 `next build` 再 `next start`：`next start` 跑的是上一次的构建产物，不重建就会量到旧代码。CI 里也一样，所以样式 job 不需要单独一步构建。
 
 ## 九、QA 验收怎么执行

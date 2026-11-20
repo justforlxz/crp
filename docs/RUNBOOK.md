@@ -112,6 +112,10 @@ pnpm db:migrate     # prisma migrate deploy，可重复执行
 - **演示 / 演练环境**：`pnpm db:seed`。会灌入 3 个工作区、4 个项目、12 个软件包、4 条基线、5 条提测记录与 2 个 Webhook 端点，并自带「连得上 CRP 的」基线分支 ID。
 - **生产环境**：不要跑 seed（它会写入演示项目与提测记录）。按 3.6 手工初始化。
 
+> **seed 里的账号不能登录**：5 个演示账号的 `password_hash` 是占位串，任何密码都过不了。
+> 第一个能登录的账号要自己注册再提权，见 3.6 —— 种子环境也要走这一步，否则打开 `/dashboard`
+> 只会看到「当前账号还没有加入任何工作区」。
+
 > `pnpm db:reset`（`prisma migrate reset --force`）在 Prisma 7 上会要求人机确认，无人值守时会被拒。要退回干净种子库，等价做法是删库重建：
 >
 > ```bash
@@ -128,23 +132,34 @@ pnpm start            # 默认 3000 端口；改端口用 PORT=xxxx pnpm start
 
 开发时用 `pnpm dev`。反代到公网时把 `Cookie` 的 Secure 属性交给 HTTPS 层，应用本身按环境变量决定是否加 `Secure`。
 
-### 3.6 生产环境首次初始化（没有 seed 的情况）
+### 3.6 第一个能登录的账号（种子环境与生产环境都要做）
 
-当前版本没有「创建工作区」的接口或页面，第一次初始化需要手工做两步。**这是一处已知的部署缺口**，见第十一节。
+`pnpm db:seed` 灌进来的 5 个账号是演示数据，`password_hash` 是 `seed-not-a-real-hash-admin` 这类占位串，
+**任何密码都登不进去** —— 这是故意的：不往仓库里放一个可用的管理员口令。所以不管跑没跑 seed，
+第一个能登录的账号都要自己注册，再提成平台管理员：
 
-1. 打开 `/register` 注册第一个账号（注册后自动登录，但还不是管理员）。
-2. 提升为平台管理员，并建一个工作区：
+1. 打开 `/register` 注册第一个账号。注册后会自动登录，但还不是管理员，`/dashboard` 显示
+   「当前账号还没有加入任何工作区，请联系平台管理员分配」。
+2. 把它提升为平台管理员（表名是 `app_user`，不是 `user`）：
 
 ```sql
--- 表名是 app_user，不是 user
 UPDATE app_user SET is_platform_admin = true WHERE email = 'you@uniontech.com';
+```
 
+刷新 `/dashboard`：平台管理员能看到全部工作区。种子环境到这一步就会列出「安全组 / 桌面核心组 /
+系统应用组」，点「切换到这里」进去就能看到那 5 条种子提测。
+
+3. **生产环境（没跑 seed）还要建一个工作区**，种子环境跳过这一步：
+
+```sql
 INSERT INTO workspace (id, slug, name, created_at, updated_at)
 VALUES (gen_random_uuid(), 'desktop-core', '桌面核心组', now(), now());
 ```
 
-3. 用管理员账号登录，进入「工作台 → 邀请成员」把同事拉进工作区；工作区角色在成员接口里分配。
-4. 手动触发一次基线同步，让 CRP 的交付分支进入平台：
+> 当前版本没有「创建工作区」的接口或页面，第一次初始化只能手工做。**这是一处已知的部署缺口**，见第十一节。
+
+4. 用管理员账号登录，进入「工作台 → 邀请成员」把同事拉进工作区；工作区角色在成员接口里分配。
+5. 手动触发一次基线同步，让 CRP 的交付分支进入平台：
 
 ```bash
 curl -fsS -X POST -H "Authorization: Bearer $SYNC_JOB_TOKEN" \
@@ -153,7 +168,7 @@ curl -fsS -X POST -H "Authorization: Bearer $SYNC_JOB_TOKEN" \
 
 同步完成后「基线」页面会出现全部交付分支（实测 108 条）。
 
-5. 到「基线」页面点一次「立即同步」（`trigger=manual, force=true`），把每个基线的软件包版本拉下来。
+6. 到「基线」页面点一次「立即同步」（`trigger=manual, force=true`），把每个基线的软件包版本拉下来。
 
 这一步不能省，而且是**先有鸡还是先有蛋**的地方：分支列表同步只写基线本身，`synced_at` 仍是空的，
 基线状态是「从未同步」；而「从未同步」的基线**不能**被项目选中（创建项目会被拒），
@@ -515,6 +530,15 @@ scripts/style-check/container.sh --update   # 重写基线（CI 里会被脚本�
 
 **前置条件**：库是纯种子数据。跑过 `pnpm test` 或全链路演练的库会多出构建轮询事件，构建队列页会多一张调度事件表，比对必然失败——先退回种子库再跑。
 
+**取样结果不看你配了什么凭据。** 提测详情页会按快照去 Gerrit 读提交信息、按凭据读 CRP 工作流进度，
+而这些内容会改变整页高度（实测差 12.4px）。提交进仓库的基线是在没有这些凭据的环境里生成的，所以
+`container.sh` 启动容器时用一份**只含 `DATABASE_URL`** 的文件只读盖住仓库根的 `.env`：按 §3.3 配好
+CRP / Gerrit 凭据的机器跑出来的结果，和 CI 完全一致。要改这件事只能改门禁怎么固定取样输入，
+**不要**在配好凭据的环境里 `--update` 重生成基线 —— 那会让没有凭据的 CI 变红。
+
+`CRP_STYLE_*` 开关（`docs/STYLE-VERIFICATION.md` 第八节那张表）会按原样透传给容器；基线目录与差异
+目录必须在仓库内，指到仓库外会直接报错退出（容器只挂载仓库）。
+
 容器以 root 身份执行 `next build`，所以 `.next/` 与 `next-env.d.ts` 在容器里生成时是 root 所有。
 `scripts/style-check/container.sh` 跑完会自动交还所有权（与 `tests/visual` 一起），正常不需要手工处理。
 
@@ -756,8 +780,8 @@ select name, arches, synced_at from baseline where name = 'eagle-1071';
 
 | # | 做什么 | 看什么现象算通过 | 大约耗时 |
 | --- | --- | --- | --- |
-| 1 | 第三节从零部署（3.1 → 3.5） | `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/login` 是 `200`；打开 `/dashboard` 看到的是种子数据（3 个工作区、5 条提测） | 20 分钟 |
-| 2 | `scripts/style-check/container.sh` | 最后一行是 `失败 0 项`，六个页面都显示「通过」；跑完 `.next/` 与 `next-env.d.ts` 的所有者是你自己（`ls -ld .next` 不是 `root`），这样第 5 步的 `next build` 才写得进去（旧版脚本的处理见第七节末尾） | 2 分钟（镜像已拉过） |
+| 1 | 第三节从零部署（3.1 → 3.6）：取代码装依赖 → 起库 → 配 `.env` → `db:migrate` + `db:seed` → 构建启动 → 注册账号并按 3.6 提成平台管理员 | `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/login` 是 `200`；自己注册的账号能登录；提成平台管理员后刷新 `/dashboard`，列出「安全组 / 桌面核心组 / 系统应用组」三个种子工作区，点「切换到这里」进去能看到 5 条种子提测（种子账号本身登不进去，见 3.6） | 20 分钟 |
+| 2 | `scripts/style-check/container.sh` | 最后一行是 `失败 0 项`，六个页面都显示「通过」；跑完 `.next/` 与 `next-env.d.ts` 的所有者是你自己（`ls -ld .next` 不是 `root`），这样第 5 步的 `next build` 才写得进去（旧版脚本的处理见第七节末尾）。结果与你 `.env` 里配没配 CRP / Gerrit 凭据无关：门禁自己固定取样输入（见第七节「取样结果不看你配了什么凭据」） | 2 分钟（镜像已拉过） |
 | 3 | 不带 token 打三个定时入口：`POST /api/jobs/baseline-sync`、`/build-dispatch`、`/build-poll` | 三个都返回 `401` | 1 分钟 |
 | 4 | 带 `SYNC_JOB_TOKEN` 打 `POST /api/jobs/baseline-sync` | 返回 `200` 且 `list.itemCount > 0`；`/baselines` 页 `eagle-1071` 的架构列是 6 个（`amd64;arm64;i386;loongarch64;mips64el;sw_64`） | 1 分钟 |
 | 5 | `scripts/e2e.sh --with-build-deps` | 退出码 `0`；日志最后有 `提测到达 success`、`AC1 证据：Topic …`；打开那个 Topic 与提测详情页，三个包都是成功、顺序是 `plasma-wayland-protocols → wayland → kwin` | 60–90 分钟（真实构建，别中途打断） |
