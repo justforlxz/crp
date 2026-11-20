@@ -27,6 +27,12 @@ const TOPIC_TYPE_TEST = "test";
 /** `ChangeLogMode=true` 时 CRP 会忽略 Tag；这里仍带一个占位值，与 CRP 前端一致。 */
 const CHANGELOG_MODE_TAG = "1";
 
+/**
+ * CRP 用它拒绝长度不对的提交号：`HTTP 500 commitID 长度异常 请重新提交`。
+ * 实测记录见 `FINDINGS.md` 第 12.2 节。
+ */
+const COMMIT_LENGTH_REJECTION = "commitID 长度异常";
+
 /** 投递参数在本地能判定为非法时，直接抛错，不发请求。 */
 function assertSubmitInput(input: CrpSubmitReleaseInput): void {
   if (!Number.isInteger(input.topicId) || input.topicId <= 0) {
@@ -105,12 +111,31 @@ export async function submitRelease(
   const projectId = input.projectId ?? (await resolveProjectId(transport, input.projectName, input.branchId));
   const payload = buildNewReleasePayload(input, projectId, tag, changeLogMode);
 
-  const raw = await transport.request<unknown>({
-    method: "POST",
-    path: `/topics/${input.topicId}/new_release`,
-    body: payload,
-    expectedStatus: [200, 201],
-  });
+  let raw: unknown;
+
+  try {
+    raw = await transport.request<unknown>({
+      method: "POST",
+      path: `/topics/${input.topicId}/new_release`,
+      body: payload,
+      expectedStatus: [200, 201],
+    });
+  } catch (error) {
+    // CRP 只收完整 40 位提交号，短号会被它拒成 `commitID 长度异常 请重新提交`。
+    // 重试同样的提交号没有意义，所以归成参数错误（调用方按 409 报错并说明要几位），
+    // 不要混进「CRP 服务端异常」，否则用户只看到 502，判断不出是自己填错了。
+    if (
+      error instanceof CrpBusinessError &&
+      (error.responseSnippet ?? "").includes(COMMIT_LENGTH_REJECTION)
+    ) {
+      throw new CrpInvalidParameterError(
+        `提交号需要完整的 40 位十六进制，CRP 拒绝了这个提交：${input.commit.trim()}`,
+        { status: error.status, responseSnippet: error.responseSnippet, cause: error },
+      );
+    }
+
+    throw error;
+  }
 
   const releaseId = parseBareId(raw);
   if (releaseId === null) {

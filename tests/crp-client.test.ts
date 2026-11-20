@@ -401,6 +401,62 @@ test("ChangeLogMode=true 时不校验 Tag，请求体里 ChangeLogMode 为 true"
   assert.equal(body.ChangeLogMode, true);
 });
 
+test("CRP 用「commitID 长度异常」拒绝短提交号时，翻成可读的参数错误", async () => {
+  const { client } = mockClient([
+    [
+      "POST /topics/1/new_release",
+      json({ message: "commitID 长度异常 请重新提交" }, 500),
+    ],
+  ]);
+
+  // 实测：短提交号能建 Topic，投递时才被 CRP 拒（MKACG-927）。这是提交号本身的问题，
+  // 不能让调用方把它当成「CRP 服务端异常」去重试，要直接说清需要 40 位。
+  await assert.rejects(
+    () =>
+      client.submitRelease({
+        topicId: 1,
+        projectName: "pkg",
+        branch: "develop/eagle",
+        commit: "587bde6b1d3f",
+        branchId: 108,
+        projectId: 8,
+        arches: "amd64;arm64",
+        tag: "9.9.9",
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof CrpInvalidParameterError, "应当是可读的参数错误");
+      assert.match(error.message, /完整的 40 位/);
+      // 原话还在摘要里，排查时能对上是 CRP 的哪句拒绝。
+      assert.match(error.responseSnippet ?? "", /commitID 长度异常/);
+      return true;
+    },
+  );
+});
+
+test("CRP 的其它业务拒绝不被当成提交号问题", async () => {
+  const { client } = mockClient([
+    ["POST /topics/1/new_release", json({ message: "project not found" }, 500)],
+  ]);
+
+  await assert.rejects(
+    () =>
+      client.submitRelease({
+        topicId: 1,
+        projectName: "pkg",
+        branch: "develop/eagle",
+        commit: "587bde6b1d3f61c4d634603fe8c8f7210d255a9a",
+        branchId: 108,
+        projectId: 8,
+        arches: "amd64;arm64",
+        tag: "9.9.9",
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof CrpBusinessError, "不是提交号长度问题，保持原分类");
+      return true;
+    },
+  );
+});
+
 test("Release 列表解析出 Release ID、构建 ID、Tag 与构建状态", async () => {
   const { client } = mockClient([
     [
