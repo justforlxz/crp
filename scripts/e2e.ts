@@ -31,9 +31,19 @@ import {
 import { addProjectSoftware, createManager, createProject } from "../lib/projects";
 import { saveDependencies } from "../lib/packages";
 import { createGerritReader } from "../lib/releases/gerrit";
+import { WORKFLOW_PROGRESS_PENDING_MESSAGE } from "../lib/build";
 import { createCrpClient } from "../lib/integrations/crp/client";
 import { readCrpConfig } from "../lib/integrations/crp/config";
+import { pickExactProject } from "../lib/integrations/crp";
 import { prisma } from "../lib/db";
+
+import {
+  adjustTagForProject,
+  checkAppendLanded,
+  collectJobFailures,
+  parseFaultMode,
+  type FaultMode,
+} from "./e2e-support";
 
 // ---------------------------------------------------------------------------
 // 固定演练条件（见 issue MKACG-890 的「范围」）
@@ -117,8 +127,8 @@ type Options = {
   keep: boolean;
   /** 把 kwin 真正需要的上游（plasma-wayland-protocols）一起提测。 */
   withBuildDeps: boolean;
-  /** `upstream`：故意让上游构建失败，验证下游被阻断（故障演练）。 */
-  fault: "none" | "upstream";
+  /** `upstream`：故意让上游构建失败，验证下游被阻断（故障演练）。未知取值直接报错。 */
+  fault: FaultMode;
 };
 
 function parseArgs(argv: readonly string[]): Options {
@@ -146,12 +156,22 @@ function parseArgs(argv: readonly string[]): Options {
     skipA17: flags.has("skip-a17"),
     keep: flags.has("keep"),
     withBuildDeps: flags.has("with-build-deps"),
-    fault: flags.get("fault") === "upstream" ? "upstream" : "none",
+    fault: parseFaultMode(flags.get("fault")),
   };
 }
 
 function log(message: string): void {
   console.log(`[e2e] ${message}`);
+}
+
+/** 同一句话只打一次：轮询每分钟一轮，重复的提示会把日志刷满。 */
+function logOnce(logged: Set<string>, message: string): void {
+  if (logged.has(message)) {
+    return;
+  }
+
+  logged.add(message);
+  log(message);
 }
 
 function step(title: string): void {
@@ -225,6 +245,11 @@ function expect(condition: unknown, message: string): asserts condition {
   if (!condition) {
     fail(message);
   }
+}
+
+/** 纯逻辑函数返回的问题清单非空就判失败，把每一条理由都说出来。 */
+function expectNoProblems(problems: readonly string[]): void {
+  expect(problems.length === 0, problems.join("；"));
 }
 
 function describe(reply: Reply, path: string): string {
@@ -451,8 +476,9 @@ async function syncBaseline(env: Env): Promise<void> {
   });
   expect(synced !== null, `基线 ${BASELINE_NAME} 不见了`);
 
-  // `source` 不是 CPU 架构，投递时会被去掉；这里一起去掉，日志里看到的就是真正发出去的那一串。
-  const arches = synced!.arches.filter((item) => item !== "source");
+  // 基线同步落库前已经过 `toCrpArchList`（去掉 `source`、去重、排序），这里直接用存下来的那份：
+  // 投递路径读的也是同一列，脚本再过滤一遍就是第二套规则。
+  const arches = synced!.arches;
   expect(
     arches.length > 0,
     `基线 ${BASELINE_NAME} 同步后仍然没有架构列表（${JSON.stringify(synced!.arches)}），投递会被 409 挡住。`,
@@ -570,40 +596,23 @@ type CreatedRelease = {
 /**
  * 算出投给 CRP 的提测版本（`customTag`）。
  *
- * CRP 的项目可以带「版本前缀」（`PkgVerPrefix`，例如 kwin 是 `4:`）。带前缀的项目，
- * 调用方只能给不带 epoch 的版本号，CRP 自己把前缀拼上去：给 `4:6.1.57` 会拼成 `4:4:6.1.57`，
- * apply 阶段直接失败（现象是 Shuttle 任务 `APPLY_FAILED`、`pkgver` 为空）。
- * 所以这里先查一次 CRP 的项目前缀，前缀与代码版本的 epoch 相同时把 epoch 去掉。
- *
- * 这条不是绕开产品能力：`customTag` 就是「提测版本默认等于代码版本，可用自定义 Tag 覆盖」的那个入口。
+ * 换算规则本身在 `scripts/e2e-support.ts`（有表驱动的单测），这里只负责去 CRP 查一次
+ * 项目的「版本前缀」并写日志。查项目用 `pickExactProject`：与投递路径同一套精确匹配，
+ * 查不到就报错，不静默按「没有前缀」继续 —— 否则会把带 epoch 的版本号发出去，
+ * 到 apply 阶段才失败。
  */
 async function resolveReleaseTags(
-  statutes: ReadonlyArray<{ name: string; crpProjectName: string; codeVersion: string }>,
+  packages: ReadonlyArray<{ name: string; crpProjectName: string; codeVersion: string }>,
 ): Promise<Map<string, string>> {
   const crp = createCrpClient(readCrpConfig());
   const tags = new Map<string, string>();
+  const branchId = Number(BASELINE_BRANCH_ID);
 
-  for (const item of statutes) {
-    const projects = await crp.searchProjects({ name: item.crpProjectName, branchId: Number(BASELINE_BRANCH_ID) });
-    const project = projects.find((candidate) => candidate.name === item.crpProjectName);
-    const prefix = String((project?.raw as { PkgVerPrefix?: string } | undefined)?.PkgVerPrefix ?? "").trim();
-
-    const reasons: string[] = [];
-    let tag = item.codeVersion;
-
-    // CRP 项目自带版本前缀时，不能再发 epoch：`4:` + `4:6.1.57` 会变成 `4:4:6.1.57`。
-    if (prefix !== "" && tag.startsWith(prefix)) {
-      tag = tag.slice(prefix.length);
-      reasons.push(`去掉 epoch（CRP 项目自带前缀 ${JSON.stringify(prefix)}）`);
-    }
-
-    // `debian/changelog` 的版本带 Debian 修订号（`1.10.0.32-deepin33-1`），而 CRP 不接受 `-`。
-    // 截到第一个 `-` 之前：`1.10.0.32` 仍然高于仓库里已有的 `1.10.0.28-1`，不会变成降级。
-    const dash = tag.indexOf("-");
-    if (dash > 0) {
-      reasons.push(`截掉 Debian 修订号 ${JSON.stringify(tag.slice(dash))}（CRP 不接受 '-'）`);
-      tag = tag.slice(0, dash);
-    }
+  for (const item of packages) {
+    const projects = await crp.searchProjects({ name: item.crpProjectName, branchId });
+    const project = pickExactProject(projects, item.crpProjectName, branchId);
+    const prefix = String((project.raw as { PkgVerPrefix?: string }).PkgVerPrefix ?? "").trim();
+    const { tag, reasons } = adjustTagForProject(item.codeVersion, prefix);
 
     log(
       `版本号：${item.name} 代码版本 ${item.codeVersion} → 提测版本 ${tag}` +
@@ -705,6 +714,124 @@ function summarize(view: DispatchView): string {
   return `status=${view.status} topic=${view.crpTopicId ?? "-"} [${parts.join(", ")}]`;
 }
 
+/** 一次定时入口的返回体：HTTP 已经断言过 2xx，这里只用它的 `items`。 */
+type JobRun = { path: string; body: unknown };
+
+/**
+ * 「还没到能判定的时机」的已知提示：新建 Topic 的头几轮 CRP 还没算出工作流进度，
+ * 轮询这一条会报失败但一个字段都不改，下一轮就好了 —— 不能拿它判演练失败。
+ *
+ * 文案的真身在 `lib/build/poller.ts`，这里只引用常量，不抄字符串。
+ */
+const TOLERATED_JOB_MESSAGES: ReadonlySet<string> = new Set([WORKFLOW_PROGRESS_PENDING_MESSAGE]);
+
+/**
+ * 调一次定时入口，并把「单条失败」翻成断言失败。
+ *
+ * 这两个入口的约定是「单条失败仍回 200，明细在 `items[].error`」（见
+ * `lib/jobs/build-dispatch.ts` 与 `lib/build/poller.ts` 的类型定义）。只看状态码，
+ * CRP 密码错、Shuttle 不可用这类原因一行都看不到，演练会假绿到超时才发现。
+ *
+ * 三条分流规则见 `collectJobFailures`：本次提测的真失败判失败；已知的「还没到时机」
+ * 只打印；别的提测（种子数据）只打印 —— 它们失败是常态，不能拿来判本次演练的成败。
+ */
+async function runJob(
+  path: string,
+  token: string,
+  releaseId: string,
+  logged: Set<string>,
+): Promise<JobRun> {
+  const reply = await call({ path, method: "POST", token });
+  const body = expectOk(reply, `POST ${path}`);
+
+  const failures = collectJobFailures(body, releaseId, TOLERATED_JOB_MESSAGES);
+
+  // 只提示「本轮第一次出现」的文案：轮询每分钟一轮，同一句话重复几十遍会把日志刷满，
+  // 真正有用的状态变化反而被淹没。
+  for (const message of failures.tolerated) {
+    logOnce(logged, `${path} 还没到能判定的时机（不影响判断）：${message}`);
+  }
+  for (const message of failures.others) {
+    logOnce(logged, `${path} 里别的提测失败（不影响本次演练）：${message}`);
+  }
+  expect(
+    failures.own.length === 0,
+    `POST ${path} 里本次提测（${releaseId}）报错：${failures.own.join("；")}`,
+  );
+
+  return { path, body };
+}
+
+/**
+ * 推进一轮：调投递与轮询各一次，再读一次投递详情。
+ *
+ * 顺序与生产一致（先 dispatch 再 poll）；两次调用都会把本次提测的错误翻成断言失败。
+ */
+async function advanceOnce(
+  env: Env,
+  cookie: string,
+  releaseId: string,
+  logged: Set<string>,
+): Promise<DispatchView> {
+  await runJob("/api/jobs/build-dispatch", env.dispatchToken, releaseId, logged);
+  await runJob("/api/jobs/build-poll", env.pollToken, releaseId, logged);
+
+  return readDispatch(cookie, releaseId);
+}
+
+/**
+ * 断言「下游只在上游全部成功之后才投递」，并记录投递顺序证据。
+ *
+ * 返回新的证据条目（没有可记的返回空数组），由调用方累积。
+ */
+function collectDispatchOrder(
+  view: DispatchView,
+  options: Options,
+): string[] {
+  const dispatched = view.packages
+    .filter((pkg) => pkg.crpReleaseId !== null)
+    .map((pkg) => pkg.packageName);
+
+  if (dispatched.length === 0) {
+    return [];
+  }
+
+  const upstreamNames = options.withBuildDeps ? [UPSTREAM, BUILD_DEPENDENCY.name] : [UPSTREAM];
+  const evidence: string[] = [];
+
+  // 下游只能在上游全部成功之后才投：这条是依赖排队的核心断言。
+  if (dispatched.includes(DOWNSTREAM)) {
+    for (const name of upstreamNames) {
+      const upstreamSnapshot = view.packages.find((pkg) => pkg.packageName === name);
+      expect(
+        upstreamSnapshot?.snapshotStatus === "success" ||
+          upstreamSnapshot?.snapshotStatus === "superseded",
+        `下游 ${DOWNSTREAM} 已投递，但上游 ${name} 的状态是 ${upstreamSnapshot?.snapshotStatus ?? "缺失"}`,
+      );
+    }
+    evidence.push(`${DOWNSTREAM} 在其全部上游成功之后才投递`);
+  } else {
+    for (const name of dispatched) {
+      expect(
+        upstreamNames.includes(name) || name === UPSTREAM,
+        `${DOWNSTREAM} 之前只应该投上游，实际已投 ${dispatched.join("、")}`,
+      );
+    }
+  }
+
+  evidence.push(`已投递：${dispatched.join("、")}`);
+
+  return evidence;
+}
+
+/** 采样一次构建队列页：本轮的提测版本是否已经出现在页面上。 */
+async function sampleQueue(cookie: string, version: string): Promise<boolean> {
+  const queue = await call({ path: `/queue?workspace=${WORKSPACE_SLUG}`, cookie });
+  expect(queue.status === 200, `构建队列页打不开：HTTP ${queue.status}`);
+
+  return queue.text.includes(version);
+}
+
 /**
  * 推进到终局。
  *
@@ -723,62 +850,22 @@ async function driveToFinal(
   const orderEvidence: string[] = [];
   let queueSeen = false;
   let lastSummary = "";
+  const logged = new Set<string>();
   let view = await readDispatch(cookie, releaseId);
 
   while (Date.now() < deadline) {
-    expectOk(
-      await call({ path: "/api/jobs/build-dispatch", method: "POST", token: env.dispatchToken }),
-      "POST /api/jobs/build-dispatch",
-    );
-    expectOk(
-      await call({ path: "/api/jobs/build-poll", method: "POST", token: env.pollToken }),
-      "POST /api/jobs/build-poll",
-    );
+    view = await advanceOnce(env, cookie, releaseId, logged);
 
-    view = await readDispatch(cookie, releaseId);
     const summary = summarize(view);
-
     if (summary !== lastSummary) {
       log(summary);
       lastSummary = summary;
 
-      const dispatched = view.packages
-        .filter((pkg) => pkg.crpReleaseId !== null)
-        .map((pkg) => pkg.packageName);
+      orderEvidence.push(...collectDispatchOrder(view, options));
 
-      if (dispatched.length > 0) {
-        const upstreamNames = options.withBuildDeps ? [UPSTREAM, BUILD_DEPENDENCY.name] : [UPSTREAM];
-
-        // 下游只能在上游全部成功之后才投：这条是依赖排队的核心断言。
-        if (dispatched.includes(DOWNSTREAM)) {
-          for (const name of upstreamNames) {
-            const upstreamSnapshot = view.packages.find((pkg) => pkg.packageName === name);
-            expect(
-              upstreamSnapshot?.snapshotStatus === "success" ||
-                upstreamSnapshot?.snapshotStatus === "superseded",
-              `下游 ${DOWNSTREAM} 已投递，但上游 ${name} 的状态是 ${upstreamSnapshot?.snapshotStatus ?? "缺失"}`,
-            );
-          }
-          orderEvidence.push(`${DOWNSTREAM} 在其全部上游成功之后才投递`);
-        } else {
-          for (const name of dispatched) {
-            expect(
-              upstreamNames.includes(name) || name === UPSTREAM,
-              `${DOWNSTREAM} 之前只应该投上游，实际已投 ${dispatched.join("、")}`,
-            );
-          }
-        }
-
-        orderEvidence.push(`已投递：${dispatched.join("、")}`);
-      }
-
-      if (!queueSeen) {
-        const queue = await call({ path: `/queue?workspace=${WORKSPACE_SLUG}`, cookie });
-        expect(queue.status === 200, `构建队列页打不开：HTTP ${queue.status}`);
-        if (queue.text.includes(options.version)) {
-          queueSeen = true;
-          log(`构建队列页已出现本次提测（版本 ${options.version}）`);
-        }
+      if (!queueSeen && (await sampleQueue(cookie, options.version))) {
+        queueSeen = true;
+        log(`构建队列页已出现本次提测（版本 ${options.version}）`);
       }
     }
 
@@ -836,6 +923,7 @@ async function assertPages(
   options: Options,
   releaseId: string,
   view: DispatchView,
+  queueSeen: boolean,
 ): Promise<void> {
   step("7. 核对提测详情页与构建队列页");
 
@@ -855,27 +943,52 @@ async function assertPages(
   }
   log(`提测详情页：${view.packages.map((pkg) => pkg.packageName).join("、")} 都在`);
 
+  // 队列页是真断言：采样结果由 `driveToFinal` 给出，没采到就是没验到，不能只打一行「已核对」。
   const queue = await call({ path: `/queue?workspace=${WORKSPACE_SLUG}`, cookie });
   expect(queue.status === 200, `构建队列页打不开：HTTP ${queue.status}`);
-  log("构建队列页可访问（演练过程中已核对本次提测出现在队列里）");
+  expect(
+    queueSeen,
+    `构建队列页里没有出现本次提测的版本 ${options.version}（采样结果 queueSeen=false）。` +
+      "可能是页面文案变了，或这一轮采样时提测还没进队列。",
+  );
+  log(`构建队列页：出现了本次提测（版本 ${options.version}）`);
 }
 
 // ---------------------------------------------------------------------------
 // 8：A17 演练
 // ---------------------------------------------------------------------------
+/** 演练配置里的一个软件包。 */
+type PackageSpec = {
+  name: string;
+  crpProjectName: string;
+  repoPath: string;
+  preferredBranch: string;
+};
 
-async function drillA17(
+/** 演练配置里按包名取一条：不用 `PACKAGES[0]` 这类下标，改配置顺序时不会静默投错项目。 */
+function packageConfig(name: string): PackageSpec {
+  const all: readonly PackageSpec[] = [...PACKAGES, BUILD_DEPENDENCY, APPEND_PACKAGE];
+  const matched = all.find((item) => item.name === name);
+
+  expect(
+    matched !== undefined,
+    `演练配置里没有软件包 ${name}，检查 PACKAGES / BUILD_DEPENDENCY / APPEND_PACKAGE`,
+  );
+
+  return matched;
+}
+
+/** A17 里要补的那个包的 Gerrit 头。 */
+type PackageHead = { branch: string; headSha: string; codeVersion: string };
+
+/** 把追加包登记进工作区，并加进项目清单（补包的前提是它在清单里、但不在提测里）。 */
+async function registerAppendPackage(
   env: Env,
-  cookie: string,
   projectId: string,
   reader: GerritReader,
-  releaseId: string,
-  before: DispatchView,
-): Promise<void> {
-  step("8. A17 演练：补一个包 + 换掉 wayland 的 Commit");
-
-  // 补包的前提：这个包已经在项目清单里、但不在提测里。
+): Promise<PackageHead> {
   const head = await readHead(reader, APPEND_PACKAGE.repoPath, APPEND_PACKAGE.preferredBranch);
+
   expectOk(
     await call({
       path: "/api/packages",
@@ -898,31 +1011,62 @@ async function drillA17(
     select: { id: true },
   });
   expect(appended !== null, `库里读不到 ${APPEND_PACKAGE.name}`);
+
   await addProjectSoftware({ projectId, packageId: appended.id, trackedBranch: head.branch });
   log(
     `清单新增：${APPEND_PACKAGE.name}（CRP 项目 ${APPEND_PACKAGE.crpProjectName}）` +
       `@ ${head.branch} ${head.headSha.slice(0, 12)}`,
   );
 
-  // 换掉 wayland 的 Commit：取同一分支上的另一条真实提交。
-  const wayland = await readHead(reader, "deepin-kde/wayland", "develop/eagle");
-  const commits = await reader.listCommits("deepin-kde/wayland", wayland.branch, 5);
+  return head;
+}
+
+/** 换包用的另一条真实提交：同分支上第一条与当前不同的提交。 */
+async function pickReplacementCommit(
+  reader: GerritReader,
+  before: DispatchView,
+): Promise<{ branch: string; sha: string }> {
+  const upstream = packageConfig(UPSTREAM);
+  const wayland = await readHead(reader, upstream.repoPath, upstream.preferredBranch);
+  const commits = await reader.listCommits(upstream.repoPath, wayland.branch, 5);
   const currentWayland = before.packages.find((pkg) => pkg.packageName === UPSTREAM);
   const replacement =
     commits.find((commit) => commit.sha !== currentWayland?.commitSha) ?? commits[1];
-  expect(replacement !== undefined, "wayland 分支上找不到另一条提交可用来演示换包。");
+
+  expect(replacement !== undefined, `${UPSTREAM} 分支上找不到另一条提交可用来演示换包。`);
   log(`换包：${UPSTREAM} ${currentWayland?.commitSha.slice(0, 12) ?? "?"} → ${replacement.sha.slice(0, 12)}`);
 
-  const beforeIds = new Map(before.packages.map((pkg) => [pkg.packageName, pkg.crpReleaseId] as const));
+  return { branch: wayland.branch, sha: replacement.sha };
+}
 
-  // 版本号同样要按 CRP 的项目前缀与 `-` 规则换算一次：A17 的追加与替换走的是同一个校验。
-  const replacementVersion = await reader.readCodeVersion("deepin-kde/wayland", replacement.sha);
+/** `POST /api/releases/{id}/update` 的请求体。 */
+type UpdateBody = {
+  append: Array<{ packageName: string; branch: string; commitSha: string; customTag: string | null }>;
+  replace: Array<{ packageName: string; branch: string; commitSha: string; customTag: string | null }>;
+};
+
+/** 组出更新请求体：追加一个包 + 换掉 wayland 的 Commit，版本号走同一套换算。 */
+async function buildUpdateBody(
+  reader: GerritReader,
+  head: PackageHead,
+  replacement: { branch: string; sha: string },
+): Promise<UpdateBody> {
+  const upstream = packageConfig(UPSTREAM);
+  const replacementVersion = await reader.readCodeVersion(upstream.repoPath, replacement.sha);
   const tags = await resolveReleaseTags([
-    { name: APPEND_PACKAGE.name, crpProjectName: APPEND_PACKAGE.crpProjectName, codeVersion: head.codeVersion },
-    { name: UPSTREAM, crpProjectName: PACKAGES[0].crpProjectName, codeVersion: replacementVersion },
+    {
+      name: APPEND_PACKAGE.name,
+      crpProjectName: APPEND_PACKAGE.crpProjectName,
+      codeVersion: head.codeVersion,
+    },
+    {
+      name: UPSTREAM,
+      crpProjectName: upstream.crpProjectName,
+      codeVersion: replacementVersion,
+    },
   ]);
 
-  const body = {
+  return {
     append: [
       {
         packageName: APPEND_PACKAGE.name,
@@ -934,39 +1078,64 @@ async function drillA17(
     replace: [
       {
         packageName: UPSTREAM,
-        branch: wayland.branch,
+        branch: replacement.branch,
         commitSha: replacement.sha,
         customTag: tags.get(UPSTREAM) ?? null,
       },
     ],
   };
+}
 
+/** 更新接口的返回体（只列脚本用到的字段）。 */
+type AppliedUpdate = {
+  revision: number;
+  abandonedCrpReleaseIds: string[];
+  redispatchedPackageNames: string[];
+  plan: { appendedPackageNames: string[] };
+  advance: { action: string; packageName: string | null } | null;
+  advanceError: string | null;
+};
+
+/** 先预演再提交更新，断言「旧 Release 被放弃」与轮次。 */
+async function applyReleaseUpdate(
+  cookie: string,
+  releaseId: string,
+  body: UpdateBody,
+  beforeIds: ReadonlyMap<string, string | null>,
+): Promise<AppliedUpdate> {
   const previewBody = expectOk(
     await call({ path: `/api/releases/${releaseId}/update?dryRun=1`, method: "POST", cookie, body }),
     "POST /api/releases/…/update?dryRun=1",
   ) as {
-    plan: { abandoned: Array<{ packageName: string }>; redispatchedPackageNames: string[] };
+    plan: {
+      abandoned: Array<{ packageName: string }>;
+      appendedPackageNames: string[];
+      redispatchedPackageNames: string[];
+    };
   };
 
   const abandonedPreview = previewBody.plan.abandoned.map((item) => item.packageName);
   log(
-    `预演：将放弃 ${abandonedPreview.join("、")}；重投 ${previewBody.plan.redispatchedPackageNames.join("、")}`,
+    `预演：将放弃 ${abandonedPreview.join("、")}；` +
+      `补包 ${previewBody.plan.appendedPackageNames.join("、") || "（无）"}；` +
+      `重投 ${previewBody.plan.redispatchedPackageNames.join("、") || "（无）"}`,
   );
   expect(
     abandonedPreview.includes(UPSTREAM) && abandonedPreview.includes(DOWNSTREAM),
     `预演应放弃 ${UPSTREAM} 与 ${DOWNSTREAM}，实际 ${abandonedPreview.join("、")}`,
   );
+  expectNoProblems(
+    checkAppendLanded({
+      packageName: APPEND_PACKAGE.name,
+      appendedPackageNames: previewBody.plan.appendedPackageNames,
+      snapshotPackageNames: null,
+    }),
+  );
 
   const appliedBody = expectOk(
     await call({ path: `/api/releases/${releaseId}/update`, method: "POST", cookie, body }),
     "POST /api/releases/…/update",
-  ) as {
-    revision: number;
-    abandonedCrpReleaseIds: string[];
-    redispatchedPackageNames: string[];
-    advance: { action: string; packageName: string | null } | null;
-    advanceError: string | null;
-  };
+  ) as AppliedUpdate;
 
   expect(appliedBody.revision === 2, `更新后轮次应为 2，实际 ${appliedBody.revision}`);
   expect(appliedBody.abandonedCrpReleaseIds.length > 0, "更新没有放弃任何 CRP Release");
@@ -981,13 +1150,35 @@ async function drillA17(
     }
   }
   log(`已放弃 CRP Release：${appliedBody.abandonedCrpReleaseIds.join("、")}`);
-  log(`将重投：${appliedBody.redispatchedPackageNames.join("、")}`);
+  log(`将重投：${appliedBody.redispatchedPackageNames.join("、") || "（无）"}`);
   expect(
     appliedBody.advanceError === null,
     `更新已提交，但紧接着的推进失败：${appliedBody.advanceError}`,
   );
 
-  // 再推进一次，确认重投真的发出一条新的 Release（ID 与旧的不同）。
+  return appliedBody;
+}
+
+/**
+ * 再推进一次，断言重投真的发生：wayland 有新 Release、kwin 进新轮次、追加包进了新一轮快照。
+ *
+ * 「补包」这半边以前没有断言，追加被静默丢弃也看不出来。
+ */
+async function assertRedispatch(
+  env: Env,
+  cookie: string,
+  releaseId: string,
+  beforeIds: ReadonlyMap<string, string | null>,
+  appliedBody: AppliedUpdate,
+): Promise<void> {
+  expectNoProblems(
+    checkAppendLanded({
+      packageName: APPEND_PACKAGE.name,
+      appendedPackageNames: appliedBody.plan.appendedPackageNames,
+      snapshotPackageNames: null,
+    }),
+  );
+
   expectOk(
     await call({ path: "/api/jobs/build-dispatch", method: "POST", token: env.dispatchToken }),
     "POST /api/jobs/build-dispatch",
@@ -1005,11 +1196,45 @@ async function drillA17(
     `${UPSTREAM} 的 Release 没有变：旧 ${oldWaylandId}，新 ${newWayland.crpReleaseId}`,
   );
 
+  // 补包这半边：追加的包必须真的进了新一轮快照，而不只是写进了项目清单。
+  // 断言本体在 checkAppendLanded（有单测），这里只把快照里的包名喂给它。
+  const snapshotPackageNames = after.packages.map((pkg) => pkg.packageName);
+  expectNoProblems(
+    checkAppendLanded({
+      packageName: APPEND_PACKAGE.name,
+      appendedPackageNames: appliedBody.plan.appendedPackageNames,
+      snapshotPackageNames,
+    }),
+  );
+
+  const appendedAfter = after.packages.find((pkg) => pkg.packageName === APPEND_PACKAGE.name);
+
   const newDownstream = after.packages.find((pkg) => pkg.packageName === DOWNSTREAM);
   expect(newDownstream !== undefined, `新一轮里没有 ${DOWNSTREAM}`);
 
   log(`wayland 旧 Release ${oldWaylandId} → 新 Release ${newWayland.crpReleaseId}`);
+  log(`追加的 ${APPEND_PACKAGE.name} 已在新一轮快照里（状态 ${appendedAfter?.snapshotStatus ?? "未知"}）`);
   log(`kwin 已按第 ${newDownstream.attempt} 轮重投（${newDownstream.snapshotStatus}），观察点成立`);
+}
+
+async function drillA17(
+  env: Env,
+  cookie: string,
+  projectId: string,
+  reader: GerritReader,
+  releaseId: string,
+  before: DispatchView,
+): Promise<void> {
+  step("8. A17 演练：补一个包 + 换掉 wayland 的 Commit");
+
+  const head = await registerAppendPackage(env, projectId, reader);
+  const replacement = await pickReplacementCommit(reader, before);
+  const body = await buildUpdateBody(reader, head, replacement);
+
+  const beforeIds = new Map(before.packages.map((pkg) => [pkg.packageName, pkg.crpReleaseId] as const));
+  const appliedBody = await applyReleaseUpdate(cookie, releaseId, body, beforeIds);
+
+  await assertRedispatch(env, cookie, releaseId, beforeIds, appliedBody);
 }
 
 // ---------------------------------------------------------------------------
@@ -1146,7 +1371,7 @@ async function main(): Promise<void> {
     );
     log(`提测到达 success；CRP Topic：${view.crpTopicId}`);
 
-    await assertPages(session.cookie, options, created.id, view);
+    await assertPages(session.cookie, options, created.id, view, queueSeen);
 
     if (options.skipA17) {
       log("按 --skip-a17 跳过 A17 演练");

@@ -50,6 +50,7 @@ export {
 export {
   pickWorkflowProgress,
   runBuildPoll,
+  WORKFLOW_PROGRESS_PENDING_MESSAGE,
   type BuildPollItem,
   type BuildPollOptions,
   type BuildPollSummary,

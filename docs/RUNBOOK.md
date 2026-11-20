@@ -203,7 +203,19 @@ curl -fsS -X POST -H "Authorization: Bearer $SYNC_JOB_TOKEN" \
 | --- | --- | --- | --- | --- |
 | `kwin` | `deepin-kde/kwin` | `v25_kwin` | 3251 | `ssh://gerrit.uniontech.com:29418/deepin-kde/kwin` |
 | `wayland` | `deepin-kde/wayland` | `v25_wayland` | 3040 | `ssh://gerrit.uniontech.com:29418/deepin-kde/wayland` |
-| `kwindowsystem` | `deepin-kde/kwindowsystem` | `v25_kwindowsystem` | 3049 | `ssh://gerrit.uniontech.com:29418/deepin-kde/kwindowsystem` |
+| `xwayland` | `deepin-kde/xwayland` | `v25_xwayland` | 3839 | `ssh://gerrit.uniontech.com:29418/deepin-kde/xwayland` |
+
+这张表每一行都做过两条核对（2026-11-20，`eagle-1071`）：
+
+1. CRP 一侧：`POST /api/project` 带 `branchID=108` 与名字，取**名字完全相等**那一条的 `ID` 与 `RepoUrl`；
+2. Gerrit 一侧：`GET /a/projects/<urlencode(仓库路径)>` 必须返回 200（仓库真的存在且可读），
+   再用 `gitiles`/`GET /a/projects/?p=deepin-kde` 确认分支列表里有 `debian/changelog`。
+
+**不要把 CRP 的 `RepoUrl` 当成 Gerrit 上还在的仓库。** 反例：CRP 项目 3049 `v25_kwindowsystem`
+的 `RepoUrl` 写着 `ssh://gerrit.uniontech.com:29418/deepin-kde/kwindowsystem`，
+但 `GET /a/projects/deepin-kde%2Fkwindowsystem` 现在返回 **404**（`?p=deepin-kde` 只返回
+kwayland、kwin、plasma-wayland-protocols、wayland、xwayland 五个仓库）。照 `RepoUrl` 登记会得到一个
+不存在的仓库路径，投递时才失败。所以第 2 步的 Gerrit 核对不能省。
 
 **同一个 CRP 项目名在 `eagle-1071`(108)、`snipe-2500u1`(123)、`snipe-2500u2`(128) 上完全一样**，
 所以这一列只需要登记一份，不需要按基线分开存。
@@ -313,8 +325,9 @@ pnpm db:migrate && pnpm db:seed
 # 2. 样式门禁先跑（它要求纯种子库，演练之后库就不干净了）
 scripts/style-check/container.sh
 
-# 3. 环境变量：DATABASE_URL、CRP_*、GERRIT_*、PACKAGE_API_TOKEN、
-#    BUILD_DISPATCH_JOB_TOKEN、BUILD_POLL_JOB_TOKEN
+# 3. 环境变量：DATABASE_URL、CRP_USERNAME、CRP_PASSWORD、GERRIT_USERNAME、
+#    GERRIT_HTTP_PASSWORD、PACKAGE_API_TOKEN、SYNC_JOB_TOKEN、
+#    BUILD_DISPATCH_JOB_TOKEN、BUILD_POLL_JOB_TOKEN（缺一个脚本就直接退出 2）
 ```
 
 > **种子数据里的提测会被定时任务真的推进。** 种子把 `1.4.0`、`2.1.0` 这类提测写成「投递中 / 构建中」，
@@ -345,7 +358,17 @@ scripts/e2e.sh --keep                         # 保留本次记录与 CRP Topic�
 ### 6.4 结果怎么看
 
 - 退出码 0：链路成立（或故障演练按预期失败）。最后会打印 Topic ID、每个包的 Release ID / Build ID / 版本 / 构建作业状态；
-- 退出码 1：会打印「期望 … 实际 …」，并**仍然尝试清理**在 CRP 与库里留下的残留；
+- 退出码 1：会打印「期望 … 实际 …」，并**仍然尝试清理**在 CRP 与库里留下的残留。
+  下面这几类都会直接判失败，不会被吞掉：
+
+  | 情况 | 脚本给出的信息 |
+  | --- | --- |
+  | 定时入口返回体里**本次提测**的 `items[].error`（CRP 密码错、Shuttle 超时等，HTTP 仍是 200） | `POST /api/jobs/build-… 里本次提测（…）报错：<error 原文>` |
+  | 同一个返回体里**别的提测**失败（种子数据、别人的提测） | 只打一行日志 `… 里别的提测失败（不影响本次演练）：…`，不判失败 |
+  | 本次提测的**已知「还没到时机」**提示（新建 Topic 头几轮 CRP 还没算出工作流进度，`CRP 返回的工作流信息里没有可用的进度（全零对象）`） | 只打一行日志 `… 还没到能判定的时机（不影响判断）：…`，不判失败 |
+  | 构建队列页始终没有出现本次提测的版本 | `构建队列页里没有出现本次提测的版本 …（采样结果 queueSeen=false）` |
+  | A17 补进来的包没有进新一轮快照 | `新一轮快照里没有补进来的 <包名>：实际有 …` |
+  | A17 更新接口的补包名单里没有要补的包 | `更新接口的补包名单里没有 <包名>：实际有 …` |
 - 退出码 2：环境变量缺失或服务起不来，什么都没做。
 
 ### 6.5 清理边界

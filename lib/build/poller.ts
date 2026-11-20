@@ -86,6 +86,16 @@ const TRIGGER_CONDITION: Record<BuildPollTrigger, string> = {
   schedule: "周期到期",
 };
 
+/**
+ * 新建 Topic 的头几轮 CRP 还没算出工作流进度，`workflow/info` 回全零对象。
+ *
+ * 这时轮询这一条会报失败、但不改任何字段（见本文件 `pickWorkflowProgress` 的使用处）。
+ * 它不是「提测出错」，演练脚本要等下一轮继续，不能拿它判失败 —— 所以这条文案常量对外导出，
+ * 免得调用方再抄一遍字符串。
+ */
+export const WORKFLOW_PROGRESS_PENDING_MESSAGE =
+  "CRP 返回的工作流信息里没有可用的进度（全零对象）";
+
 /** 错误摘要：只留人看得懂的一句，不存整段堆栈。 */
 function errorSummary(error: unknown): string {
   const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
@@ -203,7 +213,7 @@ async function syncWorkProgress(
     if (picked === null) {
       return {
         status: "failed",
-        error: "CRP 返回的工作流信息里没有可用的进度（全零对象）",
+        error: WORKFLOW_PROGRESS_PENDING_MESSAGE,
         previous: release.crpWorkProgress,
       };
     }
