@@ -365,6 +365,7 @@ scripts/style-check/container.sh
 ### 6.3 跑
 
 ```bash
+set -a; . ./.env; set +a                     # 先把 .env 里的变量导入当前 shell（脚本只读环境变量，不读 .env）
 scripts/e2e.sh                                # 完整演练，跑完自动清理
 scripts/e2e.sh --skip-a17                     # 只跑主链路
 scripts/e2e.sh --with-build-deps              # 连带 plasma-wayland-protocols 一起提测（kwin 要它才能编译）
@@ -790,7 +791,7 @@ select name, arches, synced_at from baseline where name = 'eagle-1071';
 | 3 | 按 3.6 注册一个账号并提成平台管理员 | 刷新 `/dashboard`，列出「安全组 / 桌面核心组 / 系统应用组」三个种子工作区；点「切换到这里」进「桌面核心组」，`/releases?workspace=desktop-core` 列出该工作区的 3 条种子提测（三个工作区合计 5 条：安全组 1、桌面核心组 3、系统应用组 1） | 3 分钟 |
 | 4 | 不带 token 打三个定时入口：`POST /api/jobs/baseline-sync`、`/build-dispatch`、`/build-poll` | 三个都返回 `401` | 1 分钟 |
 | 5 | 带 `SYNC_JOB_TOKEN` 打 `POST /api/jobs/baseline-sync` | 返回 `200` 且 `list.itemCount > 0`；`/baselines` 页 `eagle-1071` 的架构列是 6 个（`amd64;arm64;i386;loongarch64;mips64el;sw_64`） | 1 分钟 |
-| 6 | `scripts/e2e.sh --with-build-deps` | 退出码 `0`；日志最后有 `提测到达 success`、`AC1 证据：Topic …`；打开那个 Topic 与提测详情页，三个包都是成功、顺序是 `plasma-wayland-protocols → wayland → kwin` | 60–90 分钟（真实构建，别中途打断） |
+| 6 | `set -a; . ./.env; set +a` 之后跑 `scripts/e2e.sh --with-build-deps`（脚本只读环境变量，不读 `.env`，不导入会直接退出 2） | 退出码 `0`；日志最后有 `提测到达 success`、`AC1 证据：Topic …`；打开那个 Topic 与提测详情页，三个包都是成功、顺序是 `plasma-wayland-protocols → wayland → kwin` | 60–90 分钟（真实构建，别中途打断） |
 | 7 | 6.6 场景一：CRP 认证过期 | 见 6.6 的「算通过」 | 2 分钟 |
 | 8 | 6.6 场景二：Shuttle 超时 | 见 6.6 的「算通过」（要等第 6 步投出第一个包之后才能做，先跑一次 6.6 里那条 SQL 确认） | 1 分钟（与第 6 步同时） |
 | 9 | 6.6 场景三：Webhook 端点 500 | 脚本最后打印「全部通过」 | 1 分钟 |
