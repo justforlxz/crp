@@ -48,18 +48,20 @@ export async function searchProjects(
 const CANDIDATE_LIMIT = 10;
 
 /**
- * 按软件包名解析出唯一的 `ProjectID`。
+ * 从模糊匹配的结果里挑出名字完全相同的那个项目，挑不到就报错。
  *
- * 只接受名字完全相同的那个。模糊匹配的结果里取第一条，会把包投到同名前缀的
- * 另一个项目上（例如把 `kwin` 的构建投给 `dde-kwin`），而且构建会成功、问题要等到
- * 装包才发现，所以这里宁可报错。
+ * 投递只认 `ProjectID`，而 `POST /project` 的名字是模糊匹配：查 `kwin` 会连 `dde-kwin`、
+ * `kwindowsystem` 一起返回。取第一条会把包投到同名前缀的另一个项目上，而且构建会成功、
+ * 问题要等到装包才发现，所以这里宁可报错。
+ *
+ * 单独拆出来是因为演练脚本这类调用方手里只有 `searchProjects` 的结果、拿不到
+ * `CrpTransport`，它们也要用**同一套**匹配与报错规则，不能再写一份。
  */
-export async function resolveProjectId(
-  transport: CrpTransport,
+export function pickExactProject(
+  projects: readonly CrpProject[],
   projectName: string,
   branchId: number,
-): Promise<number> {
-  const projects = await searchProjects(transport, { name: projectName, branchId });
+): CrpProject {
   const exact = projects.filter((item) => item.name === projectName);
 
   if (exact.length === 0) {
@@ -81,5 +83,20 @@ export async function resolveProjectId(
     );
   }
 
-  return chosen.id;
+  return chosen;
+}
+
+/**
+ * 按软件包名解析出唯一的 `ProjectID`。
+ *
+ * 匹配与报错规则在 `pickExactProject` 里，投递路径与演练脚本共用同一份。
+ */
+export async function resolveProjectId(
+  transport: CrpTransport,
+  projectName: string,
+  branchId: number,
+): Promise<number> {
+  const projects = await searchProjects(transport, { name: projectName, branchId });
+
+  return pickExactProject(projects, projectName, branchId).id;
 }

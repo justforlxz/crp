@@ -20,6 +20,10 @@
  * | `CRP_STYLE_PORT` | `3100` | 自己起服务时监听的端口 |
  * | `CRP_STYLE_EMAIL` | `admin@uniontech.com` | 取样用的种子账号 |
  * | `CRP_STYLE_SKIP_BUILD` | 空 | 设为 `1` 时跳过一次 `next build`（仅调脚本时用） |
+ *
+ * 走容器时（`scripts/style-check/container.sh`）这些变量按原样透传；目录类变量必须在仓库内。
+ * 取样的输入由门禁自己固定：容器用一份只含 `DATABASE_URL` 的文件盖住仓库根的 `.env`，
+ * 免得页面内容随操作者有没有配 CRP / Gerrit 凭据变化（详见 `docs/STYLE-VERIFICATION.md`）。
  */
 import "dotenv/config";
 

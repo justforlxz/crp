@@ -52,9 +52,32 @@ fi
 mkdir -p "$cache"
 
 # 容器里以 root 跑（要装全局 pnpm），`--update` 写出来的基线文件会变成 root 所有；
-# 跑完把基线目录交还给调用者，下一次用普通用户也能改。
+# `next build` 产出的 `.next/` 与 `next-env.d.ts` 也一样。这些都要交还给调用者：
+# 留着 root 所有的 `.next/`，调用者下一次 `next build` 会直接失败
+# （`EACCES: permission denied, open '.next/trace'` / `Build directory is not writeable`），
+# 而普通用户没有 sudo 时连删都删不掉。
+
+# 取样状态必须由门禁自己固定，不能由操作者机器上的 `.env` 决定。
+# 仓库根一起挂进容器，Next 会自己加载 `/work/.env`：配了 CRP / Gerrit 凭据时，提测详情页
+# 会多出「提交信息 / 工作流进度」那一段，整段下压 12.4px，基线就对不上（CI 没有这些凭据，
+# 所以 CI 一直是绿的，而按 §3.3 配好凭据的人必然失败）。这里用一份**只含 DATABASE_URL** 的
+# 文件只读盖住 `.env`，让取样结果与操作者有没有配业务凭据无关。
+sampling_env="$cache/sampling.env"
+printf 'DATABASE_URL="%s"\n' "$database_url" > "$sampling_env"
+chmod 600 "$sampling_env"
+
+# `scripts/style-check/index.ts` 文档化的 CRP_STYLE_* 开关按原样透传给容器；
+# 业务凭据（CRP_* / GERRIT_* / SHUTTLE_* 的非 CRP_STYLE_ 变量）不在此列。
+style_env=()
+while IFS= read -r name; do
+  if [ -n "$name" ]; then
+    style_env+=( -e "$name=${!name}" )
+  fi
+done < <(compgen -e | grep -E '^CRP_STYLE_' || true)
+
 docker run --rm --network host \
   -v "$repo":/work \
+  -v "$sampling_env":/work/.env:ro \
   -v "$cache":/work/node_modules \
   -w /work \
   -e "DATABASE_URL=$database_url" \
@@ -63,6 +86,7 @@ docker run --rm --network host \
   -e "HOST_UID=$(id -u)" \
   -e "HOST_GID=$(id -g)" \
   -e NEXT_TELEMETRY_DISABLED=1 \
+  ${style_env[@]+"${style_env[@]}"} \
   "$image" \
   bash -lc '
     npm i -g "pnpm@$PNPM_VERSION" >/dev/null 2>&1
@@ -75,6 +99,7 @@ docker run --rm --network host \
     fi
     pnpm test:style $STYLE_ARGS
     status=$?
-    chown -R "$HOST_UID:$HOST_GID" /work/tests/visual 2>/dev/null || true
+    chown -R "$HOST_UID:$HOST_GID" /work/tests/visual /work/.next 2>/dev/null || true
+    chown "$HOST_UID:$HOST_GID" /work/next-env.d.ts 2>/dev/null || true
     exit $status
   '
