@@ -330,6 +330,12 @@ scripts/style-check/container.sh
 #    BUILD_DISPATCH_JOB_TOKEN、BUILD_POLL_JOB_TOKEN（缺一个脚本就直接退出 2）
 ```
 
+> **样式门禁会在仓库里跑 `next build`，而且容器里是 root。** `scripts/style-check/container.sh`
+> 结束时会像对待 `tests/visual` 一样，把 `.next/` 与 `next-env.d.ts` 交还给你，所以紧接着
+> `scripts/e2e.sh`（它自己也会 `next build`）能正常写。如果你用的是更早的 `container.sh`，
+> 会看到 `EACCES: permission denied, open '<repo>/.next/trace'` 与
+> `Build directory is not writeable` —— 那是宿主机上的代码没被交还，按第七节末尾的命令还回来即可。
+
 > **种子数据里的提测会被定时任务真的推进。** 种子把 `1.4.0`、`2.1.0` 这类提测写成「投递中 / 构建中」，
 > 定时任务一跑就会去建 Topic、投 Release。2026-11-20 的演练里就出现过：种子提测 `1.4.0` 领到 Topic
 > 29206、投出 Shuttle 任务 600347（`deepin-terminal`，`APPLY_FAILED`）。所以在能连真实 CRP 的环境里
@@ -385,7 +391,10 @@ scripts/e2e.sh --keep                         # 保留本次记录与 CRP Topic�
 ### 6.6 四个故障场景怎么自己跑一遍
 
 判定口径只有两条：**错误可读**（人能从返回体或日志看出哪一环坏了）、**不留脏数据**（业务状态不变）。
-每个场景前后各取一次库状态做对照，`before.json` 与 `after.json` 除时间戳列外应当一致：
+每个场景前后各取一次库状态做对照，`before.json` 与 `after.json` 的**业务表**（`release`、`build_task`、
+`baseline`）除时间戳列外应当一致。**`deliveries`（`webhook_delivery` 的行数）不参与这条比较**：演练自己建的提测
+会发出 `release.created`、`build.failed` 这类事件，端点不通时这些记录是 `failed`，而且投递流水是审计记录、
+不随提测清理而删除 —— 它变多不代表业务状态脏了。判「脏数据」只看业务表，以及清理后库里是否还剩本次演练的记录。
 
 ```bash
 snapshot() {
@@ -415,18 +424,54 @@ curl -s -X POST -H "Authorization: Bearer $BUILD_DISPATCH_JOB_TOKEN" http://127.
 `CrpAuthError: POST /login 失败（HTTP 401）：Unauthorized`；`release.status`、`snapshot.status`、
 `crp_work_progress` 一个都没动，只有 `updated_at` 变（「这一轮看过它了」）。
 
-**二、Shuttle 超时。** 前提是库里至少有一条提测处在「构建中」（有 `build_task`、有 `shuttle_task_id`），否则轮询根本不会问 Shuttle。起一个只接连接、永不回应的监听，把 Shuttle 指过去：
+**二、Shuttle 超时。** 轮询只对**已投递**的包去问 Shuttle：先 `GET /topics/{topicId}/releases`，按
+`release_repository_record.crp_release_id` 对上 CRP 侧的那条 Release，再拿它返回的 `BuildID` 去
+`POST /shuttle/task/list`（`lib/build/service.ts` 的 `pollReleaseBuilds`）。所以前提是：
+
+- 库里有一条**未完结**的提测，且它的某个包已经有 `release_repository_record`（真的投出去过）；
+- 那条 Release 在 CRP 上还在，并且 CRP 给了 `BuildID`（`> 0`）。
+
+**只有 `build_task` 行不够。** 没有 `repository_record` 的包一个 Shuttle 请求都不会发：整轮一秒返回、
+`items[]` 里没有 `error`，看着像「没问题」，其实什么都没测到。这个前提有单测锁住
+（`tests/build-poll.test.ts` 的「AC4 Shuttle 超时」：快照带 `crpReleaseId` / `crpBuildId` 才会发请求）。
+
+造这个状态最省事的办法：让 §6.1 的演练先跑起来，等它投出第一个包（日志出现「已投递：」）再动手。
+开两个终端：
 
 ```bash
+# 终端 A：正常跑演练（真的建 Topic、投 Release，跑完自己清理）
+scripts/e2e.sh --with-build-deps --skip-a17
+
+# 终端 B：等终端 A 的日志出现「已投递：」之后
 node -e 'require("node:net").createServer(()=>{}).listen(3211,"127.0.0.1")' &
 SHUTTLE_BASE_URL=http://127.0.0.1:3211/api/shuttle pnpm exec next start -p 3206 &
 time curl -s -X POST -H "Authorization: Bearer $BUILD_POLL_JOB_TOKEN" http://127.0.0.1:3206/api/jobs/build-poll
 ```
 
+先确认前提真的成立（在终端 B 打之前查一次，应至少有一行 `crp_release_id` 非空）：
+
+```sql
+select s.package_name, r.crp_release_id, r.crp_build_id, rel.status as 提测状态
+from release_repository_record r
+join release_package_snapshot s on s.id = r.snapshot_id
+join release rel on rel.id = s.release_id
+where rel.status in ('pending', 'dispatching', 'building');
+```
+
+`crp_build_id` 为空说明 CRP 还没给构建号（Release 刚建、还在排队），这时也不会问 Shuttle。
+
+> **种子库直接试会失败。** 种子数据里的 `crp_topic_id`（`8841`、`8901` 等）在真实 CRP 上确实存在，
+> 但种子里的 `crp_release_id` 早就不在那些主题里了，所以拿纯种子库直接打这一轮会看到
+> `checked: 0`、整轮一秒返回 —— 2026-11-20 的功能检测就是这样卡住的。必须先用上面那条 SQL
+> 确认有「已投递且 CRP 给了构建号」的包。
+
+
 算通过：HTTP 200，`items[].error` 是
 `ShuttleError: 请求 Shuttle 失败：POST http://127.0.0.1:3211/api/shuttle/task/list：The operation was aborted due to timeout`
-（单次请求的超时是 30 秒；有 2 条在跑的提测时整轮大约 60 秒）。`release.status`、`snapshot.status`、
-`build_task.status` 都没变，只有 `last_polled_at` 刷新 —— 查不到结果不等于构建失败，这一点和 8.1 一致。
+（单次请求的超时是 30 秒；每条「已投递且 CRP 给了构建号」的包要各等一次，所以整轮耗时约为「这样的包数 × 30 秒」。
+2026-11-20 实测：1 个包 32 秒，其余两条提测是 `CrpNetworkError` 之类的原因，不涉及 Shuttle）。
+`release.status`、`snapshot.status`、`build_task.status` 都没变，只有 `last_polled_at` 刷新 ——
+查不到结果不等于构建失败，这一点和 8.1 一致。
 
 > 这条错误信息是上层库的原文（英文），比 CRP 那条「30000 毫秒内没有响应，已超时」朴素一些，
 > 但指出了出事的接口与原因，够定位。已作为 nit 报给 PL，没有在本单改。
@@ -470,11 +515,23 @@ scripts/style-check/container.sh --update   # 重写基线（CI 里会被脚本�
 
 **前置条件**：库是纯种子数据。跑过 `pnpm test` 或全链路演练的库会多出构建轮询事件，构建队列页会多一张调度事件表，比对必然失败——先退回种子库再跑。
 
-容器以 root 身份执行 `next build`，跑完仓库里的 `.next/` 与 `next-env.d.ts` 会变成 root 所有。之后要在本机再构建，先交还所有权：
+容器以 root 身份执行 `next build`，所以 `.next/` 与 `next-env.d.ts` 在容器里生成时是 root 所有。
+`scripts/style-check/container.sh` 跑完会自动交还所有权（与 `tests/visual` 一起），正常不需要手工处理。
+
+如果你手上的脚本还是旧版（只交还 `tests/visual`），或者曾经手工在处理过 root 构建产物，
+再构建时会看到 `EACCES: permission denied, open '<repo>/.next/trace'` 与
+`Build directory is not writeable`。这时把所有权还回来：
 
 ```bash
+# 有 sudo 时
 sudo chown -R "$(id -u):$(id -g)" .next next-env.d.ts
+# 没有 sudo 时，用同一个门禁镜像（容器里是 root）
+docker run --rm -v "$PWD":/work -w /work mcr.microsoft.com/playwright:v1.65.1-noble \
+  bash -lc "chown -R $(id -u):$(id -g) /work/.next /work/next-env.d.ts"
 ```
+
+注意：没有 root 权限时**连删都删不掉**（`.next/server/...` 里的文件属于 root，`rm -rf` 会报「权限不够」），
+所以不要指望「删掉重建」绕过这件事。
 
 ---
 
@@ -610,7 +667,11 @@ select name, arches, synced_at from baseline where name = 'eagle-1071';
 - [ ] Webhook 端点返回 500 时投递记录为 `failed`，业务不受影响
 - [ ] 提测详情页、构建队列页、工作台数据与数据库一致
 - [ ] 全链路演练 `scripts/e2e.sh --with-build-deps` 退出码 0，提测到 `success`，Topic 链接与详情页截图留证
-- [ ] 本文档被另一位同学按步骤复现成功（复现人签字）
+- [ ] 第十二节的复现检查表 10 条，逐条的现象都对得上（执行者自己走一遍）
+
+> **复现人签字不在这 12 条里，它是另一道门。** AC3「RUNBOOK 被另一位同学按步骤复现成功」由复现人本人
+> 在 issue 里发签字评论，执行者与 PL 都不代签，所以它不能作为这张清单的一项 —— 否则清单永远勾不满，
+> 而它其实还没发生。签字的写法见第十二节末尾。
 
 ---
 
@@ -696,12 +757,12 @@ select name, arches, synced_at from baseline where name = 'eagle-1071';
 | # | 做什么 | 看什么现象算通过 | 大约耗时 |
 | --- | --- | --- | --- |
 | 1 | 第三节从零部署（3.1 → 3.5） | `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/login` 是 `200`；打开 `/dashboard` 看到的是种子数据（3 个工作区、5 条提测） | 20 分钟 |
-| 2 | `scripts/style-check/container.sh` | 最后一行是 `失败 0 项`，六个页面都显示「通过」 | 2 分钟（镜像已拉过） |
+| 2 | `scripts/style-check/container.sh` | 最后一行是 `失败 0 项`，六个页面都显示「通过」；跑完 `.next/` 与 `next-env.d.ts` 的所有者是你自己（`ls -ld .next` 不是 `root`），这样第 5 步的 `next build` 才写得进去（旧版脚本的处理见第七节末尾） | 2 分钟（镜像已拉过） |
 | 3 | 不带 token 打三个定时入口：`POST /api/jobs/baseline-sync`、`/build-dispatch`、`/build-poll` | 三个都返回 `401` | 1 分钟 |
 | 4 | 带 `SYNC_JOB_TOKEN` 打 `POST /api/jobs/baseline-sync` | 返回 `200` 且 `list.itemCount > 0`；`/baselines` 页 `eagle-1071` 的架构列是 6 个（`amd64;arm64;i386;loongarch64;mips64el;sw_64`） | 1 分钟 |
 | 5 | `scripts/e2e.sh --with-build-deps` | 退出码 `0`；日志最后有 `提测到达 success`、`AC1 证据：Topic …`；打开那个 Topic 与提测详情页，三个包都是成功、顺序是 `plasma-wayland-protocols → wayland → kwin` | 60–90 分钟（真实构建，别中途打断） |
 | 6 | 6.6 场景一：CRP 认证过期 | 见 6.6 的「算通过」 | 2 分钟 |
-| 7 | 6.6 场景二：Shuttle 超时 | 见 6.6 的「算通过」 | 3 分钟 |
+| 7 | 6.6 场景二：Shuttle 超时 | 见 6.6 的「算通过」（要等第 5 步投出第一个包之后才能做，先跑一次 6.6 里那条 SQL 确认） | 1 分钟（与第 5 步同时） |
 | 8 | 6.6 场景三：Webhook 端点 500 | 脚本最后打印「全部通过」 | 1 分钟 |
 | 9 | 6.6 场景四：上游失败导致阻断 | 见 6.6 的「算通过」 | 5 分钟 |
 | 10 | 第十节「上线前检查清单」逐条过 | 12 条全部能勾上 | 10 分钟 |

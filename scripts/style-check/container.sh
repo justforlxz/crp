@@ -52,7 +52,10 @@ fi
 mkdir -p "$cache"
 
 # 容器里以 root 跑（要装全局 pnpm），`--update` 写出来的基线文件会变成 root 所有；
-# 跑完把基线目录交还给调用者，下一次用普通用户也能改。
+# `next build` 产出的 `.next/` 与 `next-env.d.ts` 也一样。这些都要交还给调用者：
+# 留着 root 所有的 `.next/`，调用者下一次 `next build` 会直接失败
+# （`EACCES: permission denied, open '.next/trace'` / `Build directory is not writeable`），
+# 而普通用户没有 sudo 时连删都删不掉。
 docker run --rm --network host \
   -v "$repo":/work \
   -v "$cache":/work/node_modules \
@@ -75,6 +78,7 @@ docker run --rm --network host \
     fi
     pnpm test:style $STYLE_ARGS
     status=$?
-    chown -R "$HOST_UID:$HOST_GID" /work/tests/visual 2>/dev/null || true
+    chown -R "$HOST_UID:$HOST_GID" /work/tests/visual /work/.next 2>/dev/null || true
+    chown "$HOST_UID:$HOST_GID" /work/next-env.d.ts 2>/dev/null || true
     exit $status
   '

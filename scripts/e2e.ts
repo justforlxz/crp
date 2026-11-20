@@ -714,8 +714,7 @@ function summarize(view: DispatchView): string {
   return `status=${view.status} topic=${view.crpTopicId ?? "-"} [${parts.join(", ")}]`;
 }
 
-/** 一次定时入口的返回体：HTTP 已经断言过 2xx，这里只用它的 `items`。 */
-type JobRun = { path: string; body: unknown };
+/** 定时入口的返回体只用来看 `items`：调用方不消费它，所以下面直接返回 `void`。 */
 
 /**
  * 「还没到能判定的时机」的已知提示：新建 Topic 的头几轮 CRP 还没算出工作流进度，
@@ -740,7 +739,7 @@ async function runJob(
   token: string,
   releaseId: string,
   logged: Set<string>,
-): Promise<JobRun> {
+): Promise<void> {
   const reply = await call({ path, method: "POST", token });
   const body = expectOk(reply, `POST ${path}`);
 
@@ -759,7 +758,6 @@ async function runJob(
     `POST ${path} 里本次提测（${releaseId}）报错：${failures.own.join("；")}`,
   );
 
-  return { path, body };
 }
 
 /**
@@ -1214,7 +1212,8 @@ async function assertRedispatch(
 
   log(`wayland 旧 Release ${oldWaylandId} → 新 Release ${newWayland.crpReleaseId}`);
   log(`追加的 ${APPEND_PACKAGE.name} 已在新一轮快照里（状态 ${appendedAfter?.snapshotStatus ?? "未知"}）`);
-  log(`kwin 已按第 ${newDownstream.attempt} 轮重投（${newDownstream.snapshotStatus}），观察点成立`);
+  // 「进入第 N 轮」而不是「已重投」：此刻 kwin 通常还是 pending，要等 wayland 新构建成功才真的投出去。
+  log(`kwin 已进入第 ${newDownstream.attempt} 轮（${newDownstream.snapshotStatus}），观察点成立`);
 }
 
 async function drillA17(
