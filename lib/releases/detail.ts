@@ -89,6 +89,10 @@ export type ReleaseDetailRepositoryRecord = {
   crpReleaseId: string;
   crpBuildId: string | null;
   crpStatusName: string | null;
+  /** 从 CRP 同步回来的实际 Tag，可能与提测版本不同（例如 `5.16.21`）；还没同步过为 `null`。 */
+  crpTag: string | null;
+  /** CRP 记的 `BaseTag`，即我们提交上去的那个版本号（例如 `5.16.20`）；还没同步过为 `null`。 */
+  crpBaseTag: string | null;
   repositoryUrl: string | null;
   lastSyncedAt: Date | null;
 };
@@ -354,6 +358,8 @@ export async function loadReleaseDetail(
           crpReleaseId: true,
           crpBuildId: true,
           crpStatusName: true,
+          crpTag: true,
+          crpBaseTag: true,
           repositoryUrl: true,
           lastSyncedAt: true,
           snapshot: { select: { packageName: true } },
@@ -410,6 +416,8 @@ export async function loadReleaseDetail(
     crpReleaseId: row.crpReleaseId,
     crpBuildId: row.crpBuildId,
     crpStatusName: row.crpStatusName,
+    crpTag: row.crpTag,
+    crpBaseTag: row.crpBaseTag,
     repositoryUrl: row.repositoryUrl,
     lastSyncedAt: row.lastSyncedAt,
   }));

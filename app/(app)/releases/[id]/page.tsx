@@ -281,6 +281,7 @@ export default async function ReleaseDetailPage({
                 <th>CRP Release ID</th>
                 <th>CRP Build ID</th>
                 <th>CRP 状态</th>
+                <th>CRP 实际 Tag</th>
                 <th>仓库地址</th>
                 <th>最近同步</th>
               </tr>
@@ -294,6 +295,15 @@ export default async function ReleaseDetailPage({
                   </td>
                   <td>{row.crpBuildId === null ? "—" : <code>{row.crpBuildId}</code>}</td>
                   <td>{row.crpStatusName ?? "—"}</td>
+                  <td
+                    title={
+                      row.crpBaseTag === null
+                        ? undefined
+                        : `CRP 记录的 BaseTag 是 ${row.crpBaseTag}`
+                    }
+                  >
+                    {row.crpTag === null ? "—" : <code>{row.crpTag}</code>}
+                  </td>
                   <td>{row.repositoryUrl === null ? "—" : <code>{row.repositoryUrl}</code>}</td>
                   <td>{formatTime(row.lastSyncedAt)}</td>
                 </tr>
@@ -302,6 +312,12 @@ export default async function ReleaseDetailPage({
           </table>
         </div>
       )}
+      <p>
+        「CRP 实际 Tag」是 CRP 自己记录的版本号，可能与「本次提测版本」不同：实测它会把末位数字加一
+        （提交 <code>5.16.20</code> 记成 <code>5.16.21</code>）、追加序号（<code>5.7.20</code> 记成{" "}
+        <code>5.7.20.2</code>），或带 <code>+uploadcrp</code>、<code>+testbug260209</code> 这样的后缀，
+        具体以 CRP 上显示的值为准。提测版本仍按我们提交的值显示与导出，不改写；这一列要等到一次同步之后才有值。
+      </p>
       <p>
         最近一次同步：{formatTime(detail.repositorySyncedAt)}
       </p>

@@ -232,8 +232,16 @@ export type CrpRelease = {
   projectName: string;
   branch: string;
   commit: string;
-  /** CRP 侧实际生效的版本号。 */
+  /**
+   * CRP 侧实际生效的版本号。
+   *
+   * 与 `baseTag` 不一定相同：我们提交的是 `baseTag`，CRP 会把自己那份记成别的值
+   * （实测形态见 FINDINGS.md 第 6.1 节：末位数字加一、追加序号、带 `+uploadcrp` 这类后缀）。
+   * 两个都原样保留，不要互相推断，也不要按某个固定后缀去猜。
+   */
   tag: string;
+  /** CRP 侧记录的 `BaseTag`：我们提交上去的那个版本号。 */
+  baseTag: string;
   /** 构建状态，例如 `APPLYING`、`UPLOAD_FAILED`、`UNKNOWN`。 */
   buildState: string;
   changelog: string[];

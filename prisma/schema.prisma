@@ -537,6 +537,13 @@ model ReleaseRepositoryRecord {
   /// CRP 侧 Release 状态数值与状态名，原样保存。
   crpReleaseState Int? @map("crp_release_state")
   crpStatusName   String? @map("crp_status_name")
+  /// CRP 侧记录的版本号，两个都原样保存，与快照里的 `release_version` 分开：
+  ///
+  /// `crp_base_tag` 是我们提交的值，`crp_tag` 是 CRP 自己记的那份，两者不一定相同
+  /// （实测形态见 `lib/integrations/crp/FINDINGS.md` 第 6.1 节）。
+  /// 快照里的 `release_version` 是我们提交的值，仍是页面上「本次提测版本」的来源，不改写。
+  crpBaseTag      String? @map("crp_base_tag")
+  crpTag          String? @map("crp_tag")
   /// 从 `/topic_urls` 查到的仓库地址。
   repositoryUrl String? @map("repository_url")
   lastSyncedAt  DateTime? @map("last_synced_at") @db.Timestamptz(3)

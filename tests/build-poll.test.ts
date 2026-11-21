@@ -69,6 +69,8 @@ type FakeRelease = {
   Branch: string;
   Commit: string;
   Tag: string;
+  /** CRP 侧记录的 `BaseTag`：我们提交的那个版本号（MKACG-929）。 */
+  BaseTag?: string;
   BuildID: number;
   Status?: number;
   StatusName?: string;
@@ -499,6 +501,8 @@ function stageBuildInChain(
   releaseId: number,
   buildId: number,
   suffix: string,
+  /** CRP 侧记录的 `Tag` / `BaseTag`；默认按「我们传什么、CRP 就记什么」摆。 */
+  tags: { tag: string; baseTag?: string } = { tag: "1.0.1" },
 ): void {
   state.releases.push({
     ID: releaseId,
@@ -507,7 +511,8 @@ function stageBuildInChain(
     ProjectName: pkgName(suffix),
     Branch: "develop/eagle",
     Commit: SHA_A,
-    Tag: "1.0.1",
+    Tag: tags.tag,
+    BaseTag: tags.baseTag,
     BuildID: buildId,
     Status: 1,
     StatusName: "APPLYING",
@@ -759,6 +764,74 @@ test("AC1/AC2/AC5 队列显示等待关系，上游成功后下游开始投递�
   const afterDispatch = await stagesOf(progressed.releaseId);
   assert.equal(afterDispatch.get(pkgName("b")), "投递中");
   assert.equal(afterDispatch.get(pkgName("c")), "等待依赖");
+});
+
+// ---------------------------------------------------------------------------
+// AC2（MKACG-929）：CRP 侧的实际 Tag 与 BaseTag 存进仓库记录
+// ---------------------------------------------------------------------------
+
+test("AC2 轮询把 CRP 的实际 Tag 与 BaseTag 写进仓库记录，快照里的提测版本不改写", async () => {
+  await closeLeftoverReleases();
+
+  const topicId = 90_700;
+  const state = newFakeState(topicId);
+  const network = networkOf(state);
+
+  const seeded = await seedRelease({
+    version: "a14-crp-tag",
+    status: "building",
+    topicId,
+    snapshots: [
+      {
+        suffix: "a",
+        status: "building",
+        crpReleaseId: 5_901,
+        crpBuildId: 2_901,
+        buildTask: { status: "building", shuttleTaskId: "2901", startedAt: new Date() },
+        jobs: [{ arch: "amd64", status: "building" }],
+      },
+    ],
+  });
+
+  // 夹具：CRP 把 Tag 记成末位数字加一（真实形态见 FINDINGS.md 6.1），BaseTag 仍是提交值。
+  stageBuildInChain(state, 5_901, 2_901, "a", { tag: "1.0.98", baseTag: "1.0.97" });
+
+  await runBuildPoll({ trigger: "schedule", network });
+
+  const record = await prisma.releaseRepositoryRecord.findFirstOrThrow({
+    where: { releaseId: seeded.releaseId },
+    select: { crpTag: true, crpBaseTag: true },
+  });
+
+  assert.equal(record.crpTag, "1.0.98", "CRP 记的那份要原样存下来");
+  assert.equal(record.crpBaseTag, "1.0.97");
+
+  const snapshot = await prisma.releasePackageSnapshot.findFirstOrThrow({
+    where: { id: seeded.snapshotIds[0] },
+    select: { releaseVersion: true },
+  });
+
+  assert.equal(
+    snapshot.releaseVersion,
+    "1.0.97",
+    "快照里的提测版本是我们提交的值，不能被 CRP 记录的 Tag 改写",
+  );
+
+  // 响应里省略这两个字段时不要清掉上一次的好值：与 `crpBuildId` 回 0 时不清旧值同一套保护。
+  const fake = state.releases.find((item) => item.ID === 5_901);
+  assert.ok(fake !== undefined);
+  fake.Tag = "";
+  delete fake.BaseTag;
+
+  await runBuildPoll({ trigger: "schedule", network });
+
+  const afterOmitted = await prisma.releaseRepositoryRecord.findFirstOrThrow({
+    where: { releaseId: seeded.releaseId },
+    select: { crpTag: true, crpBaseTag: true },
+  });
+
+  assert.equal(afterOmitted.crpTag, "1.0.98", "响应没给 Tag 时保留上一次的值");
+  assert.equal(afterOmitted.crpBaseTag, "1.0.97", "响应没给 BaseTag 时保留上一次的值");
 });
 
 // ---------------------------------------------------------------------------
