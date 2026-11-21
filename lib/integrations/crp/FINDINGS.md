@@ -228,6 +228,13 @@ GET /api/topics/29158/releases
 - `BuildID` 是 Shuttle 的构建任务 ID，查构建日志用它（A4/A14）。两者不能混用。
 - `BuildState.state` 观测到三种值：`APPLYING`（排队中）、`UPLOAD_FAILED`（上传失败）、`UNKNOWN`。
   `UNKNOWN` 出现在构建收尾之后；本次验证在 30 秒内一直停在 `APPLYING`，没有等到终态。
+- `Tag` 与 `BaseTag` 不一定相同。多数情况下两者一样（上面的样本、以及 MKACG-929 复跑时传
+  `1.26.0.7` 也原样记成 `1.26.0.7`）；但 CRP 会把自己的那份记成别的值。只读扫描交付分支
+  `eagle-1071` 的 120 个 test 主题、共 218 条 Release（MKACG-929 功能检测，2026-11-21）：
+  两者不同 35 条（16%），形态是**末位数字加一**（`5.16.20` → `5.16.21`）、**追加序号**
+  （`5.7.20` → `5.7.20.2`）、**带后缀**（`+uploadcrp`、`+testbug260209`）；带 `+cN` 的 0 条。
+  所以「Tag 可能与提测版本不同」成立，具体形态以 CRP 为准，不要按某个固定后缀去推断或写进文案。
+  `docs/DATA_MODEL.md` 的 `release_repository_record.crp_tag` 就是原样存这个 `Tag`。
 
 ### 6.2 删 Release
 

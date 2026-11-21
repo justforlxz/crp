@@ -1486,12 +1486,20 @@ async function withCrpProjectName<T>(
 /** 在假 CRP 的某个 Topic 里塞一条「CRP 侧已经存在」的 Release。 */
 function seedCrpRelease(
   state: FakeCrp,
-  input: { topicId: number; projectName: string; branch: string; commit: string; tag: string },
+  input: {
+    topicId: number;
+    projectName: string;
+    branch: string;
+    commit: string;
+    tag: string;
+    /** 这条 Release 在 CRP 的 `ProjectID`；默认 800，与假 CRP 按名字搜出来的那条一致。 */
+    projectId?: number;
+  },
 ): FakeRelease {
   const release: FakeRelease = {
     ID: state.nextReleaseId++,
     TopicID: input.topicId,
-    ProjectID: 800,
+    ProjectID: input.projectId ?? 800,
     ProjectName: input.projectName,
     Branch: input.branch,
     Commit: input.commit,
@@ -1617,6 +1625,46 @@ test("AC2 认领只认 CRP 项目名：CRP 侧叫包名的那一条不算这一�
     });
     assert.notEqual(record.crpReleaseId, String(foreign.ID));
   });
+});
+
+test("AC1 重投同一个包时，ProjectID 取主题里既有 Release 的记录，不重新按名字搜", async () => {
+  const state = newFakeCrp();
+  const network = networkOf(state);
+  const releaseId = await createReleaseWithChain("ac1-topic-project-id");
+
+  const topic = await advanceRelease(releaseId, { network });
+  const topicId = Number(topic.topicId);
+
+  const snapshot = await prisma.releasePackageSnapshot.findFirstOrThrow({
+    where: { releaseId, packageName: pkgName("a") },
+    select: { branch: true, commitSha: true },
+  });
+
+  // 这个包在这个 Topic 里上一轮已经投过：Commit 与版本都不是这一次的，认领不成立，
+  // 但 CRP 侧那一条记录了它在 CRP 的 ProjectID（4242），比按名字搜更确定。
+  seedCrpRelease(state, {
+    topicId,
+    projectName: pkgName("a"),
+    branch: snapshot.branch,
+    commit: "e".repeat(40),
+    tag: "1.0.0",
+    projectId: 4242,
+  });
+
+  const dispatched = await advanceRelease(releaseId, { network });
+
+  assert.equal(dispatched.action, "dispatched");
+
+  const fresh = state.releases.find(
+    (item) => item.ProjectName === pkgName("a") && item.Commit === snapshot.commitSha,
+  );
+
+  assert.ok(fresh !== undefined, "这一轮要新发一条 Release");
+  assert.equal(
+    fresh.ProjectID,
+    4242,
+    "ProjectID 应来自既有 Release 的记录，而不是假 CRP 按名字返回的 800",
+  );
 });
 
 test("Shuttle 任务成功但作业列表为空，超过等待期限后给出失败结论", async () => {

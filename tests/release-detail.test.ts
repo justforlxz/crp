@@ -309,6 +309,9 @@ before(async () => {
       crpBuildId: "90001",
       crpReleaseState: 3,
       crpStatusName: "构建成功",
+      // 夹具：CRP 记的 Tag 与我们提交的值不同（末位数字加一，真实形态见 FINDINGS.md 6.1）。
+      crpTag: "1.0.0-2",
+      crpBaseTag: "1.0.0-1",
       repositoryUrl: "https://crp.test/repo/pool/main/a/",
       lastSyncedAt: T1,
     },
@@ -468,6 +471,27 @@ test("CRP 仓库记录按包名排出确定顺序，与插入顺序无关", asyn
     [pkgName("a"), pkgName("b")],
   );
   assert.equal(detail.repositorySyncedAt?.toISOString(), T2.toISOString());
+
+});
+
+test("AC2 CRP 侧的实际 Tag 与 BaseTag 出现在仓库记录里，快照的提测版本不改写", async () => {
+  const detail = await loadReleaseDetail(fixture.releaseId, { readCommitInfo });
+
+  const recordA = detail.repositoryRecords.find((row) => row.packageName === pkgName("a"));
+  assert.ok(recordA !== undefined);
+  assert.equal(recordA.crpTag, "1.0.0-2");
+  assert.equal(recordA.crpBaseTag, "1.0.0-1");
+
+  // 快照里的「本次提测版本」是我们提交的值：CRP 记的那份只出现在仓库记录那一列。
+  const packageA = detail.packages.find((item) => item.packageName === pkgName("a"));
+  assert.ok(packageA !== undefined);
+  assert.equal(packageA.releaseVersion, "1.0.0-1");
+
+  // 没同步过 Tag 的记录留空，页面显示破折号，不跟着编一个值出来。
+  const recordB = detail.repositoryRecords.find((row) => row.packageName === pkgName("b"));
+  assert.ok(recordB !== undefined);
+  assert.equal(recordB.crpTag, null);
+  assert.equal(recordB.crpBaseTag, null);
 });
 
 test("已转测（WorkProgress >= 20）时「更新提测」被锁并给出原因（AC5）", async () => {

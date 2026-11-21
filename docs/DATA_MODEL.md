@@ -361,6 +361,8 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | `crpBuildId`（`crp_build_id`） | text | NULL | CRP Release 上的 `BuildID`；查 Shuttle 构建任务用它，**必须按字符串传**（传数字会静默返回空，A4 实测） |
 | `crpReleaseState`（`crp_release_state`） | integer | NULL | CRP 侧 Release 状态数值 |
 | `crpStatusName`（`crp_status_name`） | text | NULL | CRP 侧状态名，原样保存 |
+| `crpBaseTag`（`crp_base_tag`） | text | NULL | CRP 侧记录的 `BaseTag`：我们提交上去的版本号，例如 `1.26.0.7`；还没同步过为空 |
+| `crpTag`（`crp_tag`） | text | NULL | CRP 侧记录的实际 `Tag`，可能与提测版本不同（实测形态：末位数字加一 `5.16.20` → `5.16.21`、追加序号 `5.7.20` → `5.7.20.2`、带 `+uploadcrp` 这类后缀，见 FINDINGS.md 6.1）。与快照里的 `release_version`（我们提交的值）分开保存，不改写前者 |
 | `repositoryUrl`（`repository_url`） | text | NULL | 从 `/topic_urls` 查到的仓库地址；构建产出前为空 |
 | `lastSyncedAt`（`last_synced_at`） | timestamptz | NULL | 最近一次从 CRP 刷新状态的时间 |
 | `createdAt` / `updatedAt` | timestamptz | NOT NULL | |

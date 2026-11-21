@@ -108,7 +108,14 @@ export async function submitRelease(
   }
 
   const tag = changeLogMode ? (input.tag ?? CHANGELOG_MODE_TAG) : (input.tag as string);
-  const projectId = input.projectId ?? (await resolveProjectId(transport, input.projectName, input.branchId));
+  // 已经投过包的 Topic 里，这个包在 CRP 的 `ProjectID` 是确定的：先按既有 Release 的记录取，
+  // 取不到才退回按名字搜索 —— `POST /project` 是模糊匹配，同名项目在不同交付分支下可能各有一份。
+  const projectId =
+    input.projectId ??
+    (await resolveProjectId(transport, input.projectName, input.branchId, {
+      topicId: input.topicId,
+      branch: input.branch,
+    }));
   const payload = buildNewReleasePayload(input, projectId, tag, changeLogMode);
 
   let raw: unknown;
@@ -181,6 +188,9 @@ export async function listReleases(
     branch: item.Branch ?? "",
     commit: item.Commit ?? "",
     tag: item.Tag ?? "",
+    // `BaseTag` 是我们提交的值，`Tag` 是 CRP 自己记的那份，两者不一定相同
+    // （实测形态见 FINDINGS.md 第 6.1 节）。两个都留着，页面也两个都展示。
+    baseTag: item.BaseTag ?? "",
     buildState: item.BuildState?.state ?? "UNKNOWN",
     changelog: item.Changelog ?? [],
     changeLogMode: item.ChangeLogMode === true,

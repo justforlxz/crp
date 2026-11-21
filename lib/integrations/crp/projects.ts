@@ -7,7 +7,11 @@
 
 import { CrpBusinessError, CrpInvalidParameterError } from "./errors";
 import type { CrpTransport } from "./request";
-import type { CrpProject, CrpRawProject } from "./types";
+import type { CrpProject, CrpRawProject, CrpRelease } from "./types";
+// `releases.ts` 也从这里取 `resolveProjectId`，于是两个模块互相引用。两边都只在函数体里
+// 使用对方的导出，且都是函数声明（有提升），运行到调用时模块早已加载完成，
+// 所以这个环读不到「半截模块」。拆开要把 `listReleases` 挪走，为一行调用不值得。
+import { listReleases } from "./releases";
 
 /**
  * 按名字查软件包。
@@ -87,7 +91,45 @@ export function pickExactProject(
 }
 
 /**
+ * 从主题里已有的 Release 名单中，取出同一个包（项目名 + 分支）在 CRP 的 `ProjectID`。
+ *
+ * 取不到返回 `null`，由调用方退回按名字搜索。这里不抛错：「这个 Topic 里还没投过这个包」
+ * 是正常情形（第一次投递），不是错误。
+ */
+export function pickTopicProjectId(
+  releases: readonly CrpRelease[],
+  projectName: string,
+  branch: string,
+): number | null {
+  for (const item of releases) {
+    if (item.projectName !== projectName || item.branch !== branch) {
+      continue;
+    }
+
+    // `ProjectID` 为 0 等于没有：CRP 收到 0 会回 `project not found`，不能当成结果用。
+    if (Number.isInteger(item.projectId) && item.projectId > 0) {
+      return item.projectId;
+    }
+  }
+
+  return null;
+}
+
+/** 解析 `ProjectID` 时可以顺手用的上下文。 */
+export type ResolveProjectIdContext = {
+  /** 这个包要投进去的 Topic。给了就先看它里面已有的 Release。 */
+  topicId: number;
+  /** 仓库分支，例如 `develop/eagle`。用来在既有 Release 里认出同一个包。 */
+  branch: string;
+};
+
+/**
  * 按软件包名解析出唯一的 `ProjectID`。
+ *
+ * 传了 `context`（Topic + 分支）时先看主题里已有的 Release：已经投过包的主题里，
+ * 这个包的 `ProjectID` 是确定的，不该再拿名字去猜一次 —— `POST /project` 是模糊匹配，
+ * 同名项目在不同交付分支下可能各有一份（MKACG-929）。
+ * 主题里还没有这个包，才退回按名字搜索。
  *
  * 匹配与报错规则在 `pickExactProject` 里，投递路径与演练脚本共用同一份。
  */
@@ -95,7 +137,20 @@ export async function resolveProjectId(
   transport: CrpTransport,
   projectName: string,
   branchId: number,
+  context?: ResolveProjectIdContext,
 ): Promise<number> {
+  if (context !== undefined) {
+    const known = pickTopicProjectId(
+      await listReleases(transport, context.topicId),
+      projectName,
+      context.branch,
+    );
+
+    if (known !== null) {
+      return known;
+    }
+  }
+
   const projects = await searchProjects(transport, { name: projectName, branchId });
 
   return pickExactProject(projects, projectName, branchId).id;

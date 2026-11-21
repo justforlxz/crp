@@ -370,6 +370,8 @@ test("Tag 含实测会被拒的字符时本地拦下", async () => {
 
 test("投递时缺 ProjectID 会先按软件包名查，请求体里 BranchID 是字符串、Tag 原样", async () => {
   const { client, calls } = mockClient([
+    // 投递前先看这个 Topic 里已有的 Release：还没投过这个包，名单是空的，退回按名字搜。
+    ["GET /topics/29157/releases", json([])],
     ["POST /project", json({ Projects: [{ ID: 8, Name: "dde-file-manager" }] })],
     ["POST /topics/29157/new_release", new Response("107438", { status: 201 })],
   ]);
@@ -398,7 +400,10 @@ test("投递时缺 ProjectID 会先按软件包名查，请求体里 BranchID �
 });
 
 test("查不到软件包时抛业务错误，并说明查的是哪个分支", async () => {
-  const { client } = mockClient([["POST /project", json({ Projects: null })]]);
+  const { client } = mockClient([
+    ["GET /topics/1/releases", json([])],
+    ["POST /project", json({ Projects: null })],
+  ]);
 
   await assert.rejects(
     () =>
@@ -497,6 +502,136 @@ test("CRP 的其它业务拒绝不被当成提交号问题", async () => {
   );
 });
 
+test("投递时先看主题里已有的 Release：名字搜索有歧义也不重新猜 ProjectID", async () => {
+  // 实测：`POST /project` 是模糊匹配，同名项目在不同交付分支下可能各有一份，
+  // 这里让搜索结果出现两条同名记录：按名字挑就是二选一的运气。
+  const { client, calls } = mockClient([
+    [
+      "GET /topics/29157/releases",
+      json([
+        {
+          ID: 107400,
+          TopicID: 29157,
+          ProjectID: 42,
+          ProjectName: "kwin",
+          Branch: "develop/eagle",
+          Commit: "0123456789abcdef0123456789abcdef01234567",
+          Tag: "1.26.0.8",
+          BaseTag: "1.26.0.7",
+          BuildID: 600100,
+        },
+        {
+          // 同一个包在另一条分支上的投递：分支不同，不是这一次要用的那一条。
+          ID: 107401,
+          TopicID: 29157,
+          ProjectID: 84,
+          ProjectName: "kwin",
+          Branch: "develop/snipe",
+          Commit: "0123456789abcdef0123456789abcdef01234567",
+          Tag: "1.26.0.8",
+          BaseTag: "1.26.0.7",
+          BuildID: 600101,
+        },
+        {
+          // 名字相近的另一个包：更不能当成 kwin。
+          ID: 107402,
+          TopicID: 29157,
+          ProjectID: 99,
+          ProjectName: "dde-kwin",
+          Branch: "develop/eagle",
+          Commit: "0123456789abcdef0123456789abcdef01234567",
+          Tag: "1.26.0.8",
+          BaseTag: "1.26.0.7",
+          BuildID: 600102,
+        },
+      ]),
+    ],
+    [
+      "POST /project",
+      json({
+        Projects: [
+          { ID: 7, Name: "kwin" },
+          { ID: 8, Name: "kwin" },
+        ],
+      }),
+    ],
+    ["POST /topics/29157/new_release", new Response("107438", { status: 201 })],
+  ]);
+
+  const release = await client.submitRelease({
+    topicId: 29157,
+    projectName: "kwin",
+    branch: "develop/eagle",
+    commit: "f8e9527a5b0d1e2c3a4b5c6d7e8f901234567890",
+    branchId: 108,
+    tag: "1.26.0.8",
+    arches: "amd64;arm64",
+  });
+
+  // ProjectID 来自既有 Release，不是搜索结果里的 7 或 8。
+  assert.equal(release.projectId, 42);
+  assert.equal(
+    calls.some((call) => call.url.endsWith("/project")),
+    false,
+    "命中既有 Release 之后不该再按名字搜一次",
+  );
+
+  const body = calls.find((call) => call.url.endsWith("/new_release"))?.body as Record<string, unknown>;
+  assert.equal(body.ProjectID, 42);
+  // AC3：除 ProjectID 之外，请求体的其它字段不受这次改动影响。
+  assert.equal(body.Tag, "1.26.0.8");
+  assert.equal(body.BaseTag, null);
+  assert.equal(body.TagSuffix, null);
+  assert.equal(body.ChangeLogMode, false);
+  assert.equal(body.BranchID, "108");
+  assert.equal(body.ProjectName, "kwin");
+  assert.equal(body.Branch, "develop/eagle");
+  assert.equal(body.Arches, "amd64;arm64");
+  assert.equal(body.TopicType, "test");
+  assert.deepEqual(body.Changelog, [""]);
+});
+
+test("主题里还没有这个包时，退回按名字搜 ProjectID", async () => {
+  const { client, calls } = mockClient([
+    [
+      "GET /topics/29157/releases",
+      json([
+        {
+          // 同一个包名、同一条分支，但 CRP 给的 ProjectID 是 0（等于没有）：不能当成结果用。
+          ID: 107403,
+          TopicID: 29157,
+          ProjectID: 0,
+          ProjectName: "kwin",
+          Branch: "develop/eagle",
+          Commit: "0123456789abcdef0123456789abcdef01234567",
+          Tag: "1.26.0.8",
+          BaseTag: "1.26.0.7",
+          BuildID: 600103,
+        },
+      ]),
+    ],
+    ["POST /project", json({ Projects: [{ ID: 8, Name: "kwin" }] })],
+    ["POST /topics/29157/new_release", new Response("107439", { status: 201 })],
+  ]);
+
+  const release = await client.submitRelease({
+    topicId: 29157,
+    projectName: "kwin",
+    branch: "develop/eagle",
+    commit: "f8e9527a5b0d1e2c3a4b5c6d7e8f901234567890",
+    branchId: 108,
+    tag: "1.26.0.8",
+    arches: "amd64;arm64",
+  });
+
+  assert.equal(release.projectId, 8);
+  assert.equal(
+    calls.some((call) => call.url.endsWith("/project")),
+    true,
+    "既有 Release 的 ProjectID 不可用时，要退回按名字搜",
+  );
+});
+
 test("Release 列表解析出 Release ID、构建 ID、Tag 与构建状态", async () => {
   const { client } = mockClient([
     [
@@ -509,7 +644,9 @@ test("Release 列表解析出 Release ID、构建 ID、Tag 与构建状态", asy
           ProjectName: "dde-file-manager",
           Branch: "develop/eagle",
           Commit: "f8e9527a",
-          Tag: "9.9.9",
+          // 夹具：CRP 记的 Tag 与我们提交的值不同（真实形态见 FINDINGS.md 6.1）。
+          Tag: "9.9.10",
+          BaseTag: "9.9.9",
           BuildID: 600197,
           BuildState: { state: "APPLYING", log: "" },
           Changelog: [""],
@@ -526,6 +663,7 @@ test("Release 列表解析出 Release ID、构建 ID、Tag 与构建状态", asy
       releaseId: item.releaseId,
       buildId: item.buildId,
       tag: item.tag,
+      baseTag: item.baseTag,
       buildState: item.buildState,
       changeLogMode: item.changeLogMode,
     })),
@@ -533,7 +671,8 @@ test("Release 列表解析出 Release ID、构建 ID、Tag 与构建状态", asy
       {
         releaseId: 107438,
         buildId: 600197,
-        tag: "9.9.9",
+        tag: "9.9.10",
+        baseTag: "9.9.9",
         buildState: "APPLYING",
         changeLogMode: false,
       },
@@ -689,6 +828,7 @@ test("放弃 Topic 前先读回来，读不到就不发 PUT", async () => {
 
 test("只模糊匹配到同名前缀的别的包时拒绝投递，并列出候选", async () => {
   const { client, calls } = mockClient([
+    ["GET /topics/1/releases", json([])],
     [
       "POST /project",
       json({

@@ -461,6 +461,11 @@ export async function pollReleaseBuilds(
         ...(crpRelease.buildId > 0 ? { crpBuildId: String(crpRelease.buildId) } : {}),
         crpReleaseState: crpRelease.raw.Status ?? null,
         crpStatusName: crpRelease.raw.StatusName ?? null,
+        // CRP 记的 Tag 与我们提交的提测版本不一定是同一个值（MKACG-929），两个都原样存下来；
+        // 快照里的 `releaseVersion` 不改写。响应里省略这两个字段时不要把上一次的好值清掉，
+        // 与上面 `crpBuildId` 回 0 不清旧值是同一套保护。
+        ...(crpRelease.tag === "" ? {} : { crpTag: crpRelease.tag }),
+        ...(crpRelease.baseTag === "" ? {} : { crpBaseTag: crpRelease.baseTag }),
         lastSyncedAt: now,
       },
     });
@@ -1038,6 +1043,9 @@ async function adoptExistingRelease(
     snapshot,
     crpReleaseId,
     crpBuildId: existing.buildId > 0 ? String(existing.buildId) : null,
+    // 认领时 CRP 已经把这两个值回了，顺手存下来，页面不用等下一次轮询才有 Tag。
+    crpTag: existing.tag === "" ? null : existing.tag,
+    crpBaseTag: existing.baseTag === "" ? null : existing.baseTag,
   });
 
   return true;
@@ -1099,8 +1107,13 @@ async function recordSubmission(input: {
   snapshot: LoadedRelease["snapshots"][number];
   crpReleaseId: string;
   crpBuildId: string | null;
+  /** CRP 侧记录的版本号；刚投出去时还不知道，要等下一次同步，所以可空。 */
+  crpTag?: string | null;
+  crpBaseTag?: string | null;
 }): Promise<string> {
   const { release, snapshot, crpReleaseId, crpBuildId } = input;
+  const crpBaseTag = input.crpBaseTag ?? null;
+  const crpTag = input.crpTag ?? null;
   const now = new Date();
 
   const created = await prisma.$transaction(async (tx) => {
@@ -1111,10 +1124,15 @@ async function recordSubmission(input: {
         snapshotId: snapshot.id,
         crpReleaseId,
         crpBuildId,
+        crpTag,
+        crpBaseTag,
       },
       update: {
         crpReleaseId,
         crpBuildId,
+        // 重投换了新的 Release：旧的 Tag 不再属于这一轮，等下一次同步再写。
+        crpTag,
+        crpBaseTag,
         crpReleaseState: null,
         crpStatusName: null,
         lastSyncedAt: now,
