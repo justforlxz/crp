@@ -100,13 +100,13 @@
           "borderRadius": "0px",
           "boxShadow": "none",
           "width": "1024px",
-          "height": "34.7969px"
+          "height": "40px"
         },
         "box": {
           "x": 232,
           "y": 408.13,
           "width": 1024,
-          "height": 34.8
+          "height": 40
         }
       }
     ],
@@ -130,7 +130,7 @@
         },
         "box": {
           "x": 232,
-          "y": 519.7,
+          "y": 524.91,
           "width": 1024,
           "height": 27
         }
@@ -156,7 +156,7 @@
         },
         "box": {
           "x": 232,
-          "y": 751.14,
+          "y": 756.34,
           "width": 1024,
           "height": 113.44
         }

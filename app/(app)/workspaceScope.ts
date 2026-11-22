@@ -9,6 +9,7 @@
 import type { Role } from "@/lib/auth/roles";
 import { requirePageAuth } from "@/lib/auth/server";
 import { listWorkspacesForAccount } from "@/lib/auth/store";
+import { pickActiveWorkspace } from "@/lib/auth/workspaces";
 
 export type WorkspaceOption = {
   id: string;
@@ -35,11 +36,10 @@ export async function resolveWorkspaceScope(
   const auth = await requirePageAuth(nextPath);
   const workspaces = await listWorkspacesForAccount(auth.account.id, auth.account.isPlatformAdmin);
 
-  const active =
-    workspaces.find((workspace) => workspace.slug === requestedSlug) ??
-    workspaces.find((workspace) => workspace.id === auth.workspaceId) ??
-    workspaces.at(0) ??
-    null;
+  const active = pickActiveWorkspace(workspaces, {
+    requestedSlug,
+    sessionWorkspaceId: auth.workspaceId,
+  });
 
   return {
     account: {

@@ -41,8 +41,14 @@ import { CopyValue } from "./copyValue";
 // CRP 进度与构建状态一直在变，页面不做静态化。
 export const dynamic = "force-dynamic";
 
-/** 提交号用等宽字体显示，认的是列名而不是下标：列顺序变了也不会串行。 */
-const CODE_COLUMNS = new Set(["基线 Commit", "本次 Commit"]);
+/** 标识符列（版本号、提交号）用等宽字体显示，认的是列名而不是下标：列顺序变了也不会串行。 */
+const CODE_COLUMNS = new Set([
+  "代码版本",
+  "基线仓库版本",
+  "本次提测版本",
+  "基线 Commit",
+  "本次 Commit",
+]);
 
 type ReleaseDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -136,7 +142,7 @@ export default async function ReleaseDetailPage({
         </p>
       )}
 
-      <h2>概要</h2>
+      <h2 className="section-title">概要</h2>
       <dl data-style-anchor="release-detail.summary">
         <dt>提测版本</dt>
         <dd>
@@ -174,7 +180,7 @@ export default async function ReleaseDetailPage({
       {/* 构建状态区块（A14）：数据由服务端定时轮询写进库里，这一块只读。 */}
       <BuildStatusSection releaseId={detail.releaseId} />
 
-      <h2 data-style-anchor="release-detail.update-entry">更新提测</h2>
+      <h2 className="section-title" data-style-anchor="release-detail.update-entry">更新提测</h2>
       {detail.lockReason === null ? (
         <p>
           <Link href={`/releases/${detail.releaseId}/update${scope.query}`}>更新提测</Link>
@@ -191,7 +197,7 @@ export default async function ReleaseDetailPage({
         </p>
       )}
 
-      <h2>更新历史</h2>
+      <h2 className="section-title">更新历史</h2>
       {detail.history.length === 0 ? (
         <p className="empty">这条提测还没有补包或换包记录，只有建提测时的第一轮。</p>
       ) : (
@@ -237,7 +243,7 @@ export default async function ReleaseDetailPage({
         </div>
       )}
 
-      <h2>软件包提交快照</h2>
+      <h2 className="section-title">软件包提交快照</h2>
       <p>
         共 {detail.packages.length} 个软件包，按依赖顺序排列（上游在前）。这张表是这次提测固化下来的
         内容，只读；要改只能走上面的「更新提测」，改出来的结果是一轮新的快照，历史轮次不动。
@@ -252,7 +258,10 @@ export default async function ReleaseDetailPage({
           其余列不受影响。
         </p>
       )}
-      <div className="table-scroll" data-style-anchor="release-detail.snapshot-table-scroll">
+      <div
+        className="table-scroll table-scroll--bounded"
+        data-style-anchor="release-detail.snapshot-table-scroll"
+      >
         <table className="data-table" data-style-anchor="release-detail.snapshot-table">
           <thead>
             <tr>
@@ -279,7 +288,7 @@ export default async function ReleaseDetailPage({
         </table>
       </div>
 
-      <h2>CRP 仓库记录</h2>
+      <h2 className="section-title">CRP 仓库记录</h2>
       {detail.repositoryRecords.length === 0 ? (
         <p className="empty">这些软件包还没投递到 CRP，所以还没有仓库记录。</p>
       ) : (
@@ -340,7 +349,7 @@ export default async function ReleaseDetailPage({
         不修改任何快照，也不往 CRP 发写请求。
       </p>
 
-      <h2>提测信息</h2>
+      <h2 className="section-title">提测信息</h2>
       <dl data-style-anchor="release-detail.crp-info">
         <dt>CRP Topic ID</dt>
         <dd>
@@ -398,46 +407,48 @@ export default async function ReleaseDetailPage({
         <dd>{formatTime(detail.workProgressSyncedAt)}</dd>
       </dl>
 
-      <h2 data-style-anchor="release-detail.danger-zone">危险操作</h2>
-      {detail.source === "imported" ? (
-        <>
-          <p>
-            「放弃提测主题」把 CRP 上的这个 Topic 标记为「已放弃」，用来就地清理演练与验收留下的主题。
-            它与投递页的「取消提测」是两个动作：放弃主题一条 Release 都不删，也不改任何快照；
-            取消提测才会逐个删 Release。
-          </p>
-          <p>
-            放弃之后不能撤销，CRP 上也不会再接受往这个主题里投递。已经转测（CRP 工作流进度 ≥ 20）的
-            主题不能放弃，服务端会再判一次，不只靠这里的禁用。
-          </p>
-          {abandonLockReason === null ? (
-            <AbandonTopicForm
-              releaseId={detail.releaseId}
-              topicId={detail.crpTopicId ?? ""}
-              topicName={abandonTopicName ?? detail.version}
-              packageCount={detail.packages.length}
-              hasCrpReleases={detail.repositoryRecords.length > 0}
-              action={abandonTopicAction}
-            />
-          ) : (
+      <section className="danger-zone" data-style-anchor="release-detail.danger-zone">
+        <h2>危险操作</h2>
+        {detail.source === "imported" ? (
+          <>
             <p>
-              <button type="button" className="btn btn-danger-outline" disabled>
-                放弃提测主题
-              </button>
-              {"　"}
-              <span role="status">{abandonLockReason}</span>
+              「放弃提测主题」把 CRP 上的这个 Topic 标记为「已放弃」，用来就地清理演练与验收留下的主题。
+              它与投递页的「取消提测」是两个动作：放弃主题一条 Release 都不删，也不改任何快照；
+              取消提测才会逐个删 Release。
             </p>
-          )}
-        </>
-      ) : (
-        <>
-          <p>
-            这条提测是在平台上创建的，它自己的 Release 要连同主题一起清理，走「取消提测」。
-            「放弃提测主题」只用于从 CRP 导入的提测：导入主题里的 Release 是别人投的，不能删。
-          </p>
-          <p role="status">{abandonLockReason}</p>
-        </>
-      )}
+            <p>
+              放弃之后不能撤销，CRP 上也不会再接受往这个主题里投递。已经转测（CRP 工作流进度 ≥ 20）的
+              主题不能放弃，服务端会再判一次，不只靠这里的禁用。
+            </p>
+            {abandonLockReason === null ? (
+              <AbandonTopicForm
+                releaseId={detail.releaseId}
+                topicId={detail.crpTopicId ?? ""}
+                topicName={abandonTopicName ?? detail.version}
+                packageCount={detail.packages.length}
+                hasCrpReleases={detail.repositoryRecords.length > 0}
+                action={abandonTopicAction}
+              />
+            ) : (
+              <p>
+                <button type="button" className="btn btn-danger-outline" disabled>
+                  放弃提测主题
+                </button>
+                {"　"}
+                <span role="status">{abandonLockReason}</span>
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <p>
+              这条提测是在平台上创建的，它自己的 Release 要连同主题一起清理，走「取消提测」。
+              「放弃提测主题」只用于从 CRP 导入的提测：导入主题里的 Release 是别人投的，不能删。
+            </p>
+            <p role="status">{abandonLockReason}</p>
+          </>
+        )}
+      </section>
     </PageShell>
   );
 }

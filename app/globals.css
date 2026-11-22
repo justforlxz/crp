@@ -108,6 +108,17 @@ h4 {
   font-size: var(--font-size-base);
 }
 
+/*
+ * 两级标题：组与节。
+ *
+ * 组级标题是默认的 `h2`（20px/600），节级标题用小一号的 16px/600 与更小的上边距。
+ * 提测详情把只读信息与更新入口标成节、终局操作「危险操作」留在组级，滚到底才看得出这一页分两层。
+ */
+.section-title {
+  margin-top: var(--space-5);
+  font-size: var(--font-size-lg);
+}
+
 p {
   margin: 0 0 var(--space-3);
 }
@@ -121,8 +132,13 @@ ol {
 li {
   margin-bottom: var(--space-1);
 }
-
 a {
+  /*
+   * 行内链接（面包屑、正文里的跳转）与按钮共用同一套 40px 命中区。
+   * 用纵向内边距补：行内元素的纵向 padding 不参与行高，文字位置与字号都不动；
+   * 行内元素的内容区高度按字体算（13px 字号约 19px），12px 让 12–14px 的字都补到 40px 以上。
+   */
+  padding-block: 12px;
   color: var(--color-primary);
   text-decoration: none;
 }
@@ -131,8 +147,20 @@ a:hover {
   text-decoration: underline;
 }
 
+/*
+ * flex 行（`.row`）里的链接会被当成 flex 子项，上一条的纵向内边距会把整行撑高 24px。
+ * 这一行里同样补到 40px，但用 min-height 补，不额外增加高度。
+ */
+.row > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding-block: 0;
+}
+
 code {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 0.92em;
   padding: 1px var(--space-1);
   border-radius: var(--radius-sm);
@@ -218,7 +246,10 @@ legend {
 }
 
 .app-nav__link {
-  display: block;
+  display: flex;
+  align-items: center;
+  /* 密集桌面界面的命中区下限 40px：侧栏导航原来 38px，只补高度，字不放大。 */
+  min-height: 40px;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
   color: var(--color-text);
@@ -340,6 +371,18 @@ legend {
   overflow-x: auto;
 }
 
+/*
+ * 长表格在自己的容器里纵向滚动，表头才吸得住。
+ *
+ * `.table-scroll` 带 `overflow-x: auto`，它同时是纵向滚动容器：容器没有高度上限时纵向永远不滚，
+ * `thead th` 的 `position: sticky` 就不会生效。420px 大约放得下 5 行，
+ * 看列名与当前行都够，也不会把整页拉成一屏滚动。
+ */
+.table-scroll--bounded {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -357,6 +400,10 @@ legend {
 }
 
 .data-table th {
+  /* 表头吸顶：底色在 .data-table th 里已经是不透明的 surface-muted，滚动内容不会透出来。 */
+  position: sticky;
+  top: 0;
+  z-index: 2;
   font-weight: 600;
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
@@ -381,6 +428,18 @@ legend {
   align-items: center;
 }
 
+/*
+ * 表格里的链接（版本号、详情、导出）同样要 40px 命中区。
+ * 纵向负外边距抵消单元格的上下内边距：命中区铺满整格，行高只涨 2px，不把表格撑开。
+ */
+.data-table td > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  margin-block: calc(var(--space-2) * -1);
+  padding-block: var(--space-2);
+}
+
 /* ---------- 表单控件 ---------- */
 
 input,
@@ -388,6 +447,8 @@ select,
 textarea {
   max-width: 100%;
   padding: var(--space-2) var(--space-3);
+  /* 表单控件与按钮同一套 40px 命中区：只补高度，字号不动。 */
+  min-height: 40px;
   font-family: inherit;
   font-size: var(--font-size-base);
   color: var(--color-text);
@@ -400,14 +461,21 @@ input[type="checkbox"],
 input[type="radio"] {
   width: auto;
   margin-right: var(--space-1);
+  /* 勾选框与单选框不参与 40px 命中区：它们不是一个完整的操作，命中面积由旁边的文字标签承担。 */
+  min-height: 0;
 }
 
-input:focus,
-select:focus,
-textarea:focus,
-button:focus-visible {
+/*
+ * 键盘焦点环：全站统一 2px、偏移 2px，颜色仍用现有的强调色。
+ * 用 `:focus-visible` 而不是 `:focus`：鼠标点按钮不出环，键盘走到哪里都看得见。
+ */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
   outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 input:disabled,
@@ -450,6 +518,8 @@ button,
   justify-content: center;
   gap: var(--space-1);
   padding: var(--space-2) var(--space-4);
+  /* 命中区下限 40px：按 dense desktop 的口径，只补高度，字号不动。 */
+  min-height: 40px;
   font-family: inherit;
   font-size: var(--font-size-base);
   line-height: 1.2;
@@ -464,6 +534,12 @@ button:hover:not(:disabled),
 .btn:hover {
   background: var(--color-primary-border);
   text-decoration: none;
+}
+
+/* 按下反馈：只在按住时缩一点点，不加动画，也不改布局与颜色。 */
+button:active:not(:disabled),
+.btn:active {
+  transform: scale(0.96);
 }
 
 button:disabled {
@@ -614,15 +690,36 @@ a.btn:hover {
   gap: var(--space-2);
   align-items: center;
   margin-bottom: var(--space-4);
-  padding: var(--space-3);
+  padding: var(--space-2);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  /* 同心圆角：外层 = 内层控件圆角 + 自己的内边距（4 + 8），内外才不打架。 */
+  border-radius: calc(var(--radius-sm) + var(--space-2));
 }
 
 .filter-bar label {
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
+}
+
+/* ---------- 危险操作区 ---------- */
+
+/*
+ * 提测详情页末尾的「放弃提测主题」整节。
+ *
+ * 全站唯一一处左边线，也是本单唯一一处「故意破例」：宽度固定 2px，只用 --color-danger，
+ * 不做浅红底、不加图标、不加斜纹与渐变。与上方内容靠 48px 的上外边距断开，
+ * 滚到页尾时这一节的形状与上方所有只读信息都不一样。
+ */
+.danger-zone {
+  margin-top: var(--space-7);
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--color-danger);
+}
+
+/* 竖线区域里第一个标题不要再叠一层自己的上外边距，否则 48px 的断点会被撑成 80px。 */
+.danger-zone > :first-child {
+  margin-top: 0;
 }
 
 /* ---------- 窄屏 ---------- */
@@ -675,6 +772,11 @@ a.btn:hover {
 
   h2 {
     font-size: var(--font-size-lg);
+  }
+
+  /* 窄屏下 h2 已经缩到 16px，节级标题再降一档，两级仍然分得开。 */
+  .section-title {
+    font-size: var(--font-size-base);
   }
 
   dl {
