@@ -7,6 +7,15 @@
  * - `searchTopics` 走 `GET /branches/{id}/topics?Type=test` 再按名称过滤 ——
  *   `POST /topics/search` 在这个部署上不可用（对任何请求体都返回 `null`），
  *   所以这里同时断言「一次 POST /topics/search 都没发」。
+ *
+ * 以及 MKACG-946 追加的「只看我的主题」（`mine`）：
+ *
+ * - 当前账号只能来自 `GET /user`，由客户端自己解析，调用方传不进别人的账号；
+ * - Owner 三种形状都认（字符串、对象数组、`null`），对象项的 `name` 与 `namecn` 都算，
+ *   比较不区分大小写；
+ * - `mine` 只收窄不收宽：别人的主题一条都不许出现；
+ * - 截断时 `total` 给的是截断前的命中数，页面据此提示「只显示前 N 条」；
+ * - 默认按 Topic ID 倒序，最近建的在前。
  */
 
 import assert from "node:assert/strict";
@@ -18,8 +27,27 @@ const BASE = "https://crp.example.test/api";
 
 type Call = { method: string; path: string; search: string };
 
+/** `GET /user` 的默认响应：LDAP 账号 `crp-user`，中文名「CRP 用户」。 */
+const CURRENT_USER = { Name: "crp-user", NameCN: "CRP 用户" };
+
+/** 一条主题的最小形状，只写测试关心的字段。 */
+function topic(overrides: Record<string, unknown>): Record<string, unknown> {
+  return {
+    BranchID: 108,
+    Type: "test",
+    Abandoned: false,
+    Completed: false,
+    State: 0,
+    Owner: null,
+    ...overrides,
+  };
+}
+
 /** 假 CRP：记录每次请求，按路径回固定响应。 */
-function fakeCrp(topics: unknown[]): { fetch: typeof fetch; calls: Call[] } {
+function fakeCrp(
+  topics: unknown[],
+  user: unknown = CURRENT_USER,
+): { fetch: typeof fetch; calls: Call[] } {
   const calls: Call[] = [];
 
   const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -32,6 +60,13 @@ function fakeCrp(topics: unknown[]): { fetch: typeof fetch; calls: Call[] } {
       path: parsed.pathname.replace(/^\/api/, ""),
       search: parsed.search,
     });
+
+    if (method === "GET" && parsed.pathname.replace(/^\/api/, "") === "/user") {
+      return new Response(JSON.stringify(user), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
     if (method === "GET" && /^\/topics\/\d+$/.test(parsed.pathname.replace(/^\/api/, ""))) {
       const id = Number(parsed.pathname.split("/").at(-1));
@@ -107,57 +142,27 @@ test("读主题：Topic ID 不合法时本地就拦下，不发请求", async ()
 test("按名称搜主题：只回 test 类型、名字含关键字的那几条，一次 POST 都没发", async () => {
   const state = fakeCrp([
     // 名字匹配、类型 test：要留下
-    {
+    topic({
       ID: 1,
       Name: "FlemingZ TR6增补主题",
-      BranchID: 108,
-      Type: "test",
-      Abandoned: false,
-      Completed: false,
-      State: 0,
       Owner: [{ name: "crp-user" }],
-    },
+    }),
     // 名字匹配但类型不是 test：丢掉
-    {
-      ID: 2,
-      Name: "Fleming 的 dev 主题",
-      BranchID: 108,
-      Type: "dev",
-      Abandoned: false,
-      Completed: false,
-      State: 0,
-      Owner: null,
-    },
+    topic({ ID: 2, Name: "Fleming 的 dev 主题", Type: "dev" }),
     // 名字不匹配：丢掉
-    {
-      ID: 3,
-      Name: "别的主题",
-      BranchID: 108,
-      Type: "test",
-      Abandoned: false,
-      Completed: false,
-      State: 0,
-      Owner: null,
-    },
+    topic({ ID: 3, Name: "别的主题" }),
     // 大小写不同但名字匹配：要留下（名字比较不区分大小写）
-    {
-      ID: 4,
-      Name: "yaml 打包问题",
-      BranchID: 108,
-      Type: "test",
-      Abandoned: false,
-      Completed: false,
-      State: 0,
-      Owner: null,
-    },
+    topic({ ID: 4, Name: "yaml 打包问题" }),
   ]);
 
-  const topics = await client(state.fetch).searchTopics({ branchId: 108, name: "fleming" });
-  assert.deepEqual(topics.map((item) => item.id), [1]);
-  assert.equal(topics[0].owner, "crp-user");
+  const fleming = await client(state.fetch).searchTopics({ branchId: 108, name: "fleming" });
+  assert.deepEqual(fleming.topics.map((item) => item.id), [1]);
+  assert.equal(fleming.topics[0].owner, "crp-user");
+  assert.equal(fleming.total, 1, "没有截断时 total 与返回条数一致");
+  assert.equal(fleming.currentUser, null, "纯关键字搜索不需要解析当前账号");
 
   const yaml = await client(state.fetch).searchTopics({ branchId: 108, name: "YAML" });
-  assert.deepEqual(yaml.map((item) => item.id), [4]);
+  assert.deepEqual(yaml.topics.map((item) => item.id), [4]);
 
   assert.equal(
     state.calls.some((call) => call.method === "POST"),
@@ -185,19 +190,90 @@ test("按名称搜主题：关键字为空或分支 ID 不合法时报参数错�
   assert.equal(state.calls.length, 0);
 });
 
-test("按名称搜主题：结果一次性只回上限那么多条", async () => {
-  const many = Array.from({ length: 80 }, (_, index) => ({
-    ID: 1_000 + index,
-    Name: `主题 ${index}`,
-    BranchID: 108,
-    Type: "test",
-    Abandoned: false,
-    Completed: false,
-    State: 0,
-    Owner: null,
-  }));
+test("按名称搜主题：结果一次性只回上限那么多条，total 仍然是截断前的命中数", async () => {
+  const many = Array.from({ length: 80 }, (_, index) => topic({ ID: 1_000 + index, Name: `主题 ${index}` }));
 
-  const topics = await client(fakeCrp(many).fetch).searchTopics({ branchId: 108, name: "主题" });
+  const result = await client(fakeCrp(many).fetch).searchTopics({ branchId: 108, name: "主题" });
 
-  assert.equal(topics.length, 50, "最多 50 条，防止把整条分支的主题都塞给页面");
+  assert.equal(result.topics.length, 50, "最多 50 条，防止把整条分支的主题都塞给页面");
+  assert.equal(result.total, 80, "截断前的命中条数要如实报出来，页面才能提示被截断");
+});
+
+test("按名称搜主题：按 Topic ID 倒序，最近建的排在前面", async () => {
+  const state = fakeCrp([
+    topic({ ID: 101, Name: "主题甲" }),
+    topic({ ID: 303, Name: "主题丙" }),
+    topic({ ID: 202, Name: "主题乙" }),
+  ]);
+
+  const result = await client(state.fetch).searchTopics({ branchId: 108, name: "主题" });
+
+  assert.deepEqual(result.topics.map((item) => item.id), [303, 202, 101]);
+});
+
+test("只看我的主题：当前账号来自 GET /user，三种 Owner 形状都认，别人的一条都不出现", async () => {
+  const state = fakeCrp([
+    // 对象数组里 name 命中（大小写不同）：算本人
+    topic({ ID: 101, Name: "我的主题 A", Owner: [{ name: "CRP-User", namecn: "CRP 用户" }] }),
+    // Owner 是字符串：算本人
+    topic({ ID: 102, Name: "我的主题 B", Owner: "crp-user" }),
+    // 对象里只有 namecn，且大小写不同：也算本人
+    topic({ ID: 103, Name: "我的主题 C", Owner: [{ namecn: "crp 用户" }] }),
+    // 别人的主题：不能出现
+    topic({
+      ID: 104,
+      Name: "别人的主题",
+      Owner: [{ name: "zhangdingyuan", namecn: "张丁元" }],
+    }),
+    // 没有 Owner：不能出现
+    topic({ ID: 105, Name: "没主人的主题", Owner: null }),
+    // 本人建的不是 test 类型：不能出现
+    topic({ ID: 106, Name: "我的 dev 主题", Type: "dev", Owner: "crp-user" }),
+  ]);
+
+  const result = await client(state.fetch).searchTopics({ branchId: 108, mine: true });
+
+  assert.deepEqual(
+    result.topics.map((item) => item.id),
+    [103, 102, 101],
+    "只留本人的 test 类型主题，并按 ID 倒序",
+  );
+  assert.equal(result.currentUser?.name, "crp-user", "账号名取自 GET /user");
+  assert.equal(result.currentUser?.nameCn, "CRP 用户", "中文名也一并带出来，页面要显示");
+  assert.equal(result.total, 3);
+  assert.deepEqual(
+    state.calls.map((call) => `${call.method} ${call.path}`),
+    // 先问「我是谁」，再列分支下的主题：身份只能由客户端自己取，调用方传不进来。
+    ["GET /user", "GET /branches/108/topics"],
+  );
+});
+
+test("只看我的主题：可以同时给关键字，两个条件一起收窄", async () => {
+  const state = fakeCrp([
+    topic({ ID: 201, Name: "缩放联调", Owner: "crp-user" }),
+    topic({ ID: 202, Name: "yaml 打包", Owner: "crp-user" }),
+    topic({ ID: 203, Name: "缩放联调（别人）", Owner: [{ name: "zhangdingyuan" }] }),
+  ]);
+
+  const result = await client(state.fetch).searchTopics({
+    branchId: 108,
+    mine: true,
+    name: "缩放",
+  });
+
+  assert.deepEqual(result.topics.map((item) => item.id), [201]);
+});
+
+test("只看我的主题：GET /user 没给账号名时报认证错误，不拿空账号去匹配", async () => {
+  const state = fakeCrp([], {});
+
+  await assert.rejects(
+    () => client(state.fetch).searchTopics({ branchId: 108, mine: true }),
+    /GET \/user 没有返回账号名/,
+  );
+  assert.deepEqual(
+    state.calls.map((call) => `${call.method} ${call.path}`),
+    ["GET /user"],
+    "账号都拿不到就不必去列主题",
+  );
 });

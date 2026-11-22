@@ -35,7 +35,14 @@ export {
 export { toCrpArches, toCrpArchList } from "./arches";
 export { validateReleaseTag } from "./tag";
 export { pickExactProject, resolveProjectId, searchProjects } from "./projects";
-export { getTopic, normalizeTopic, searchTopics, TOPIC_SEARCH_LIMIT } from "./topics";
+export {
+  getTopic,
+  normalizeTopic,
+  searchTopics,
+  topicOwnedBy,
+  TOPIC_SEARCH_LIMIT,
+  type CrpTopicSearchResult,
+} from "./topics";
 export {
   normalizeTopicWorkflow,
   WORK_PROGRESS,

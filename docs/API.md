@@ -877,10 +877,15 @@ curl -fsS -X POST -b cookie.txt -H "content-type: application/json" \
 
 ## GET /api/releases/import
 
-从 CRP 导入的第一步「找主题」用。两种用法二选一：
+从 CRP 导入的第一步「找主题」用。三种用法：
 
 - `?topicId=123`：读一个主题，顺带给出它有多少个 Release；
-- `?baselineId=<uuid>&name=<关键字>`：在某条基线（CRP 交付分支）下按名称搜 `test` 类型主题。
+- `?baselineId=<uuid>&name=<关键字>`：在某条基线（CRP 交付分支）下按名称搜 `test` 类型主题；
+- `?baselineId=<uuid>&mine=1`：列出**当前 CRP 账号**在这条基线下当 Owner 的全部 `test` 类型主题，
+  不用想关键字 —— 对应 CRP 自己的「查看我的主题」。`mine=1` 时 `name` 可省略，也可以同时给，
+  两个条件一起收窄。`name` 与 `mine` 都不给则返回 `400`。
+
+「当前账号」只取服务端 `GET /user` 的返回值，请求里带不了别人的账号。
 
 ### 鉴权
 
@@ -906,28 +911,43 @@ curl -fsS -X POST -b cookie.txt -H "content-type: application/json" \
 }
 ```
 
-按名称搜：
+列表（按名称搜与「只看我的主题」同一个返回体）：
 
 ```json
 {
   "topics": [
     { "id": 29123, "name": "…", "branchId": 108, "branchName": "eagle-1071",
       "owner": "zhangcailian", "type": "test", "abandoned": false, "completed": false,
-      "releaseCount": null }
-  ]
+      "releaseCount": null, "mine": true }
+  ],
+  "total": 63,
+  "limit": 50,
+  "truncated": true,
+  "currentUser": { "name": "crp-user", "nameCn": "CRP 用户" }
 }
 ```
 
-搜索走 `GET /branches/{branchId}/topics?Type=test` 再本地按名称包含匹配（不区分大小写），
-最多 50 条；`POST /topics/search` 在这个部署上对任何请求体都返回 `null`，不用它。理由与实测见
-`lib/integrations/crp/FINDINGS.md` 第十一节。搜索结果不回 `releaseCount`（要逐条查 Release，代价太大）。
+| 字段 | 含义 |
+| --- | --- |
+| `topics[].owner` | Owner 的账号名，多人用 `;` 连接，没有 Owner 时为空串 |
+| `topics[].mine` | Owner 里有没有当前 CRP 账号；按 ID 读主题、以及没解析账号的关键字搜索为 `null`（未判断） |
+| `total` | 截断**之前**的命中条数 |
+| `limit` | 单次上限（`TOPIC_SEARCH_LIMIT`，50） |
+| `truncated` | `total` 大于实际返回条数时为 `true`，页面据此提示「只显示前 N 条」 |
+| `currentUser` | 「只看我的主题」用的当前 CRP 账号；只按关键字搜时为 `null` |
+
+列表按 Topic ID 倒序（最近建的在前）。走 `GET /branches/{branchId}/topics?Type=test` 再本地过滤，
+`POST /topics/search` 在这个部署上对任何请求体都返回 `null`，不用它。理由与实测见
+`lib/integrations/crp/FINDINGS.md` 第十一节。列表不回真实的 `releaseCount`（要逐条查 Release，代价太大），
+`releaseCount` 一律是 `null`。
+
 
 ### 状态码
 
 | 状态码 | `error.code` | 什么情况 |
 | --- | --- | --- |
 | `200` | — | 读到主题，或搜索结果（可以为空数组） |
-| `400` | `invalid_query` | 既没给 `topicId`，也没同时给 `baselineId` 与 `name`；`topicId` 不是正整数 |
+| `400` | `invalid_query` | 既没给 `topicId`，也没给 `baselineId`；`name` 与 `mine` 都没给；`topicId` 不是正整数 |
 | `401` | `unauthenticated` | 未登录 |
 | `404` | `baseline_not_found` | `baselineId` 不存在 |
 | `409` | `baseline_without_branch` | 这条基线没有可用的 CRP 分支 ID |

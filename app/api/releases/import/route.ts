@@ -4,7 +4,10 @@
  * 两条 GET 用于第一步「找主题」：
  *
  * - `?topicId=123`：按 ID 读一个主题，顺带给出它有多少个 Release；
- * - `?baselineId=<uuid>&name=<关键字>`：在某条基线（CRP 交付分支）下按名称搜 `test` 类型主题。
+ * - `?baselineId=<uuid>&name=<关键字>`：在某条基线（CRP 交付分支）下按名称搜 `test` 类型主题；
+ * - `?baselineId=<uuid>&mine=1`：列出当前 CRP 账号在这条基线下建的全部 `test` 类型主题，
+ *   不用想关键字，和 CRP 自己的「查看我的主题」一致。`mine=1` 时 `name` 可省略，也可以
+ *   同时给，两个条件一起收窄。当前账号只取服务端 `GET /user` 的返回值，请求里带不进来。
  *
  * 一条 POST 同时承担「预览」与「导入」：`mode=preview` 只算不写，`mode=commit` 真正落库。
  * 两条路走的是同一个计划函数，页面看到的逐包映射就是服务端要写的东西。
@@ -22,6 +25,8 @@ import { prisma } from "@/lib/db";
 import {
   createCrpClientFromEnv,
   CrpError,
+  topicOwnedBy,
+  TOPIC_SEARCH_LIMIT,
   type CrpTopic,
 } from "@/lib/integrations/crp";
 import {
@@ -48,6 +53,8 @@ type TopicSummary = {
   abandoned: boolean;
   completed: boolean;
   releaseCount: number;
+  /** Owner 里有没有当前 CRP 账号；只按关键字搜（没解析过账号）时为 `null`。 */
+  mine: boolean | null;
 };
 
 /** `ReleaseError` 的状态码 → 错误码，一处定义，预览与导入共用。 */
@@ -98,6 +105,8 @@ async function summarizeTopic(topic: CrpTopic, releaseCount: number): Promise<To
     abandoned: topic.abandoned,
     completed: topic.completed,
     releaseCount,
+    // 按 ID 读主题不解析当前账号，所以「是不是本人建的」这里不做判断。
+    mine: null,
   };
 }
 
@@ -113,6 +122,8 @@ export async function GET(request: Request) {
   const topicIdText = (url.searchParams.get("topicId") ?? "").trim();
   const baselineId = (url.searchParams.get("baselineId") ?? "").trim();
   const name = (url.searchParams.get("name") ?? "").trim();
+  // `mine=1` 是「只看我的主题」。只认 `1`，别的值一律当没给，免得 `mine=0` 之类被当成真。
+  const mine = (url.searchParams.get("mine") ?? "").trim() === "1";
   const topicId = topicIdText === "" ? null : Number(topicIdText);
 
   // 先把两种用法分清楚，再连 CRP：参数不对不必去碰上游。
@@ -120,11 +131,19 @@ export async function GET(request: Request) {
     return errorJson(400, "invalid_query", "topicId 必须是正整数。");
   }
 
-  if (topicId === null && (baselineId === "" || name === "")) {
+  if (topicId === null && baselineId === "") {
     return errorJson(
       400,
       "invalid_query",
-      "要么给 topicId，要么同时给 baselineId 与 name（按名称搜索）。",
+      "要么给 topicId，要么给 baselineId —— 按名称搜索与「只看我的主题」都要先选一条基线。",
+    );
+  }
+
+  if (topicId === null && name === "" && !mine) {
+    return errorJson(
+      400,
+      "invalid_query",
+      "要么给 topicId，要么同时给 baselineId 与 name（按名称搜索）；只想看自己建的主题就再加 mine=1。",
     );
   }
 
@@ -167,8 +186,13 @@ export async function GET(request: Request) {
   }
 
   try {
-    const topics = await crp.searchTopics({ branchId, name });
+    const { topics, total, currentUser } = await crp.searchTopics({ branchId, name, mine });
     const branchName = await branchNameOf(branchId);
+    // 判断口径与列表过滤同一个函数：页面上「创建者是否本人」不能和筛选各算一套。
+    const accounts =
+      currentUser === null
+        ? []
+        : [currentUser.name, currentUser.nameCn].map((item) => item.trim()).filter((item) => item !== "");
 
     return NextResponse.json({
       topics: topics.map((topic) => ({
@@ -181,11 +205,18 @@ export async function GET(request: Request) {
         abandoned: topic.abandoned,
         completed: topic.completed,
         releaseCount: null,
+        mine: currentUser === null ? null : topicOwnedBy(topic, accounts),
       })),
+      // 截断要能让页面说清「只显示前 N 条」：`total` 是截断前的命中数。
+      total,
+      limit: TOPIC_SEARCH_LIMIT,
+      truncated: total > topics.length,
+      currentUser:
+        currentUser === null ? null : { name: currentUser.name, nameCn: currentUser.nameCn },
     });
   } catch (error) {
     if (error instanceof CrpError) {
-      return crpFailure(error, "搜索主题");
+      return crpFailure(error, mine ? "读取我的主题" : "搜索主题");
     }
 
     throw error;

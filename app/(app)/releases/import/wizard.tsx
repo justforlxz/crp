@@ -38,6 +38,23 @@ type TopicSummary = {
   abandoned: boolean;
   completed: boolean;
   releaseCount: number | null;
+  /** Owner 里有没有当前 CRP 账号；按关键字搜（没解析账号）时为 `null`。 */
+  mine: boolean | null;
+};
+
+/**
+ * 第一步列表的返回（`GET /api/releases/import?baselineId=…`）。
+ *
+ * `total` 是截断前的命中条数，`limit` 是单次上限：两者不一致就要在页面上说清
+ * 「只显示前 N 条」，不能让人以为看到的就是全部。
+ */
+type TopicList = {
+  topics: TopicSummary[];
+  total: number;
+  limit: number;
+  truncated: boolean;
+  /** 「只看我的主题」用到的当前 CRP 账号；按关键字搜时为 `null`。 */
+  currentUser: { name: string; nameCn: string } | null;
 };
 
 /** 预览里的一行。字段与 `lib/releases/import.ts` 的 `ImportedPackagePlan` 一致。 */
@@ -122,6 +139,14 @@ export function ImportWizard({
   const [baselineId, setBaselineId] = useState(baselines[0]?.id ?? "");
   const [keyword, setKeyword] = useState("");
   const [candidates, setCandidates] = useState<TopicSummary[] | null>(null);
+  /** 「只看我的主题」：不输关键字，直接列当前 CRP 账号当 Owner 的主题。 */
+  const [mineOnly, setMineOnly] = useState(false);
+  const [listMeta, setListMeta] = useState<{
+    total: number;
+    limit: number;
+    truncated: boolean;
+  } | null>(null);
+  const [currentAccount, setCurrentAccount] = useState<{ name: string; nameCn: string } | null>(null);
   const [topic, setTopic] = useState<TopicSummary | null>(null);
   const [managerId, setManagerId] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -168,12 +193,25 @@ export function ImportWizard({
     }
   }
 
-  async function searchByName(): Promise<void> {
+  /**
+   * 第一步的列表：`mineOnly` 打开时不带关键字，列出当前 CRP 账号建的主题；否则按关键字搜。
+   *
+   * 两条路返回同一份结构，截断信息（`total` / `limit`）一起带回来，页面据此提示
+   * 「只显示前 N 条」。
+   */
+  async function loadTopics(): Promise<void> {
     setError(null);
     setBusy(true);
 
     try {
-      const params = new URLSearchParams({ baselineId, name: keyword.trim() });
+      const params = new URLSearchParams({ baselineId });
+
+      if (mineOnly) {
+        params.set("mine", "1");
+      } else {
+        params.set("name", keyword.trim());
+      }
+
       const response = await fetch(`/api/releases/import?${params.toString()}`);
 
       if (!response.ok) {
@@ -182,8 +220,10 @@ export function ImportWizard({
         return;
       }
 
-      const payload = (await response.json()) as { topics: TopicSummary[] };
+      const payload = (await response.json()) as TopicList;
       setCandidates(payload.topics);
+      setListMeta({ total: payload.total, limit: payload.limit, truncated: payload.truncated });
+      setCurrentAccount(payload.currentUser);
     } finally {
       setBusy(false);
     }
@@ -341,15 +381,19 @@ export function ImportWizard({
             </button>
           </div>
 
-          <label className="field-label" htmlFor="topic-name">
-            或按名称搜索（只搜当前基线下的 test 类型主题）
+          <label className="field-label" htmlFor="topic-baseline">
+            基线（CRP 交付分支）：按名称搜索与「只看我的主题」都在这一条分支下找
           </label>
           <div className="row">
             <select
               id="topic-baseline"
               className="input"
               value={baselineId}
-              onChange={(event) => setBaselineId(event.target.value)}
+              onChange={(event) => {
+                setBaselineId(event.target.value);
+                setCandidates(null);
+                setListMeta(null);
+              }}
             >
               {baselines.length === 0 ? <option value="">（还没有基线）</option> : null}
               {baselines.map((item) => (
@@ -358,68 +402,119 @@ export function ImportWizard({
                 </option>
               ))}
             </select>
-            <input
-              id="topic-name"
-              className="input"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              placeholder="主题名的一部分"
-            />
+          </div>
+
+          <p>
+            <label>
+              <input
+                type="checkbox"
+                checked={mineOnly}
+                onChange={(event) => {
+                  setMineOnly(event.target.checked);
+                  // 换模式就清空上一批结果：否则「我的主题」下面会挂着上次关键字搜出来的别人的主题。
+                  setCandidates(null);
+                  setListMeta(null);
+                }}
+              />{" "}
+              只看我的主题（当前 CRP 账号当 Owner 的 test 类型主题，不用输关键字）
+            </label>
+            {currentAccount === null ? null : (
+              <span className="hint">
+                {" "}
+                当前 CRP 账号：
+                {currentAccount.nameCn === ""
+                  ? currentAccount.name
+                  : `${currentAccount.nameCn}（${currentAccount.name}）`}
+              </span>
+            )}
+          </p>
+
+          {mineOnly ? null : (
+            <label className="field-label" htmlFor="topic-name">
+              主题名关键字
+            </label>
+          )}
+          <div className="row">
+            {mineOnly ? null : (
+              <input
+                id="topic-name"
+                className="input"
+                value={keyword}
+                onChange={(event) => setKeyword(event.target.value)}
+                placeholder="主题名的一部分"
+              />
+            )}
             <button
               type="button"
               className="btn btn-secondary btn-sm"
-              onClick={() => void searchByName()}
-              disabled={busy || baselineId === "" || keyword.trim() === ""}
+              onClick={() => void loadTopics()}
+              disabled={busy || baselineId === "" || (!mineOnly && keyword.trim() === "")}
             >
-              搜索
+              {mineOnly ? "列出我的主题" : "搜索"}
             </button>
           </div>
 
-          {candidates === null ? null : candidates.length === 0 ? (
-            <p className="hint">这条基线下没有名字包含「{keyword}」的 test 类型主题。</p>
-          ) : (
-            <div className="table-scroll">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>主题</th>
-                    <th>基线分支</th>
-                    <th>Owner</th>
-                    <th>状态</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {candidates.map((item) => (
-                    <tr key={item.id}>
-                      <td>
-                        {item.name}
-                        <br />
-                        <small>ID {item.id}</small>
-                      </td>
-                      <td>
-                        <code>{item.branchName}</code>
-                      </td>
-                      <td>{item.owner === "" ? "—" : item.owner}</td>
-                      <td>
-                        {item.abandoned ? "已放弃" : item.completed ? "已完成" : "进行中"}
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => setTopic(item)}
-                        >
-                          选这个
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {candidates === null ? null : (
+            <>
+              {listMeta !== null && listMeta.truncated ? (
+                <p className="alert alert--warn" role="status">
+                  这条基线下命中 {listMeta.total} 个主题，只显示前 {candidates.length} 条（单次上限{" "}
+                  {listMeta.limit} 条）。缩小范围能看全其余部分。
+                </p>
+              ) : null}
 
+              {candidates.length === 0 ? (
+                <p className="hint">
+                  {mineOnly
+                    ? "这条基线下没有你当 Owner 的 test 类型主题。"
+                    : `这条基线下没有名字包含「${keyword}」的 test 类型主题。`}
+                </p>
+              ) : (
+                <div className="table-scroll">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Topic ID</th>
+                        <th>主题</th>
+                        <th>基线分支</th>
+                        <th>Owner</th>
+                        <th>创建者</th>
+                        <th>状态</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {candidates.map((item) => (
+                        <tr key={item.id}>
+                          <td>
+                            <code>{item.id}</code>
+                          </td>
+                          <td>{item.name}</td>
+                          <td>
+                            <code>{item.branchName}</code>
+                          </td>
+                          <td>{item.owner === "" ? "—" : item.owner}</td>
+                          <td>{item.mine === null ? "—" : item.mine ? "本人" : "他人"}</td>
+                          <td>
+                            {item.abandoned ? "已放弃" : item.completed ? "已完成" : "进行中"}
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => setTopic(item)}
+                            >
+                              选这个
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
           {topic === null ? null : (
             <div className="section">
               <h3>已选主题</h3>
