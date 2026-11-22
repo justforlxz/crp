@@ -547,7 +547,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | `releaseId`（`release_id`） | text | NOT NULL | 所属提测 |
 | `snapshotId`（`snapshot_id`） | text | NULL | 针对哪一轮快照；整条提测级别的事件（轮询、进度同步）为空 |
 | `packageName`（`package_name`） | text | NULL | 软件包名，冗余存一份：快照可能被替换或清理，流水本身要能独立读懂 |
-| `event` | text | NOT NULL | `poll`（轮询一轮）、`status`（某个包的状态变了）、`progress`（工作流进度回写） |
+| `event` | text | NOT NULL | `poll`（轮询一轮）、`status`（某个包的状态变了）、`progress`（工作流进度回写）；投递失败三类：`dispatch_rate_limited`（CRP 限流 429）、`dispatch_network_failed`（CRP 连不上或超时）、`dispatch_failed`（CRP 拒绝或服务端出错） |
 | `condition` | text | NOT NULL | 触发条件，例如「周期到期」「手动刷新」「轮询取到 Shuttle 的构建结论」 |
 | `result` | text | NOT NULL | 结果，例如「查询 3 个包：成功 1、失败 0、构建中 2」；失败时是错误摘要 |
 | `createdAt`（`created_at`） | timestamptz | NOT NULL | 记录时间 |
@@ -557,11 +557,15 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
   队列页按工作区查流水正是靠这条外键做关联查询。
 - 状态类事件只在状态**真的变了**时写：轮询是反复跑的，每次都写会把流水刷满，
   而这张表要回答的是「谁在什么时候从哪一步走到哪一步」。
+- 投递失败事件只在投递真的失败时写，一次失败一条：队列页按 `snapshot_id` 取每组最新一条，
+  用来区分「限流等待」与「网络失败」（MKACG-931）。投递成功后快照不再是「待投递」，
+  页面上的标记随之消失，历史行不改也不删。
 - 种子数据不写这张表：它是运行时记录，由轮询产生，与 `crp_call_log`、`release_update_record` 同一处理。
 
 **保留策略：30 天。**
 
-这张表是只追加的，而每一轮轮询对每条未完结的提测固定写 `poll` 与 `progress` 两条（状态变化再多一条）。
+这张表是只追加的，而每一轮轮询对每条未完结的提测固定写 `poll` 与 `progress` 两条（状态变化再多一条，
+投递失败时每条再一条）。
 不清理的话行数按「未完结提测数 × 轮询轮次」线性增长，一天几百轮就会把表撑到几十万行。
 
 - 保留期由 `lib/build/pollEvent.ts` 的 `POLL_EVENT_RETENTION_DAYS` 定义，取 30 天。

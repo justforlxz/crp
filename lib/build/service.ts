@@ -33,6 +33,8 @@ import {
   CRP_DEFAULT_BASE_URL,
   CrpBusinessError,
   CrpInvalidParameterError,
+  CrpNetworkError,
+  CrpRateLimitedError,
   toCrpArches,
   type CrpClient,
 } from "../integrations/crp";
@@ -56,6 +58,7 @@ import {
   type ChainStatus,
 } from "./chain";
 import { createCrpCallRecorder, type CrpCallRecorder } from "./crpLog";
+import { recordDispatchFailure, type DispatchFailureKind } from "./pollEvent";
 import { mapShuttleState, summarizeBuild, type BuildStateName } from "./status";
 
 /**
@@ -858,6 +861,30 @@ async function createTopicStep(loaded: LoadedRelease, resolved: Resolved): Promi
   }
 }
 
+/** 错误摘要：只留人看得懂的一句，不存整段堆栈。 */
+function errorSummary(error: unknown): string {
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+
+  return message.slice(0, 500);
+}
+
+/**
+ * 投递失败归到哪一类。
+ *
+ * 与 `lib/integrations/crp/errors.ts` 的分类对应：限流只要等，网络失败要查链路，
+ * 其余（CRP 拒绝、服务端出错、参数不合法）要改请求本身。队列页据此选文案与颜色。
+ */
+function dispatchFailureKind(error: unknown): DispatchFailureKind {
+  if (error instanceof CrpRateLimitedError) {
+    return "rate_limited";
+  }
+
+  if (error instanceof CrpNetworkError) {
+    return "network";
+  }
+
+  return "failed";
+}
 /**
  * 投递一个软件包。
  *
@@ -933,6 +960,16 @@ async function dispatchSnapshot(
     await prisma.releasePackageSnapshot.updateMany({
       where: { id: snapshot.id, status: "dispatching" },
       data: { status: "pending" },
+    });
+
+    // 失败原因落进调度事件流水（MKACG-931）：队列页据此把「限流等待」与网络失败
+    // 分开显示，刷新页面后仍在。投递逻辑本身不变，这里只多写一条记录。
+    await recordDispatchFailure({
+      releaseId: release.id,
+      snapshotId: snapshot.id,
+      packageName: snapshot.packageName,
+      kind: dispatchFailureKind(error),
+      reason: errorSummary(error),
     });
 
     // 投递失败时，错误信息里带上「这次用的是哪个 CRP 项目名」：名字与包名不同时，

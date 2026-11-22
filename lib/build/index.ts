@@ -15,7 +15,7 @@
  * | 为一条提测建 CRP 调用记录器（其它模块自己调 CRP 时挂上） | `createCrpCallRecorder` |
  * | 定时轮询构建结果与工作流进度（A14） | `runBuildPoll` |
  * | 队列页 / 详情区块的只读数据 | `loadBuildQueue`、`loadReleaseBuildStatus` |
- * | 调度事件流水 | `recordPollEvent`、`listPollEvents` |
+ * | 调度事件流水，含投递失败标记 | `recordPollEvent`、`listPollEvents`、`recordDispatchFailure`、`loadLatestDispatchFailures` |
  */
 
 export {
@@ -61,11 +61,15 @@ export {
 export {
   POLL_EVENT_RETENTION_DAYS,
   listPollEvents,
+  loadLatestDispatchFailures,
   prunePollEvents,
+  recordDispatchFailure,
   recordPollEvent,
   type BuildPollEventInput,
   type BuildPollEventName,
   type BuildPollEventRow,
+  type DispatchFailureKind,
+  type DispatchFailureMarker,
 } from "./pollEvent";
 
 export {
