@@ -177,7 +177,7 @@ after(async () => {
 test("详情页挂上去的就是 A14 的区块，包名、阶段、架构状态都渲染出来（AC1）", async () => {
   const html = htmlOf(await BuildStatusSection({ releaseId: fixture.releaseId }));
 
-  assert.match(html, /<h2>构建状态<\/h2>/);
+  assert.match(html, /<h2[^>]*>构建状态<\/h2>/);
   // 提测整体状态与 CRP 工作流进度：与队列页同一套 `buildStatusLabel` 说法。
   assert.match(html, /提测状态：构建中/);
   assert.match(html, /10 构建中/);
@@ -215,7 +215,7 @@ test("区块读库抛错时只把这一块换成提示，详情页其余部分�
   assert.match(html, /<h2>概要<\/h2>/);
   assert.match(html, /<h2>更新提测<\/h2>/);
   // 失败的这一块给出提示，不把错误内容漏到页面上。
-  assert.match(html, /<h2>构建状态<\/h2>/);
+  assert.match(html, /<h2[^>]*>构建状态<\/h2>/);
   assert.match(html, /构建状态暂时读不到/);
   assert.doesNotMatch(html, /数据库连不上/);
 });

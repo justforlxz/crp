@@ -38,7 +38,7 @@ export async function BuildStatusBlock({ releaseId }: BuildStatusBlockProps) {
   if (view === null) {
     return (
       <section>
-        <h2>构建状态</h2>
+        <h2 className="section-title">构建状态</h2>
         <p>这条提测记录不存在，可能已被删除。</p>
       </section>
     );
@@ -46,7 +46,7 @@ export async function BuildStatusBlock({ releaseId }: BuildStatusBlockProps) {
 
   return (
     <section data-style-anchor="release-detail.build-status">
-      <h2>构建状态</h2>
+      <h2 className="section-title">构建状态</h2>
       <p>
         提测状态：{view.statusLabel}；CRP 工作流进度：
         {view.workProgress === null

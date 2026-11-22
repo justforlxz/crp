@@ -26,7 +26,7 @@
         },
         "box": {
           "x": 232,
-          "y": 169.17,
+          "y": 183.17,
           "width": 1024,
           "height": 27
         }
@@ -48,13 +48,13 @@
           "borderRadius": "4px",
           "boxShadow": "none",
           "width": "1024px",
-          "height": "37px"
+          "height": "40px"
         },
         "box": {
           "x": 232,
-          "y": 232.97,
+          "y": 246.97,
           "width": 1024,
-          "height": 37
+          "height": 40
         }
       }
     ],
@@ -74,13 +74,13 @@
           "borderRadius": "4px",
           "boxShadow": "none",
           "width": "1024px",
-          "height": "37px"
+          "height": "40px"
         },
         "box": {
           "x": 232,
-          "y": 306.77,
+          "y": 323.77,
           "width": 1024,
-          "height": 37
+          "height": 40
         }
       }
     ]

@@ -111,7 +111,7 @@ L1 的静态检查不受这 6 页限制：它扫全部 `app/**/page.tsx`。
 | `release-detail.snapshot-table` | 软件包快照数据表 | 1 | 入基线 |
 | `release-detail.repo-records-table` | CRP 仓库记录数据表 | 1 | 入基线 |
 | `release-detail.crp-info` | 提测信息定义列表 | 1 | 入基线 |
-| `release-detail.danger-zone` | 「危险操作」区块标题（MKACG-950 追加） | 1 | 入基线 |
+| `release-detail.danger-zone` | 「危险操作」整节（MKACG-950 追加标题；MKACG-953 起锚点标在这一节的外层，2px 竖线、16px 左内边距与 48px 上外边距都量在它上面） | 1 | 入基线 |
 
 创建提测 `/releases/new`
 
@@ -168,7 +168,7 @@ L1 的静态检查不受这 6 页限制：它扫全部 `app/**/page.tsx`。
 | 所有 `app/**/page.tsx` 经 `PageShell` 渲染 | 未使用者 0 个，失败时列出文件 |
 | 没有裸 `<table>` | 每个 `<table>` 开标签都要带 `className="data-table"`；横向滚动容器由 L2 的 `*.table-scroll` 锚点覆盖 |
 | 样式来源唯一 | `app/**/*.tsx` 与 `components/**/*.tsx` 里 `style={{` 命中 0 处 |
-| `app/globals.css` 规则数 | 不低于基线；规则数 = 去掉注释与字符串后 `{` 的个数（当前 98） |
+| `app/globals.css` 规则数 | 不低于基线；规则数 = 去掉注释与字符串后 `{` 的个数（当前 108） |
 | `app/globals.css` 设计变量 | `:root` 里每个变量的值与基线一致；变量被删也算失败，新增不算 |
 
 设计变量这一条是为了兜住「改了值但没有任何锚点落在上面」的情况：例如 `--radius-lg` 只影响 `.card`，而 `.card` 只在登录、注册与导入页出现，六个覆盖页面里没有它 —— 光靠锚点看不出这类改动。

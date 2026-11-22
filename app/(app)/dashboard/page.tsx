@@ -14,6 +14,7 @@ import { PageShell } from "@/components/page-shell";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { requirePageAuth } from "@/lib/auth/server";
 import { listWorkspacesForAccount } from "@/lib/auth/store";
+import { pickActiveWorkspace } from "@/lib/auth/workspaces";
 import { formatDuration } from "@/lib/build";
 import { loadDashboard, STATS_WINDOW_DAYS } from "@/lib/stats";
 import { InviteMemberForm, LogoutButton, WorkspaceSwitcher } from "./controls";
@@ -38,7 +39,9 @@ export default async function DashboardPage() {
     auth.account.id,
     auth.account.isPlatformAdmin,
   );
-  const active = workspaces.find((workspace) => workspace.id === auth.workspaceId) ?? null;
+  // 会话还没记住工作区时（平台管理员刚注册就是这样）落到第一个可访问的，直接出统计；
+  // 顶栏的工作区切换照旧，切一下就记住了。
+  const active = pickActiveWorkspace(workspaces, { sessionWorkspaceId: auth.workspaceId });
   const stats = active === null ? null : await loadDashboard(active.id);
 
   return (
