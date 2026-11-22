@@ -9,7 +9,12 @@
  */
 
 import { prisma } from "../db";
-import { listPollEvents, type BuildPollEventRow } from "./pollEvent";
+import {
+  listPollEvents,
+  loadLatestDispatchFailures,
+  type BuildPollEventRow,
+  type DispatchFailureMarker,
+} from "./pollEvent";
 import { ACTIVE_RELEASE_STATES, loadUpstreamNames } from "./service";
 import { queueStageOf, releaseStatusLabel, type StagePhase } from "./stage";
 
@@ -33,8 +38,14 @@ export type QueueTaskRow = {
   durationMs: number | null;
   /** 还在等哪些上游包；不等依赖时为空数组。 */
   waitingFor: string[];
-  /** 失败或阻断原因。 */
+  /** 失败或阻断原因（来自构建任务）。 */
   reason: string | null;
+  /**
+   * 最近一次投递失败；这个包还在等投递时才有值。
+   *
+   * 投递成功之后快照不再是「待投递」，这里就是空：标记随状态收敛，不回头改历史流水。
+   */
+  dispatchFailure: DispatchFailureMarker | null;
 };
 
 /** 一条提测的队列视图：依赖拓扑 + 它下面每个包的进展。 */
@@ -134,6 +145,8 @@ export type BuildQueueSnapshot = {
   finishedToday: number;
   /** 最近的调度事件流水。 */
   events: BuildPollEventRow[];
+  /** 快照 ID → 最近一次投递失败。没失败过的快照不在表里。 */
+  dispatchFailures: ReadonlyMap<string, DispatchFailureMarker>;
   /** 这批数据读出来的时刻。 */
   generatedAt: Date;
 };
@@ -191,7 +204,7 @@ export async function loadBuildQueueData(
     releases.flatMap((release) => release.snapshots.map((snapshot) => snapshot.packageName)),
   );
 
-  const [finishedToday, events] = await Promise.all([
+  const [finishedToday, events, dispatchFailures] = await Promise.all([
     prisma.buildTask.count({
       where: {
         release: { project: { workspaceId } },
@@ -199,9 +212,20 @@ export async function loadBuildQueueData(
       },
     }),
     listPollEvents(workspaceId, 30),
+    // 投递失败标记：只查这批快照，够用且不随全库流水增长。
+    loadLatestDispatchFailures(
+      releases.flatMap((release) => release.snapshots.map((snapshot) => snapshot.id)),
+    ),
   ]);
 
-  return { releases, upstreams, finishedToday, events, generatedAt: now };
+  return {
+    releases,
+    upstreams,
+    finishedToday,
+    events,
+    dispatchFailures,
+    generatedAt: now,
+  };
 }
 
 /**
@@ -253,6 +277,11 @@ export function buildQueueView(data: BuildQueueSnapshot): BuildQueueView {
         durationMs: elapsedOf(snapshot.buildTask ?? null, data.generatedAt),
         waitingFor,
         reason: snapshot.buildTask?.statusReason ?? null,
+        // 只给「还在等投递」的包挂标记：投递一成功，快照就离开 pending，标记随之消失（MUST）。
+        dispatchFailure:
+          snapshot.status === "pending"
+            ? (data.dispatchFailures.get(snapshot.id) ?? null)
+            : null,
       } satisfies QueueTaskRow;
     });
 

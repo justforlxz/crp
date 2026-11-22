@@ -26,12 +26,13 @@ import {
   cancelRelease,
   CRP_CALL_LOG_RETENTION_DAYS,
   listCrpCallLogs,
+  loadBuildQueue,
   loadReleaseDispatch,
   pruneCrpCallLogs,
   retryFailedTasks,
 } from "../lib/build";
 import { BuildError } from "../lib/build";
-import { CrpBusinessError } from "../lib/integrations/crp";
+import { CrpBusinessError, CrpNetworkError, CrpRateLimitedError } from "../lib/integrations/crp";
 import { runBuildDispatch } from "../lib/jobs/build-dispatch";
 import { prisma } from "../lib/db";
 import { createRelease } from "../lib/releases";
@@ -107,8 +108,13 @@ type FakeCrp = {
   failDelete: Set<number>;
   /** 非空时 `POST /project` 按这个 HTTP 状态码失败（响应体带 message），用来验 5xx 与 4xx 的区别。 */
   projectFailureStatus: number | null;
-  /** 非空时 `POST /topics/{id}/new_release` 按这个状态码与说明失败，用来验投递被 CRP 拒绝时的错误分类。 */
-  newReleaseFailure: { status: number; message: string } | null;
+  /**
+   * 非空时 `POST /topics/{id}/new_release` 按这个状态码与说明失败，用来验投递被 CRP 拒绝时的错误分类。
+   * 给了 `retryAfter` 就写进响应头，没给就不带（与真实 CRP 的 429 形态一致）。
+   */
+  newReleaseFailure: { status: number; message: string; retryAfter?: string } | null;
+  /** 为真时 `POST /topics/{id}/new_release` 直接断开连接，用来验投递时的网络失败。 */
+  newReleaseNetworkDown: boolean;
 };
 
 /**
@@ -132,6 +138,7 @@ function makeFakeCrp(base: number): FakeCrp {
     failDelete: new Set(),
     projectFailureStatus: null,
     newReleaseFailure: null,
+    newReleaseNetworkDown: false,
   };
 }
 
@@ -204,12 +211,24 @@ function crpFetchOf(state: FakeCrp): typeof fetch {
         Arches: string;
       };
 
+      if (state.newReleaseNetworkDown) {
+        // 网络失败的形态：连不上对端。请求层会重试 3 次，之后归为 CrpNetworkError。
+        throw new TypeError("fetch failed");
+      }
+
       if (state.newReleaseFailure !== null) {
         // 实测：短提交号被 CRP 回 `HTTP 500 commitID 长度异常 请重新提交`。
-        return json(
-          JSON.stringify({ message: state.newReleaseFailure.message }),
-          state.newReleaseFailure.status,
-        );
+        const failure = state.newReleaseFailure;
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+
+        if (failure.retryAfter !== undefined) {
+          headers["Retry-After"] = failure.retryAfter;
+        }
+
+        return new Response(JSON.stringify({ message: failure.message }), {
+          status: failure.status,
+          headers,
+        });
       }
 
       const jobId = state.nextJobId++;
@@ -670,6 +689,20 @@ async function snapshotStatuses(releaseId: string): Promise<Map<string, string>>
   });
 
   return new Map(rows.map((row) => [row.packageName, row.status]));
+}
+
+/** 队列页里某个包的那一行。找不到就是页面没把它列出来，直接失败。 */
+async function queueTaskOf(releaseId: string, packageName: string) {
+  const view = await loadBuildQueue(fixture.workspaceId);
+  const release = view.releases.find((item) => item.releaseId === releaseId);
+
+  assert.ok(release !== undefined, `队列里应出现提测 ${releaseId}`);
+
+  const task = release.tasks.find((item) => item.packageName === packageName);
+
+  assert.ok(task !== undefined, `队列里应出现包 ${packageName}`);
+
+  return task;
 }
 
 /** 一轮「真请求层 + 假网络」的推进。 */
@@ -2135,4 +2168,126 @@ test("历史数据里的短提交号被 CRP 拒绝时，投递回 409 并说明�
   });
   assert.equal(snapshot.status, "pending");
   assert.equal(state.releases.length, 0, "被拒的提交号一条 Release 都不该留下");
+});
+
+// ---------------------------------------------------------------------------
+// MKACG-931：投递失败在队列页看得见，限流与网络失败分开
+// ---------------------------------------------------------------------------
+
+test("MKACG-931 AC1/AC3 投递拿到 CRP 429：队列页给出「限流等待」，投递成功后标记消失", async () => {
+  const state = newFakeCrp();
+  const network = networkOf(state);
+  const releaseId = await createReleaseWithChain("mk931-429");
+
+  // 第一次推进只建 Topic，投递还没开始。
+  await advanceRelease(releaseId, { network });
+
+  // 假 CRP 只对投递这一个接口回 429 + Retry-After，与线上形态一致。
+  state.newReleaseFailure = { status: 429, message: "", retryAfter: "120" };
+
+  await assert.rejects(advanceRelease(releaseId, { network }), (error: unknown) => {
+    assert.ok(error instanceof CrpRateLimitedError, "429 是限流，不是网络失败");
+
+    return true;
+  });
+
+  // 投递逻辑没变：这个包退回待投递，等下一轮。
+  const snapshot = await prisma.releasePackageSnapshot.findFirstOrThrow({
+    where: { releaseId, packageName: pkgName("a") },
+    select: { status: true },
+  });
+  assert.equal(snapshot.status, "pending");
+
+  // 429 一次都不重试：CRP 侧只收到一次投递请求，也没留下半条 Release。
+  assert.equal(
+    state.received.filter((item) => item.endsWith("/new_release")).length,
+    1,
+    "429 不重试：限流窗口里再发一次只是加压",
+  );
+  assert.equal(state.releases.length, 0);
+
+  // 失败原因落进流水：分类在 event 列，原文在 result 列，事后可查。
+  const events = await prisma.buildPollEvent.findMany({
+    where: { releaseId, event: "dispatch_rate_limited" },
+  });
+  assert.equal(events.length, 1);
+  assert.notEqual(events[0]?.snapshotId, null);
+  assert.equal(events[0]?.packageName, pkgName("a"));
+  assert.match(events[0]?.result ?? "", /CrpRateLimitedError/);
+  assert.match(events[0]?.result ?? "", /Retry-After: 120/);
+  assert.match(events[0]?.condition ?? "", /限流/);
+
+  // 队列页：原因列不再是「—」，分类是限流等待。
+  const limited = await queueTaskOf(releaseId, pkgName("a"));
+  assert.equal(limited.reason, null);
+  assert.equal(limited.dispatchFailure?.kind, "rate_limited");
+
+  // 刷新页面就是重新读一次库：标记还在，不是一次性提示。
+  const reloaded = await queueTaskOf(releaseId, pkgName("a"));
+  assert.equal(reloaded.dispatchFailure?.kind, "rate_limited");
+
+  // 限流解除后正常投递成功，标记消失（MUST：状态可收敛）。
+  state.newReleaseFailure = null;
+
+  const dispatched = await advanceRelease(releaseId, { network });
+  assert.equal(dispatched.action, "dispatched");
+  assert.equal(dispatched.packageName, pkgName("a"));
+
+  const afterSuccess = await queueTaskOf(releaseId, pkgName("a"));
+  assert.equal(afterSuccess.dispatchFailure, null, "投递成功后标记必须消失");
+  assert.equal(afterSuccess.stage, "构建中");
+
+  // 标记消失只是不再显示：历史流水照样留着，复盘看得到那一轮的限流。
+  assert.equal(
+    await prisma.buildPollEvent.count({ where: { releaseId, event: "dispatch_rate_limited" } }),
+    1,
+  );
+});
+
+test("MKACG-931 AC2 投递时 CRP 连不上：队列页显示网络失败，不是限流等待", async () => {
+  const state = newFakeCrp();
+  const network = networkOf(state);
+  const releaseId = await createReleaseWithChain("mk931-network");
+
+  await advanceRelease(releaseId, { network });
+
+  // 先在同一个包上撞一次限流，再换成网络不通：两次失败要各归各类，不能互相顶替成一句「失败」。
+  state.newReleaseFailure = { status: 429, message: "", retryAfter: "60" };
+  await assert.rejects(advanceRelease(releaseId, { network }));
+  assert.equal(
+    (await queueTaskOf(releaseId, pkgName("a"))).dispatchFailure?.kind,
+    "rate_limited",
+  );
+
+  state.newReleaseFailure = null;
+  state.newReleaseNetworkDown = true;
+
+  await assert.rejects(advanceRelease(releaseId, { network }), (error: unknown) => {
+    assert.ok(error instanceof CrpNetworkError, "连不上 CRP 是网络失败，不是限流");
+
+    return true;
+  });
+
+  const task = await queueTaskOf(releaseId, pkgName("a"));
+  assert.equal(task.reason, null);
+  assert.equal(task.dispatchFailure?.kind, "network", "页面显示网络失败，不是限流等待");
+
+  // 流水里两次失败各一条，顺序与发生顺序一致。
+  const dispatchEvents = await prisma.buildPollEvent.findMany({
+    where: { releaseId, event: { startsWith: "dispatch_" } },
+    orderBy: { createdAt: "asc" },
+    select: { event: true, result: true },
+  });
+  assert.deepEqual(
+    dispatchEvents.map((item) => item.event),
+    ["dispatch_rate_limited", "dispatch_network_failed"],
+  );
+  assert.match(dispatchEvents[1]?.result ?? "", /CrpNetworkError/);
+
+  // 网络恢复后投递成功，网络失败的标记同样收敛。
+  state.newReleaseNetworkDown = false;
+
+  const dispatched = await advanceRelease(releaseId, { network });
+  assert.equal(dispatched.action, "dispatched");
+  assert.equal((await queueTaskOf(releaseId, pkgName("a"))).dispatchFailure, null);
 });

@@ -12,7 +12,12 @@ import Link from "next/link";
 
 import { PageShell } from "@/components/page-shell";
 import { formatDuration, loadBuildQueue } from "@/lib/build";
-import type { BuildPollEventRow, QueueReleaseView, QueueTaskRow } from "@/lib/build";
+import type {
+  BuildPollEventRow,
+  DispatchFailureKind,
+  QueueReleaseView,
+  QueueTaskRow,
+} from "@/lib/build";
 
 import { resolveWorkspaceScope } from "../workspaceScope";
 import { refreshQueueAction } from "./actions";
@@ -26,11 +31,41 @@ type QueuePageProps = {
   searchParams: Promise<{ workspace?: string; notice?: string; error?: string }>;
 };
 
-/** 事件类型的中文名，与 `lib/build/pollEvent.ts` 里的三种事件对应。 */
+/** 事件类型的中文名，与 `lib/build/pollEvent.ts` 里的六种事件对应。 */
 const EVENT_LABELS: Record<string, string> = {
   poll: "轮询",
   status: "状态变化",
   progress: "进度同步",
+  dispatch_rate_limited: "投递限流",
+  dispatch_network_failed: "投递网络失败",
+  dispatch_failed: "投递失败",
+};
+
+/**
+ * 投递失败在「原因」列里的样子。
+ *
+ * 限流要等、网络失败要查链路，两者不能共用一句「失败」，否则运维会去查一条其实好好的链路，
+ * 或者在限流窗口里反复重投。颜色也不同：限流是提醒，网络失败是错误。
+ */
+const DISPATCH_FAILURE_STYLE: Record<
+  DispatchFailureKind,
+  { badge: string; title: string; detail: string }
+> = {
+  rate_limited: {
+    badge: "badge badge--warn",
+    title: "限流等待",
+    detail: "CRP 限流，等窗口过去再投",
+  },
+  network: {
+    badge: "badge badge--danger",
+    title: "网络失败",
+    detail: "连不上 CRP，等下一轮再投",
+  },
+  failed: {
+    badge: "badge",
+    title: "投递失败",
+    detail: "CRP 没有收下这次投递，原因见调度事件流水",
+  },
 };
 
 function formatTime(value: Date | null): string {
@@ -50,6 +85,29 @@ function upstreamsOf(release: QueueReleaseView, packageName: string): string[] {
   return release.edges.filter((edge) => edge.to === packageName).map((edge) => edge.from);
 }
 
+/**
+ * 「原因」列：构建任务的失败原因优先；还没有构建任务时看这个包最近一次投递失败。
+ *
+ * 限流与网络失败各自带一个彩色徽标，扫一眼就能分清「等一等」和「去查链路」。
+ */
+function reasonCell(task: QueueTaskRow) {
+  if (task.reason !== null) {
+    return task.reason;
+  }
+
+  if (task.dispatchFailure === null) {
+    return "—";
+  }
+
+  const style = DISPATCH_FAILURE_STYLE[task.dispatchFailure.kind];
+
+  return (
+    <>
+      <span className={style.badge}>{style.title}</span> {style.detail}
+    </>
+  );
+}
+
 /** 任务列表的一行。提测列带上项目名，跨项目看也不会混。 */
 function taskRow(release: QueueReleaseView, task: QueueTaskRow) {
   return (
@@ -64,7 +122,7 @@ function taskRow(release: QueueReleaseView, task: QueueTaskRow) {
       <td>{task.progress ?? "—"}</td>
       <td>{formatDuration(task.durationMs)}</td>
       <td>{task.waitingFor.length === 0 ? "—" : task.waitingFor.join("、")}</td>
-      <td>{task.reason ?? "—"}</td>
+      <td>{reasonCell(task)}</td>
     </tr>
   );
 }
