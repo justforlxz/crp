@@ -58,6 +58,26 @@
    pnpm db:studio
    ```
 
+## 切换分支后必须重新生成 Prisma 客户端
+
+`generated/prisma` 是按 `prisma/schema.prisma` 生成的产物，不入库。切换分支或拉入新提交后，如果新提交改过 schema，本地这份客户端就已经过期。
+
+所以切分支后先跑：
+
+```bash
+pnpm exec prisma generate
+```
+
+再跑 `pnpm typecheck` 或 `pnpm build`。
+
+**典型症状**：构建报类型错误，说某个枚举值不存在或某个字段不存在，例如
+
+```
+lib/releases/abandon.ts(209,9): error TS2322: Type '"abandon_topic"' is not assignable to type 'ReleaseUpdateAction'.
+```
+
+而这段代码在 `main` 上明明存在。这时先跑一次 `pnpm exec prisma generate`，不要先怀疑主线代码。新增枚举值（例如 `ReleaseUpdateAction.abandon_topic`）时最容易撞上。
+
 ## 常用命令
 
 | 命令 | 作用 |

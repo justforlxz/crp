@@ -779,6 +779,10 @@ select name, arches, synced_at from baseline where name = 'eagle-1071';
 - 种子数据里的 `crp_topic_id`（`8901`、`8844` 等）在真实 CRP 上**确实存在**。在没有独立演练库的环境里跑定时任务，会真的读到别人的主题。演练请用一次性库。
 - 生产环境的第一个工作区目前只能手工建（`/api/workspaces` 只有 GET，没有创建接口），见 3.6。
 
+### 本地构建报「枚举值不存在 / 字段不存在」，但 main 上有这段代码
+
+切换分支后没有重跑 `pnpm exec prisma generate`，本地 `generated/prisma` 过期。跑一次重新生成再构建即可。详见 README「切换分支后必须重新生成 Prisma 客户端」。
+
 ---
 
 ## 十二、复现检查表（给复现人）
