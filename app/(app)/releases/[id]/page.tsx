@@ -21,16 +21,20 @@ import { notFound } from "next/navigation";
 import { PageShell } from "@/components/page-shell";
 import { findReleaseScope } from "@/lib/build";
 import {
+  abandonTopicLockReason,
   canViewRelease,
+  loadCrpTopicName,
   loadReleaseDetail,
   ReleaseError,
   releaseSourceLabel,
   releaseStatusLabel,
+  releaseUpdateActionLabel,
   SNAPSHOT_COLUMNS,
   snapshotRowCells,
 } from "@/lib/releases";
 import { resolveWorkspaceScope } from "../../workspaceScope";
-import { refreshRepositoryRecordsAction } from "./actions";
+import { AbandonTopicForm } from "./abandonTopicForm";
+import { abandonTopicAction, refreshRepositoryRecordsAction } from "./actions";
 import { BuildStatusSection } from "./buildStatusSection";
 import { CopyValue } from "./copyValue";
 
@@ -104,6 +108,12 @@ export default async function ReleaseDetailPage({
   }
 
   const commitErrors = detail.packages.filter((item) => item.commitError !== null);
+  // 危险操作按来源只显示一个：平台创建的走「取消提测」，从 CRP 导入的才显示「放弃提测主题」。
+  // 能不能点、不能点时为什么，判定只有一份，页面与接口用同一个函数。
+  const abandonLockReason = abandonTopicLockReason(detail);
+  // 确认框要写明主题名；只在真的要渲染这个按钮时才向 CRP 读一次，别的读路径（例如导出 CSV）不必付这次往返。
+  const abandonTopicName =
+    abandonLockReason === null ? await loadCrpTopicName(detail.crpTopicId, undefined) : null;
 
   return (
     <PageShell title="提测详情">
@@ -206,7 +216,7 @@ export default async function ReleaseDetailPage({
                   </td>
                   <td>{formatTime(row.createdAt)}</td>
                   <td>{row.operatorName}</td>
-                  <td>{row.action === "append" ? "补包" : "换包"}</td>
+                  <td>{releaseUpdateActionLabel(row.action)}</td>
                   <td>
                     {row.action === "append" ? <code>{row.packageNames.join("、")}</code> : "—"}
                   </td>
@@ -387,6 +397,47 @@ export default async function ReleaseDetailPage({
         <dt>工作流进度最近同步</dt>
         <dd>{formatTime(detail.workProgressSyncedAt)}</dd>
       </dl>
+
+      <h2 data-style-anchor="release-detail.danger-zone">危险操作</h2>
+      {detail.source === "imported" ? (
+        <>
+          <p>
+            「放弃提测主题」把 CRP 上的这个 Topic 标记为「已放弃」，用来就地清理演练与验收留下的主题。
+            它与投递页的「取消提测」是两个动作：放弃主题一条 Release 都不删，也不改任何快照；
+            取消提测才会逐个删 Release。
+          </p>
+          <p>
+            放弃之后不能撤销，CRP 上也不会再接受往这个主题里投递。已经转测（CRP 工作流进度 ≥ 20）的
+            主题不能放弃，服务端会再判一次，不只靠这里的禁用。
+          </p>
+          {abandonLockReason === null ? (
+            <AbandonTopicForm
+              releaseId={detail.releaseId}
+              topicId={detail.crpTopicId ?? ""}
+              topicName={abandonTopicName ?? detail.version}
+              packageCount={detail.packages.length}
+              hasCrpReleases={detail.repositoryRecords.length > 0}
+              action={abandonTopicAction}
+            />
+          ) : (
+            <p>
+              <button type="button" className="btn btn-danger-outline" disabled>
+                放弃提测主题
+              </button>
+              {"　"}
+              <span role="status">{abandonLockReason}</span>
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <p>
+            这条提测是在平台上创建的，它自己的 Release 要连同主题一起清理，走「取消提测」。
+            「放弃提测主题」只用于从 CRP 导入的提测：导入主题里的 Release 是别人投的，不能删。
+          </p>
+          <p role="status">{abandonLockReason}</p>
+        </>
+      )}
     </PageShell>
   );
 }

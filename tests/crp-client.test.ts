@@ -826,6 +826,15 @@ test("放弃 Topic 前先读回来，读不到就不发 PUT", async () => {
   assert.equal(calls.filter((call) => call.method === "PUT").length, 0);
 });
 
+test("放弃 Topic 时上游返回空响应体：不发覆盖式的 PUT", async () => {
+  // 200 + 空文体：请求层解析成 null，`{...null}` 会折叠成空对象，
+  // PUT 出去就是把主题冲成只剩 Abandoned。宁可不写。
+  const { client, calls } = mockClient([["GET /topics/1", new Response("", { status: 200 })]]);
+
+  await assert.rejects(() => client.abandonTopic(1), CrpBusinessError);
+  assert.equal(calls.filter((call) => call.method === "PUT").length, 0);
+});
+
 test("只模糊匹配到同名前缀的别的包时拒绝投递，并列出候选", async () => {
   const { client, calls } = mockClient([
     ["GET /topics/1/releases", json([])],

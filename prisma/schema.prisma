@@ -563,6 +563,8 @@ enum ReleaseUpdateAction {
   append
   /// 换包：修改已有软件包的分支 / Commit / 提测版本，并连带重投它的传递下游。
   replace
+  /// 放弃整个主题（MKACG-950）：只把 CRP 上的 Topic 置为已放弃，不删里面的 Release。
+  abandon_topic
 
   @@map("release_update_action")
 }
@@ -588,6 +590,12 @@ model ReleaseUpdateRecord {
   abandonedCrpReleaseIds String[] @map("abandoned_crp_release_ids")
   /// 本次要重新投递的软件包名：补包是新加的那些，换包是被换的包加上它的全部传递下游。
   redispatchedPackageNames String[] @map("redispatched_package_names")
+
+  /// 放弃的主题 ID；只有 `abandon_topic` 这一行有值。
+  ///
+  /// 记在这一行而不是只靠 `release.crp_topic_id` 反查：留痕要能自己说明放弃的是哪个 Topic，
+  /// 不依赖提测记录后来有没有变。
+  abandonedTopicId String? @map("abandoned_topic_id")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 

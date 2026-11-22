@@ -499,6 +499,17 @@ button:disabled {
   border-color: var(--color-danger-strong);
 }
 
+/* 危险但不在主流程上的动作（MKACG-950 的「放弃提测主题」）：红色描边，不抢主按钮的视线。 */
+.btn-danger-outline {
+  color: var(--color-danger);
+  background: var(--color-surface);
+  border-color: var(--color-danger);
+}
+
+.btn-danger-outline:hover:not(:disabled) {
+  background: var(--color-danger-weak);
+}
+
 .btn-sm {
   padding: var(--space-1) var(--space-2);
   font-size: var(--font-size-sm);

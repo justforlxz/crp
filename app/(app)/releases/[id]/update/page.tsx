@@ -4,7 +4,12 @@ import { notFound } from "next/navigation";
 
 import { PageShell } from "@/components/page-shell";
 import { findReleaseScope } from "@/lib/build";
-import { canViewRelease, loadReleaseUpdateView, ReleaseError } from "@/lib/releases";
+import {
+  canViewRelease,
+  loadReleaseUpdateView,
+  ReleaseError,
+  releaseUpdateActionLabel,
+} from "@/lib/releases";
 import { resolveWorkspaceScope } from "../../../workspaceScope";
 import { UpdateReleaseForm } from "./updateForm";
 
@@ -175,7 +180,7 @@ export default async function UpdateReleasePage({ params, searchParams }: Update
                 <tr key={row.id}>
                   <td>{formatTime(row.createdAt)}</td>
                   <td>{row.operatorName}</td>
-                  <td>{row.action === "append" ? "补包" : "换包"}</td>
+                  <td>{releaseUpdateActionLabel(row.action)}</td>
                   <td>
                     <code>{row.packageNames.join("、")}</code>
                   </td>

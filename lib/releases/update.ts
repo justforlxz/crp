@@ -176,10 +176,29 @@ export type ReleaseUpdateResult = {
   advanceError: string | null;
 };
 
+/**
+ * 更新留痕的动作名。
+ *
+ * 两个渲染点（详情页的更新历史、更新页的留痕表）必须共用这一份：动作值从两个扩到
+ * 三个时，只改一处会让 `abandon_topic` 在另一处显示成「换包」。
+ * 认不出的取值原样带出，与 `releaseStatusLabel` 同口径。
+ */
+export const RELEASE_UPDATE_ACTION_LABELS: Record<string, string> = {
+  append: "补包",
+  replace: "换包",
+  abandon_topic: "放弃主题",
+};
+
+/** 动作的中文名；认不出的取值原样返回，不显示成空白或别的动作。 */
+export function releaseUpdateActionLabel(action: string): string {
+  return RELEASE_UPDATE_ACTION_LABELS[action] ?? action;
+}
+
 /** 一条更新留痕，页面直接列出。 */
 export type ReleaseUpdateHistoryRow = {
   id: string;
-  action: "append" | "replace";
+  /** 补包 / 换包，以及「放弃主题」（MKACG-950）：后者的三个包列表都为空。 */
+  action: "append" | "replace" | "abandon_topic";
   packageNames: string[];
   revisionBefore: number;
   revisionAfter: number;
