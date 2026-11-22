@@ -57,6 +57,13 @@ export {
   type AbandonedTopic,
   type AbandonTopicOptions,
 } from "./abandon";
+export {
+  cancelPlatformRelease,
+  cancelReleaseLockReason,
+  loadCancelableReleaseCount,
+  type CancelReleaseLockInput,
+  type CancelReleaseOptions,
+} from "./cancel";
 export { collectDownstream } from "./downstream";
 
 export {

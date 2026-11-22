@@ -1450,10 +1450,13 @@ export type CancelResult = {
  *
  * CRP 没有删除 Topic 的能力（`DELETE /api/topics/{id}` 返回 200 但不做事，见 FINDINGS.md），
  * 所以「取消」是两件事：逐个删掉 Topic 里的 Release，再把 Topic 标成已放弃。
- * 快照统一置 `abandoned`，提测状态置 `abandoned`。
+ * 三步都成功才算取消成功：全部 Release 删掉 → 放弃 Topic → 写本地状态（`abandoned`）。
+ * 任何一步有失败就一步都不往下走（MKACG-954 的 MUST）：本地保持可重试，也不会出现
+ * 「Topic 已放弃、本地仍活跃」——那种状态会让投递定时器继续往已放弃的主题里投 Release。
  *
- * 单个 Release 删除失败不中断整体取消：CRP 侧已经没了的 Release 会回 404，
- * 那本来就是想要的结果，不该让整次取消卡住。
+ * 单个 Release 删除失败不中断整体取消：失败项记进 `failures` 交给调用方显示，用户处理好
+ * 之后可以再点一次。CRP 侧已经不存在的 Release 回 404 按已删除处理（`deleteRelease` 收
+ * 404），被打断的取消也能收尾；删成功的仓库记录同步删掉，重试只会碰还没删掉的那几条。
  */
 export async function cancelRelease(
   releaseId: string,
@@ -1478,6 +1481,12 @@ export async function cancelRelease(
 
     try {
       await clients.crp.deleteRelease(Number(record.crpReleaseId));
+
+      // CRP 侧删掉之后本地仓库记录立刻跟着删（与换包放弃旧 Release 的做法一致，见上面的
+      // retryFailedTasks）。留着它的话，重试时这个循环会对着已经不存在的 Release 再发一次
+      // `DELETE /topic_releases/{id}`。只有一条语句就不要再包 `$transaction`。
+      await prisma.releaseRepositoryRecord.deleteMany({ where: { snapshotId: snapshot.id } });
+
       deletedReleaseIds.push(record.crpReleaseId);
     } catch (error) {
       failures.push({
@@ -1489,7 +1498,11 @@ export async function cancelRelease(
 
   let abandonedTopicId: string | null = null;
 
-  if (release.crpTopicId !== null) {
+  // MUST：只在删除全部成功之后才放弃 Topic。删除有失败时先不放弃，本地 crpTopicAbandoned
+  // 与 CRP 上的主题状态就还是一致的；否则会出现「CRP 上主题已放弃、本地提测仍活跃」，
+  // 两分钟的投递定时器还会挑中它，继续往那个已放弃的主题里投 Release。
+  // 重试时仓库记录已经清干净，循环不再发 DELETE，直接重试放弃 Topic，成功就收尾。
+  if (failures.length === 0 && release.crpTopicId !== null) {
     try {
       await clients.crp.abandonTopic(Number(release.crpTopicId));
       abandonedTopicId = release.crpTopicId;
@@ -1501,19 +1514,25 @@ export async function cancelRelease(
     }
   }
 
-  const now = new Date();
+  // MUST：只有全部删除都成功时才把提测写成「已放弃」。
+  // 有失败项时本地保持原样：写成 abandoned 会让「取消提测」（本函数开头的 409）与换包入口
+  // 一起关闭，CRP 上没删掉的 Release 就再也无法从界面清理 —— 那正是这个功能要消除的处境。
+  // 失败明细照旧原样返回，由调用方显示，用户修好之后可以再点一次。
+  if (failures.length === 0) {
+    const now = new Date();
 
-  await prisma.$transaction(async (tx) => {
-    await tx.releasePackageSnapshot.updateMany({
-      where: { releaseId, supersededById: null },
-      data: { status: "abandoned", statusChangedAt: now },
-    });
+    await prisma.$transaction(async (tx) => {
+      await tx.releasePackageSnapshot.updateMany({
+        where: { releaseId, supersededById: null },
+        data: { status: "abandoned", statusChangedAt: now },
+      });
 
-    await tx.release.update({
-      where: { id: releaseId },
-      data: { status: "abandoned", crpTopicAbandoned: true, finishedAt: now },
+      await tx.release.update({
+        where: { id: releaseId },
+        data: { status: "abandoned", crpTopicAbandoned: true, finishedAt: now },
+      });
     });
-  });
+  }
 
   return { releaseId, deletedReleaseIds, abandonedTopicId, failures };
 }

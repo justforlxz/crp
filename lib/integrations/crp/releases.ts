@@ -209,7 +209,10 @@ export async function deleteRelease(
   await transport.request<unknown>({
     method: "DELETE",
     path: `/topic_releases/${releaseId}`,
-    expectedStatus: [200, 202, 204],
+    // 404 当成功：CRP 上没有这条 Release，删除想要的结果已经达成（MKACG-954）。
+    // 幂等语义对换包、重投与取消三处调用点都成立，它们要的都是「这条 Release 不该再存在」。
+    // 取舍：CRP 侧 404 与「ID 写错」不可区分，但本仓库只用自己的记录发删除，不传用户输入。
+    expectedStatus: [200, 202, 204, 404],
   });
 }
 
