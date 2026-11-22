@@ -22,7 +22,9 @@ import { PageShell } from "@/components/page-shell";
 import { findReleaseScope } from "@/lib/build";
 import {
   abandonTopicLockReason,
+  cancelReleaseLockReason,
   canViewRelease,
+  loadCancelableReleaseCount,
   loadCrpTopicName,
   loadReleaseDetail,
   ReleaseError,
@@ -34,8 +36,13 @@ import {
 } from "@/lib/releases";
 import { resolveWorkspaceScope } from "../../workspaceScope";
 import { AbandonTopicForm } from "./abandonTopicForm";
-import { abandonTopicAction, refreshRepositoryRecordsAction } from "./actions";
+import {
+  abandonTopicAction,
+  cancelReleaseAction,
+  refreshRepositoryRecordsAction,
+} from "./actions";
 import { BuildStatusSection } from "./buildStatusSection";
+import { CancelReleaseForm } from "./cancelReleaseForm";
 import { CopyValue } from "./copyValue";
 
 // CRP 进度与构建状态一直在变，页面不做静态化。
@@ -115,11 +122,21 @@ export default async function ReleaseDetailPage({
 
   const commitErrors = detail.packages.filter((item) => item.commitError !== null);
   // 危险操作按来源只显示一个：平台创建的走「取消提测」，从 CRP 导入的才显示「放弃提测主题」。
-  // 能不能点、不能点时为什么，判定只有一份，页面与接口用同一个函数。
+  // 能不能点、不能点时为什么，两个分支各只有一个纯函数判定，页面与服务端用的是同一份。
   const abandonLockReason = abandonTopicLockReason(detail);
-  // 确认框要写明主题名；只在真的要渲染这个按钮时才向 CRP 读一次，别的读路径（例如导出 CSV）不必付这次往返。
-  const abandonTopicName =
-    abandonLockReason === null ? await loadCrpTopicName(detail.crpTopicId, undefined) : null;
+  const cancelLockReason = cancelReleaseLockReason(detail);
+  // 只有真的要渲染确认框时才有下面两次读取：别的读路径（例如导出 CSV）不必付这次往返与这条查询。
+  const needDangerConfirmation =
+    detail.source === "imported" ? abandonLockReason === null : cancelLockReason === null;
+  // 确认框要写明主题名；读不到就退回本地记录的提测版本。
+  const dangerTopicName = needDangerConfirmation
+    ? await loadCrpTopicName(detail.crpTopicId, undefined)
+    : null;
+  // 取消提测会逐个删 Release，确认框必须写清删几条；口径与 cancelRelease 一致，只数当前轮。
+  const cancelReleaseCount =
+    needDangerConfirmation && detail.source !== "imported"
+      ? await loadCancelableReleaseCount(detail.releaseId)
+      : 0;
 
   return (
     <PageShell title="提测详情">
@@ -424,7 +441,7 @@ export default async function ReleaseDetailPage({
               <AbandonTopicForm
                 releaseId={detail.releaseId}
                 topicId={detail.crpTopicId ?? ""}
-                topicName={abandonTopicName ?? detail.version}
+                topicName={dangerTopicName ?? detail.version}
                 packageCount={detail.packages.length}
                 hasCrpReleases={detail.repositoryRecords.length > 0}
                 action={abandonTopicAction}
@@ -445,7 +462,24 @@ export default async function ReleaseDetailPage({
               这条提测是在平台上创建的，它自己的 Release 要连同主题一起清理，走「取消提测」。
               「放弃提测主题」只用于从 CRP 导入的提测：导入主题里的 Release 是别人投的，不能删。
             </p>
-            <p role="status">{abandonLockReason}</p>
+            {/* 与上面那一支互斥：平台创建的提测不显示「放弃提测主题」，只显示「取消提测」。 */}
+            {cancelLockReason === null ? (
+              <CancelReleaseForm
+                releaseId={detail.releaseId}
+                topicId={detail.crpTopicId}
+                topicName={dangerTopicName ?? detail.version}
+                releaseCount={cancelReleaseCount}
+                action={cancelReleaseAction}
+              />
+            ) : (
+              <p>
+                <button type="button" className="btn btn-danger-outline" disabled>
+                  取消提测
+                </button>
+                {"　"}
+                <span role="status">{cancelLockReason}</span>
+              </p>
+            )}
           </>
         )}
       </section>

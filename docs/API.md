@@ -445,7 +445,23 @@ Release ID」就是 `packages`。A13 的提测详情页合入后，这些字段�
 | --- | --- |
 | 省略或 `dispatch` | 建 CRP Topic（还没有的话），或者投递下一个该投的软件包 |
 | `retry` | 重投失败的构建任务：删掉 CRP 侧旧 Release，按同一份快照参数重投 |
-| `cancel` | 取消整个提测：逐个删 Release，再把 Topic 标成已放弃 |
+| `cancel` | 取消整个提测：逐个删 Release，再把 Topic 标成已放弃（前置条件见下一节） |
+
+### `action=cancel` 的前置条件
+
+取消是不可撤销的破坏性动作，服务端按下面几条判定，与页面上的「取消提测」共用同一个函数
+（`lib/releases/cancel.ts` 的 `cancelPlatformRelease`）。页面上的按钮禁用只是提示，直接打这个
+接口也绕不过去：
+
+- 只对 `source = platform`（平台创建）的提测生效。导入主题里的 Release 是别人投的，`409`
+  `conflict`，一条都不删。
+- 现读 CRP 工作流进度（`GET /topics/{id}/workflow/info`）。`WorkProgress >= 20`（已转测）`409`
+  拒绝；读不到进度同样拒绝，回 `502` `crp_error`，不默认放行。
+- 已经取消过的提测 `409`。
+
+判定通过之后逐个删 Release、再放弃 Topic。任何一条删不掉就**不放弃 Topic、本地状态一行不写**，
+失败明细放在 `failures` 里；处理完之后直接再调一次即可（删成功的 Release 连同它的仓库记录已经
+清掉，重试只碰剩下的）。只有全部成功才把提测写成 `abandoned`。
 
 ### 鉴权
 
@@ -530,7 +546,7 @@ CRP 没有删除 Topic 的接口，所以「取消」只能是删 Release + 放�
 | `401` | `unauthenticated` | 未登录 |
 | `403` | `forbidden` | 工作区角色低于「开发者」 |
 | `404` | `release_not_found` | 提测不存在，或账号不在它所属的工作区 |
-| `409` | `conflict` | 没有可重试的失败任务、提测已取消、缺基线分支 ID 等。个别包的重投失败不报错，见 `failures` |
+| `409` | `conflict` | 没有可重试的失败任务、提测已取消、缺基线分支 ID 等；`action=cancel` 时还包括「提测是从 CRP 导入的」与「已转测（`WorkProgress >= 20`）」。个别包的重投失败不报错，见 `failures` |
 | `502` | `crp_error` | 调 CRP 失败（凭据不对、CRP 拒绝、网络不通），原因看服务端日志与 `crpCalls` |
 
 ## POST /api/jobs/build-dispatch

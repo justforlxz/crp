@@ -3,31 +3,34 @@
 /**
  * 详情页的服务端动作。
  *
- * 两件事：
+ * 三件事：
  *
  * - 「CRP 仓库记录」区块的「手动刷新」：调 A12 的 `pollReleaseBuilds(releaseId)`，
  *   不自己写 CRP 请求 —— 轮询的请求顺序、状态回写、`lastSyncedAt` 的写法只有那一份；
- * - 「放弃主题」（MKACG-950）：调 `abandonReleaseTopic`，先 GET 完整对象、只把 `Abandoned`
+ * - 「放弃提测主题」（MKACG-950）：调 `abandonReleaseTopic`，先 GET 完整对象、只把 `Abandoned`
  *   置真再 PUT，然后回写本地状态与审计行。这里不手搓 CRP 请求，理由同上。
+ * - 「取消提测」（MKACG-954）：调 `cancelPlatformRelease`，复检来源与转测状态之后交给
+ *   `cancelRelease` 逐个删 Release 放弃 Topic。删除逻辑只有那一份，这里也不重写。
  *
  * 权限与接口侧一致：工作区从提测归属查出（`findReleaseScope`），不采信页面传来的工作区。
  * 读不到归属或没有相应权限都按「不存在」处理，不泄露这条提测是否存在。
- * 刷新只读、只改本地构建状态，只读成员即可；放弃主题是不可撤销的写操作，要和「创建提测」同一档。
+ * 刷新只读、只改本地构建状态，只读成员即可；放弃主题与取消提测都是不可撤销的写操作，
+ * 要和「创建提测」同一档。
  */
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { BuildError, findReleaseScope, pollReleaseBuilds } from "@/lib/build";
+import { BuildError, findReleaseScope, pollReleaseBuilds, type CancelResult } from "@/lib/build";
 import { requireRole } from "@/lib/auth/server";
 import { CrpError } from "@/lib/integrations/crp";
-import { abandonReleaseTopic, ReleaseError } from "@/lib/releases";
+import { abandonReleaseTopic, cancelPlatformRelease, ReleaseError } from "@/lib/releases";
 
 /** 刷新只读 CRP、只改本地的构建状态，因此只读成员也可以触发。 */
 const REFRESH_ROLE = "reader" as const;
 
-/** 放弃主题会真的改 CRP 上的主题且不能撤销，权限对齐「创建提测」：开发者及以上。 */
-const ABANDON_ROLE = "developer" as const;
+/** 放弃主题、取消提测都会真的改 CRP 且不能撤销，权限对齐「创建提测」：开发者及以上。 */
+const DANGER_ROLE = "developer" as const;
 
 /** 回到详情页；结果通过查询串带回，页面不需要额外状态。 */
 function back(releaseId: string, notice: string | null, error: string | null): never {
@@ -131,7 +134,7 @@ export async function abandonTopicAction(formData: FormData): Promise<void> {
   const guard = await requireRole({
     scope: "workspace",
     workspaceId: scope.workspaceId,
-    role: ABANDON_ROLE,
+    role: DANGER_ROLE,
   });
 
   if (!guard.ok) {
@@ -165,4 +168,92 @@ export async function abandonTopicAction(formData: FormData): Promise<void> {
       "CRP 侧该主题已标记为放弃，本地这条提测记为已放弃。",
     null,
   );
+}
+
+/** `cancelRelease` 的失败项用 `release:<id>` / `topic:<id>` 标目标，这里翻成给人看的说法。 */
+function cancelFailureTarget(target: string): string {
+  const [kind, id] = target.split(":", 2);
+
+  if (kind === "release") {
+    return `删除 Release ${id}`;
+  }
+
+  if (kind === "topic") {
+    return `放弃 Topic ${id}`;
+  }
+
+  return target;
+}
+
+/**
+ * 取消这条提测：逐个删掉 CRP 上的 Release，再把 Topic 标记为已放弃。
+ *
+ * 与「放弃提测主题」的区别只有一个，但很关键：这个动作会真的删 Release。
+ * 因此 `cancelPlatformRelease` 在调 `cancelRelease` 之前先复检一次：来源必须是平台创建、
+ * 提测没取消过、CRP 工作流进度现读出来没有到「转测」。页面上的禁用只是提示，
+ * 直接提交这个表单也绕不过去。
+ *
+ * 失败明细原样带回页面（MUST）：取消是逐个删的，可能只做成一部分，
+ * 静默当成成功会让人以为 CRP 上已经清干净了。
+ */
+export async function cancelReleaseAction(formData: FormData): Promise<void> {
+  const releaseId = String(formData.get("releaseId") ?? "").trim();
+
+  if (releaseId === "") {
+    redirect("/releases");
+  }
+
+  // 工作区从提测归属查出，不采信页面传来的工作区。
+  const scope = await findReleaseScope(releaseId);
+
+  if (scope === null) {
+    redirect(`/releases?error=${encodeURIComponent("提测记录不存在，或你没有看它的权限。")}`);
+  }
+
+  const guard = await requireRole({
+    scope: "workspace",
+    workspaceId: scope.workspaceId,
+    role: DANGER_ROLE,
+  });
+
+  if (!guard.ok) {
+    redirect(`/releases?error=${encodeURIComponent("提测记录不存在，或你没有看它的权限。")}`);
+  }
+
+  let result: CancelResult;
+
+  try {
+    result = await cancelPlatformRelease(releaseId);
+  } catch (error) {
+    // ReleaseError / BuildError / CrpError 的消息本来就是写给用户看的，原样显示；其余留给服务端日志。
+    if (
+      error instanceof ReleaseError ||
+      error instanceof BuildError ||
+      error instanceof CrpError
+    ) {
+      back(releaseId, null, error.message);
+    }
+
+    console.error(`[releases/${releaseId}] 取消提测失败`, error);
+    back(releaseId, null, "取消提测失败，请查看服务端日志后重试。");
+  }
+
+  revalidatePath(`/releases/${releaseId}`);
+  revalidatePath("/releases");
+
+  if (result.failures.length > 0) {
+    // MUST：失败明细不能吞。CRP 侧还有没删掉的东西，留在详情页让人按明细处理，不谎报成功。
+    back(
+      releaseId,
+      null,
+      `取消提测只做成了一部分：${result.failures
+        .map((item) => `${cancelFailureTarget(item.target)} 失败（${item.reason}）`)
+        .join("；")}。`,
+    );
+  }
+
+  // 成功之后回提测列表：这条提测已经结束，留在详情页没有下一步可做。
+  // 不带查询串：提测记录列表页不渲染 notice / error（那是详情页的机制），
+  // 带上去只会是一个没人读的参数。这条提测在列表里显示为已放弃，本身就是结果。
+  redirect("/releases");
 }

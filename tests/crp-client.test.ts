@@ -698,6 +698,36 @@ test("删除与重试 Release 走对的路径和方法", async () => {
   );
 });
 
+test("删除 Release 时 404 按「CRP 上已经没有」处理，不抛错", async () => {
+  // 取消提测被打断、或有人手工删过 Release 之后，本地还留着仓库记录，再发 DELETE 会回 404。
+  // 删除想要的结果已经达成，这时抛错会让整次取消永远收不了尾（MKACG-954）。
+  const { client, calls } = mockClient([
+    [
+      "DELETE /topic_releases/107439",
+      json({ code: "http.StatusNotFound", message: "release not found" }, 404),
+    ],
+  ]);
+
+  await client.deleteRelease(107439);
+
+  assert.deepEqual(
+    calls.map((call) => `${call.method} ${new URL(call.url).pathname}`),
+    ["DELETE /api/topic_releases/107439"],
+  );
+});
+
+test("删除 Release 时 500 仍然抛业务错误", async () => {
+  // 404 收进来只针对「已经没有了」。其它失败照旧当失败，否则取消会假装做成。
+  const { client } = mockClient([
+    [
+      "DELETE /topic_releases/107440",
+      json({ code: "http.StatusInternalServerError", message: "delete failed" }, 500),
+    ],
+  ]);
+
+  await assert.rejects(() => client.deleteRelease(107440), CrpBusinessError);
+});
+
 test("仓库地址为空时返回空数组，不返回 [null]", async () => {
   const { client } = mockClient([
     ["POST /topic_urls", json({ OSTree: null, RepoUrls: null, GitInfo: null })],
