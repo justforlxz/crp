@@ -55,7 +55,7 @@ A19 之后：
 | --- | --- | --- | --- | --- |
 | 工作台 | `dashboard.json` / `.png` | `/dashboard` | 9 + 侧栏 8 | 会话记住的工作区是 `desktop-core` |
 | 提测记录 | `releases.json` / `.png` | `/releases?workspace=desktop-core` | 7 个名字 / 9 个实例 | `releases.row-status` 一行一个，种子 3 行 |
-| 提测详情 | `release-detail.json` / `.png` | `/releases/<id>?workspace=desktop-core` | 7 | 取种子里的 `桌面专业版 V25 / 25.0.1` |
+| 提测详情 | `release-detail.json` / `.png` | `/releases/<id>?workspace=desktop-core` | 8 | 取种子里的 `桌面专业版 V25 / 25.0.1` |
 | 创建提测 | `release-new.json` / `.png` | `/releases/new?workspace=desktop-core` | 3 | 第一步（选项目）；第二步需要 Gerrit 数据，见下表 |
 | 构建队列 | `queue.json` / `.png` | `/queue?workspace=system-apps` | 6 | `desktop-core` 的提测都已完结，任务表为空，所以换工作区取样 |
 | 软件包 | `packages.json` / `.png` | `/packages` | 6 | — |
@@ -111,6 +111,7 @@ L1 的静态检查不受这 6 页限制：它扫全部 `app/**/page.tsx`。
 | `release-detail.snapshot-table` | 软件包快照数据表 | 1 | 入基线 |
 | `release-detail.repo-records-table` | CRP 仓库记录数据表 | 1 | 入基线 |
 | `release-detail.crp-info` | 提测信息定义列表 | 1 | 入基线 |
+| `release-detail.danger-zone` | 「危险操作」区块标题（MKACG-950 追加） | 1 | 入基线 |
 
 创建提测 `/releases/new`
 

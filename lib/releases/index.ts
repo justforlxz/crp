@@ -49,6 +49,14 @@ export {
 
 export { canViewRelease, type ReleaseAccessQuery } from "./access";
 
+
+export {
+  abandonReleaseTopic,
+  abandonTopicLockReason,
+  loadCrpTopicName,
+  type AbandonedTopic,
+  type AbandonTopicOptions,
+} from "./abandon";
 export { collectDownstream } from "./downstream";
 
 export {
@@ -75,6 +83,8 @@ export {
   applyReleaseUpdate,
   loadReleaseUpdateView,
   previewReleaseUpdate,
+  RELEASE_UPDATE_ACTION_LABELS,
+  releaseUpdateActionLabel,
   type AbandonedCrpRelease,
   type PlannedRound,
   type PlannedRoundReason,

@@ -875,6 +875,107 @@ curl -fsS -X POST -b cookie.txt -H "content-type: application/json" \
   "http://localhost:3000/api/releases/01a1f0c0-…/update"
 ```
 
+## GET /api/releases/{id}/abandon
+
+看这条提测的主题现在能不能放弃，以及确认框要显示的两样东西：Topic ID 与主题名。
+页面渲染时已经拿到了这些，这个接口是给「不经过页面、直接调接口」的调用方用的：先看一眼，再发 `POST`。
+
+只有 `source = imported` 的提测才可能 `canAbandon = true`：平台自己创建的提测要连 Release 一起清，
+走「取消提测」，这一支不提供「放弃提测主题」。`topicName` 只在 `canAbandon = true` 时才现读 CRP
+（读不到就是 `null`），其余情况不发这次请求。
+
+### 鉴权
+
+用用户会话，要「只读」及以上角色。工作区从提测归属查出，不采信查询串。
+提测不存在、或账号不在它所属的工作区，都返回 `404 release_not_found`。
+
+### 返回体
+
+`200`：
+
+```json
+{
+  "releaseId": "01a1f0c0-…",
+  "source": "imported",
+  "status": "building",
+  "topicId": "29253",
+  "topicName": "kwin-project-25.0.2",
+  "workProgress": 10,
+  "workProgressLabel": "更新",
+  "canAbandon": true,
+  "lockReason": null
+}
+```
+
+`canAbandon` 为 `false` 时 `lockReason` 说明原因（不是导入来源、还没建 Topic、已经放弃过、
+读不到工作流进度、已转测）。判定与页面上的禁用是同一个纯函数（`abandonTopicLockReason`），
+两处不会各说一套。
+
+## POST /api/releases/{id}/abandon
+
+放弃这条提测的 CRP 主题（MKACG-950）：把 Topic 在 CRP 上置为已放弃，本地状态置 `abandoned`，
+并写一行审计（谁、什么时候、放弃的是哪个 Topic）。
+
+**只放弃主题，不删 Release**：主题里已有的 Release 一条都不动，快照也不动。
+「逐个删 Release 再放弃 Topic」是 `POST /api/releases/{id}/dispatch?action=cancel`（取消提测），两个动作不能混。
+
+只对 `source = imported`（从 CRP 导入）的提测生效：导入主题里的 Release 是别人投的，只能动主题；
+平台自己创建的提测要连 Release 一起清，走「取消提测」。来源不符时服务端直接 `409`，
+页面上也不会显示这个入口。
+
+### 鉴权
+
+用用户会话，要「开发者」及以上角色（与创建提测同一档）。工作区从提测归属查出，不采信请求体。
+提测不存在、或账号不在它所属的工作区，都返回 `404 release_not_found`。
+
+### 服务端做什么
+
+1. 现读 CRP 工作流进度（`GET /topics/{id}/workflow/info`）。`WorkProgress >= 20`（已转测）直接拒绝；
+   读不到进度同样拒绝，不默认放行。库里的 `crp_work_progress` 是上一次轮询的旧值，只用于展示。
+2. `GET /topics/{id}` 取回完整主题对象，原样 `PUT /topics/{id}` 回写、只把 `Abandoned` 置 `true`。
+   CRP 的 `PUT` 是整体覆盖，只传 `{Abandoned:true}` 会把主题的其它字段改坏（实测依据见
+   `lib/integrations/crp/FINDINGS.md`）。`Owner` / `Members` 读回来是对象数组，写回去是逗号拼接的账号名。
+3. 写成功之后才在一个事务里改本地：`release.status = abandoned`、`crp_topic_abandoned = true`、
+   `finished_at`，并插一行 `release_update_record`（`action = abandon_topic`，带主题 ID）。
+   第 2 步失败时本地一步都不写（MUST NOT）。
+
+请求体为空即可：放弃哪一条取自路径里的 `id`，不采信请求体里的任何字段。
+
+### 返回体
+
+`200`：
+
+```json
+{
+  "action": "abandon_topic",
+  "releaseId": "01a1f0c0-…",
+  "topicId": "29253",
+  "topicName": "kwin-project-25.0.2",
+  "abandonedAt": "2026-11-22T07:30:00.000Z"
+}
+```
+
+### 状态码
+
+| 状态码 | `error.code` | 什么情况 |
+| --- | --- | --- |
+| `200` | — | 主题已放弃，本地状态与审计行已写 |
+| `401` | `unauthenticated` | 未登录 |
+| `403` | `forbidden` | 工作区角色低于「开发者」 |
+| `404` | `release_not_found` | 提测不存在，或账号不在它所属的工作区 |
+| `409` | `conflict` | 来源不是 `imported`、已转测（`WorkProgress >= 20`）、已经放弃过、还没有建 Topic |
+| `502` | `crp_error` | 读不到 CRP 工作流进度，或 `PUT` 失败（本地状态保持原样） |
+
+### 示例
+
+```bash
+# 先看要放弃的是哪个主题
+curl -fsS -b cookie.txt "http://localhost:3000/api/releases/01a1f0c0-…/abandon"
+
+# 确认后放弃
+curl -fsS -X POST -b cookie.txt "http://localhost:3000/api/releases/01a1f0c0-…/abandon"
+```
+
 ## GET /api/releases/import
 
 从 CRP 导入的第一步「找主题」用。三种用法：

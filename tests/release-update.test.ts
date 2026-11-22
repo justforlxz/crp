@@ -29,7 +29,9 @@ import {
   loadReleaseUpdateView,
   parseReleaseUpdateInput,
   previewReleaseUpdate,
+  RELEASE_UPDATE_ACTION_LABELS,
   ReleaseError,
+  releaseUpdateActionLabel,
 } from "../lib/releases";
 
 const PREFIX = "zza17";
@@ -1170,4 +1172,17 @@ test("更新输入：两组都空、同一包既补又换，都要被拒绝", ()
     append: [{ packageName: pkgName("f"), branch: BRANCH, commitSha: SHA_F, customTag: null }],
   });
   assert.equal(ok.ok, true);
+});
+
+test("更新留痕的动作名：三种动作都有人话，认不出的取值原样带出", () => {
+  assert.equal(releaseUpdateActionLabel("append"), "补包");
+  assert.equal(releaseUpdateActionLabel("replace"), "换包");
+  // 详情页的更新历史与更新页的留痕表共用这一份：漏一个值就会在另一处显示成别的动作。
+  assert.equal(releaseUpdateActionLabel("abandon_topic"), "放弃主题");
+  assert.equal(releaseUpdateActionLabel("something_new"), "something_new");
+  assert.deepEqual(Object.keys(RELEASE_UPDATE_ACTION_LABELS).sort(), [
+    "abandon_topic",
+    "append",
+    "replace",
+  ]);
 });

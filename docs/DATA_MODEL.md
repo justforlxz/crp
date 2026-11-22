@@ -55,7 +55,7 @@ PRD 里的 `Release 1-1 CrpTopic` 在本版没有独立表，Topic 的字段并�
 | `SyncRunKind`（`sync_run_kind`） | `baseline_list`、`baseline_packages`、`package_metadata`、`release_status` | 同步种类，对应 PRD 6.4 的四类同步边界 |
 | `SyncRunStatus`（`sync_run_status`） | `running`、`success`、`failed` | 同步结果 |
 | `SyncRunTrigger`（`sync_run_trigger`） | `manual`、`schedule` | 手动刷新或定时任务 |
-| `ReleaseUpdateAction`（`release_update_action`） | `append`、`replace` | 提测增量更新的动作：`append` = 补包，`replace` = 换包（含连带重投的下游） |
+| `ReleaseUpdateAction`（`release_update_action`） | `append`、`replace`、`abandon_topic` | 提测增量更新的动作：`append` = 补包，`replace` = 换包（含连带重投的下游），`abandon_topic` = 放弃整个主题（MKACG-950 追加，不删 Release） |
 
 ## 四、表定义
 
@@ -511,25 +511,28 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 语义不同，所以单独建一张。
 
 一次更新请求最多写两行：有补包就写一行 `append`，有换包就写一行 `replace`，一行只描述一类动作，
-页面按时间倒序列出即可。
+页面按时间倒序列出即可。放弃整个主题（MKACG-950 追加）也记在这里，写一行 `abandon_topic`。
 
 | 字段（列名） | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
 | `id` | text | PK | |
 | `releaseId`（`release_id`） | text | NOT NULL | 所属提测 |
 | `operatorId`（`operator_id`） | text | NOT NULL | 发起这次更新的账号 |
-| `action` | `release_update_action` | NOT NULL | `append`（补包）或 `replace`（换包） |
+| `action` | `release_update_action` | NOT NULL | `append`（补包）、`replace`（换包）或 `abandon_topic`（放弃主题） |
 | `packageNames`（`package_names`） | text[] | NOT NULL | 本次涉及的包名：补包是新加的包，换包是被换版本的包 |
 | `revisionBefore`（`revision_before`） | integer | NOT NULL | 更新前的提测轮次 |
 | `revisionAfter`（`revision_after`） | integer | NOT NULL | 更新后的提测轮次（当前实现是加一） |
 | `abandonedCrpReleaseIds`（`abandoned_crp_release_ids`） | text[] | NOT NULL | 本次在 CRP 侧放弃（删除）的 Release ID |
 | `redispatchedPackageNames`（`redispatched_package_names`） | text[] | NOT NULL | 本次重投的包名：补包是新加的那些，换包是被换的包加全部传递下游 |
+| `abandonedTopicId`（`abandoned_topic_id`） | text | 可空 | 放弃的主题 ID；只有 `abandon_topic` 这一行有值（MKACG-950 追加） |
 | `createdAt`（`created_at`） | timestamptz | NOT NULL | 记录时间 |
 
 - 索引：`(release_id, created_at)` 二级索引（按提测看更新历史）。
 - 外键：`release_id → release.id`、`operator_id → app_user.id`，都是 RESTRICT。
 - 两个列表列存包名与 Release ID 的原文，不指向 `package`、也不指向 `release_repository_record`：
   留痕是复盘用的旁证，后来改名的包与被删掉的 CRP Release 不该让这行失效。
+- `abandon_topic` 那一行不涉及任何包，也不删 Release：三个列表列都是空数组，轮次前后相同。
+  主题 ID 记在本行而不是只靠 `release.crp_topic_id` 反查，留痕要能自己说明放弃的是哪个主题。
 - 与 4.13 的分工：快照记「每一轮固化了什么」，本表记「人为改了哪些轮、放弃了什么、重投了什么」。
   旧轮在快照表里标 `superseded` 并指向新轮，物理行永远保留；本表不参与快照状态流转。
 

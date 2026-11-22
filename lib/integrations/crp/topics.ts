@@ -265,13 +265,32 @@ export async function createTopic(
   return { topicId, name: input.name, owner, raw };
 }
 
-/** 放弃 Topic。CRP 侧没有删除能力，这是唯一可用的清理方式。 */
-export async function abandonTopic(transport: CrpTransport, topicId: number): Promise<void> {
+/**
+ * 放弃 Topic。CRP 侧没有删除能力，这是唯一可用的清理方式。
+ *
+ * CRP 的 `PUT /topics/{id}` 是**整体覆盖**：只传 `{Abandoned:true}` 会把主题的其它字段改坏。
+ * 所以这里先 `GET /topics/{id}` 取回完整对象，原样回写、只把 `Abandoned` 置真。
+ * `Owner` / `Members` 读回来是对象数组、写回去必须是账号名字符串，这一处折算也在这里。
+ *
+ * 返回写成功之后的主题（`abandoned` 为真），调用方不必再读一次就能拿到主题名等原值。
+ */
+export async function abandonTopic(transport: CrpTransport, topicId: number): Promise<CrpTopic> {
   if (!Number.isInteger(topicId) || topicId <= 0) {
     throw new CrpInvalidParameterError("放弃 Topic 必须给 Topic ID：topicId 不合法");
   }
 
-  const raw = await transport.request<CrpRawTopic>({ method: "GET", path: `/topics/${topicId}` });
+  const raw = await transport.request<CrpRawTopic | null>({
+    method: "GET",
+    path: `/topics/${topicId}`,
+  });
+
+  // 响应体为空时请求层给回 null，`{...null}` 会折叠成 `{}`，PUT 出去就是一次只剩
+  // `Abandoned` 的覆盖 —— 正是这个接口最容易把主题改坏的方式。宁可不写。
+  if (raw === null || typeof raw !== "object") {
+    throw new CrpBusinessError(`GET /topics/${topicId} 没有返回主题对象，放弃主题已取消`, {
+      responseSnippet: responseSnippet(JSON.stringify(raw)),
+    });
+  }
 
   await transport.request<unknown>({
     method: "PUT",
@@ -286,6 +305,9 @@ export async function abandonTopic(transport: CrpTransport, topicId: number): Pr
     },
     expectedStatus: [200, 201, 204],
   });
+
+  // 写请求成功了，主题在 CRP 侧就是已放弃：返回值据此置真，不让调用方再读一次。
+  return normalizeTopic({ ...raw, Abandoned: true });
 }
 
 /** 查 Topic 的 apt 仓库地址。构建还没产出时 CRP 返回 null，这里统一成空数组。 */

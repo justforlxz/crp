@@ -99,8 +99,10 @@ export type CrpClient = {
    *
    * CRP 没有删除 Topic 的接口（`DELETE /api/topics/{id}` 返回 200 但什么也不做，
    * 见 FINDINGS.md），清理只能靠把 Topic 标成已放弃。
+   *
+   * 返回写成功之后的主题：调用方（放弃主题的审计行、确认框）要主题名，不必再读一次。
    */
-  abandonTopic(topicId: number): Promise<void>;
+  abandonTopic(topicId: number): Promise<CrpTopic>;
 };
 
 /** `GET /branches` 不需要认证，实测匿名就能拿到全部交付分支。 */
