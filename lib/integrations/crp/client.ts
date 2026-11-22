@@ -6,7 +6,7 @@
  * | 文件 | 职责 |
  * | --- | --- |
  * | `request.ts` | 带登录态的请求层：超时、重试、错误分类、401 续期 |
- * | `topics.ts` | 建 Topic、读主题、按名称搜主题、放弃 Topic、仓库地址 |
+ * | `topics.ts` | 建 Topic、读主题、列主题（含「只看我的」）、放弃 Topic、仓库地址 |
  * | `releases.ts` | 投递、查询、删除、重试 Release |
  * | `projects.ts` | 按软件包名解析 `ProjectID` |
  * | `workflow.ts` | `WorkProgress` 数值与标签 |
@@ -37,7 +37,7 @@ import {
   submitRelease,
 } from "./releases";
 import { searchProjects } from "./projects";
-import { getTopic, searchTopics } from "./topics";
+import { getTopic, searchTopics, type CrpTopicSearchResult } from "./topics";
 import {
   createCrpTransport,
   type CrpTransport,
@@ -74,12 +74,19 @@ export type CrpClient = {
   /** 读主题详情（名称、基线分支、Owner、状态）。从 CRP 导入的第一步用它。 */
   getTopic(topicId: number): Promise<CrpTopic>;
   /**
-   * 按名称搜索某条交付分支下的 `test` 类型主题。
+   * 按条件列某条交付分支下的 `test` 类型主题。
    *
-   * 走 `GET /branches/{id}/topics?Type=test` 再本地按名称过滤：`POST /topics/search`
-   * 在这个部署上对任何请求体都返回 `null`，实测见 FINDINGS.md 第 4.4 节。
+   * 走 `GET /branches/{id}/topics?Type=test` 再本地过滤：`POST /topics/search`
+   * 在这个部署上对任何请求体都返回 `null`，实测见 FINDINGS.md 第 11.2 节。
+   *
+   * `mine: true` 只留当前 CRP 账号当 Owner 的那些；账号由客户端自己 `GET /user`
+   * 取，调用方传不进别人的账号。
    */
-  searchTopics(input: { branchId: number; name: string }): Promise<CrpTopic[]>;
+  searchTopics(input: {
+    branchId: number;
+    name?: string;
+    mine?: boolean;
+  }): Promise<CrpTopicSearchResult>;
   createTopic(input: CrpCreateTopicInput): Promise<CrpCreatedTopic>;
   submitRelease(input: CrpSubmitReleaseInput): Promise<CrpSubmittedRelease>;
   listReleases(topicId: number): Promise<CrpRelease[]>;
@@ -155,7 +162,7 @@ export function createCrpClient(options: CrpClientOptions = {}): CrpClient {
     getCurrentUser: () => getCurrentUser(transport),
     searchProjects: (input) => searchProjects(transport, input),
     getTopic: (topicId) => getTopic(transport, topicId),
-    searchTopics: (input) => searchTopics(transport, input),
+    searchTopics: (input) => searchTopics(transport, input, () => getCurrentUser(transport)),
     createTopic: (input) =>
       createTopic(transport, input, async () => (await getCurrentUser(transport)).name),
     submitRelease: (input) => submitRelease(transport, input),

@@ -460,11 +460,15 @@ GET /api/branches/108/topics?Type=test
         "Owner":[{"name":"zhangdingyuan","namecn":"张丁元"}],"State":0,"RepoType":"deb"}
 ```
 
-客户端在这一条响应上做三件事，都在本地完成：
+客户端在这一条响应上做四件事，都在本地完成：
 
 1. 丢掉 `Type` 不是 `test` 的项（服务端已经按 `Type=test` 过滤，本地再筛一次，防它改行为）；
 2. 名字做「包含」匹配，比较前统一转小写（主题名里中英混排，大小写不该影响搜得到）；
-3. 最多回 50 条（`TOPIC_SEARCH_LIMIT`），整条分支 916 条不能整包塞给页面。
+3. 「只看我的主题」（`mine=1`）：先用 `GET /user` 取当前账号，再按 `Owner` 过滤。当前账号取
+   `Name` 与 `NameCN` 两个值，`Owner` 的三种形状都认（字符串、对象数组、`null`），对象项取
+   `name` 与 `namecn`，比较不区分大小写；
+4. 按 Topic ID 倒序后最多回 50 条（`TOPIC_SEARCH_LIMIT`），整条分支 916 条不能整包塞给页面；
+   返回的 `total` 是截断前的命中数，页面据此提示「只显示前 N 条」。
 
 一次真实调用（分支 108、关键字 `Fleming`）：
 
