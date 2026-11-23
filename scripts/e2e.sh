@@ -2,7 +2,8 @@
 #
 # A16 全链路演练的入口（在仓库根执行）。
 #
-# 它做三件事：检查必备的环境变量 → 起一个真实服务（`next build` + `next start`）→
+# 它做四件事：检查必备的环境变量 → 起一个真实服务（`next build` + `next start`）→
+# 从 base URL 打开一次（`scripts/verify-base-url.ts`，两种身份都查，几秒）→
 # 调 `scripts/e2e.ts` 在真实 CRP 上跑完整链路（含一次基线同步，投递用的架构来自基线）。
 # 参数原样透传给 `scripts/e2e.ts`：
 #
@@ -106,6 +107,16 @@ if [ -z "$base_url" ]; then
 fi
 
 echo "e2e: 目标服务 $base_url；完整输出写入 $log_file"
+
+# 从 base URL 打开：主链路要真实 CRP 构建一小时，这条只要几秒，重定向被改坏了先在这里失败。
+# 就绪探测仍然打 /login，不打 /：探测只想知道进程起来了，重定向本身由这条检查断言，
+# 而 / 被改坏时返回 404，探测会等满 120 秒才报「服务没起来」—— 报的不是真正的原因。
+echo "e2e: 从 base URL 打开（不带会话 / 带会话）"
+if ! pnpm tsx scripts/verify-base-url.ts --base-url="$base_url" 2>&1 | tee -a "$log_file"; then
+  echo "e2e: 从 base URL 打开失败（见上），不进入主链路" >&2
+  exit 1
+fi
+
 status=0
 pnpm tsx scripts/e2e.ts --base-url="$base_url" "$@" 2>&1 | tee -a "$log_file" || status=$?
 
