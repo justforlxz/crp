@@ -72,17 +72,25 @@ L1 的静态检查不受这 6 页限制：它扫全部 `app/**/page.tsx`。
 
 | 锚点 | 元素用途 | 实例 | 状态 |
 | --- | --- | --- | --- |
-| `dashboard.workspace-switcher` | 工作区区块（列表 + 切换按钮） | 1 | 入基线 |
-| `dashboard.overview-heading` | 「概览」二级标题 | 1 | 入基线 |
-| `dashboard.stats` | 四张统计卡的卡片网格 | 1 | 入基线 |
-| `dashboard.recent-releases` | 最近提测区块 | 1 | 入基线 |
+| `dashboard.workspace-switcher` | 工作区区块（`.card panel` + 切换按钮） | 1 | 入基线 |
+| `dashboard.create-release` | 页头的「＋ 创建提测」主操作 | 1 | 入基线 |
+| `dashboard.stats` | 四张统计卡的 `.grid.stats` | 1 | 入基线 |
+| `dashboard.stat-icon` | 统计卡右侧的 `.stat-ico` 图标块 | 4 | 入基线（多实例） |
+| `dashboard.tip` | 页面级「统计口径」`.tip` | 1 | 入基线 |
+| `dashboard.recent-releases` | 最近提测面板（`.card panel`） | 1 | 入基线 |
 | `dashboard.recent-releases-table` | 最近提测数据表 | 1 | 入基线 |
-| `dashboard.queue-summary` | 构建队列摘要区块 | 1 | 入基线 |
-| `dashboard.project-overview` | 项目提测概况区块 | 1 | 入基线 |
-| `dashboard.config-todo` | 配置待办列表 | 1 | 入基线 |
-| `dashboard.invite-form` | 邀请成员表单 | 1 | 入基线 |
+| `dashboard.queue-summary` | 构建队列面板 | 1 | 入基线 |
+| `dashboard.queue-list` | 队列条目的 `.queue-list` | 1 | 条件锚点：当前工作区没有排队任务时不出现 |
+| `dashboard.queue-item` | 队列条目 `.queue-item` | 0–5 | 条件锚点：同上 |
+| `dashboard.project-overview` | 项目提测概况面板 | 1 | 入基线 |
+| `dashboard.config-todo` | 项目配置概况面板 | 1 | 入基线 |
+| `dashboard.config-list` | 待配置项目的 `.queue-list` | 0–1 | 条件锚点：没有待配置项时给 `.empty` |
+| `dashboard.empty` | 空状态块 | 0 | 条件锚点：区块为空才出现 |
+| `dashboard.invite-form` | 邀请成员表单面板 | 1 | 入基线 |
 | `nav.dashboard` … `nav.webhooks` | 侧栏导航项（8 项，当前页那项高亮） | 各 1 | 只在工作台入基线 |
 | `sidebar.account` | 侧栏底部的账号区（账号名、角色、邮箱、退出登录，MKACG-957 起） | 1 | 只在工作台入基线 |
+
+MKACG-964 按原型移植模块后，原来的 `dashboard.overview-heading`（「概览」二级标题）不再存在：原型里统计卡直接跟在页头后面，没有这个小标题。队列与配置两块也从 `<table>` 换成了 `.queue-list` + `.queue-item`。
 
 `nav.*` 与 `sidebar.*` 每个受保护页面都有，完全相同。只留工作台一份：一次侧栏改动的 diff 不会分散到六个文件，侧栏坏了照样挡得住。
 
@@ -91,13 +99,15 @@ L1 的静态检查不受这 6 页限制：它扫全部 `app/**/page.tsx`。
 | 锚点 | 元素用途 | 实例 | 状态 |
 | --- | --- | --- | --- |
 | `releases.intro` | 页面说明段落 | 1 | 入基线 |
-| `releases.status-tabs` | 状态页签行 | 1 | 入基线 |
-| `releases.filters` | 筛选表单栏 | 1 | 入基线 |
-| `releases.count` | 条数统计 | 1 | 入基线 |
-| `releases.table` | 提测记录数据表 | 1 | 入基线 |
-| `releases.row-status` | 行内状态徽标 | 3 | 入基线（多实例） |
-| `releases.empty` | 空状态块 | 0 | 条件锚点：列表为空才出现，种子有 3 条记录 |
-| `releases.create-actions` | 底部创建 / 导入入口 | 1 | 入基线 |
+| `releases.create-actions` | 页头的「从 CRP 导入」入口 | 1 | 入基线 |
+| `releases.status-tabs` | `.page-tabs` 状态页签（当前页签带 `.active`） | 1 | 入基线 |
+| `releases.filters` | `.filters` 筛选行（工作区 / 项目 / 搜索框 / 条数） | 1 | 入基线 |
+| `releases.count` | 筛选行右侧的条数统计 | 1 | 入基线 |
+| `releases.table` | `.card table-card` 表格卡片 | 1 | 入基线 |
+| `releases.row-status` | 行内状态 pill | 3 | 入基线（多实例） |
+| `releases.empty` | 空状态块（画在表格的 `colSpan` 行里） | 0 | 条件锚点：列表为空才出现，种子有 3 条记录 |
+
+MKACG-964 起，提测记录的页签从普通链接行换成原型的 `.page-tabs`，筛选从 `.filter-bar` 换成 `.filters` + `.field` + `.search-field`，表格外面套 `.card table-card` 与 `.table-footer`；「创建提测」移到页头的 `.page__actions` 里。
 
 提测详情 `/releases/<id>`
 
@@ -169,7 +179,7 @@ L1 的静态检查不受这 6 页限制：它扫全部 `app/**/page.tsx`。
 | 所有 `app/**/page.tsx` 经 `PageShell` 渲染 | 未使用者 0 个，失败时列出文件 |
 | 没有裸 `<table>` | 每个 `<table>` 开标签都要带 `className="data-table"`；横向滚动容器由 L2 的 `*.table-scroll` 锚点覆盖 |
 | 样式来源唯一 | `app/**/*.tsx` 与 `components/**/*.tsx` 里 `style={{` 命中 0 处 |
-| `app/globals.css` 规则数 | 不低于基线；规则数 = 去掉注释与字符串后 `{` 的个数（当前 111） |
+| `app/globals.css` 规则数 | 不低于基线；规则数 = 去掉注释与字符串后 `{` 的个数（当前 160） |
 | `app/globals.css` 设计变量 | `:root` 里每个变量的值与基线一致；变量被删也算失败，新增不算 |
 
 设计变量这一条是为了兜住「改了值但没有任何锚点落在上面」的情况：例如 `--radius-card` 只影响 `.card`，而 `.card` 只在登录、注册与导入页出现，六个覆盖页面里没有它 —— 光靠锚点看不出这类改动。

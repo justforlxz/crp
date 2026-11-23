@@ -99,7 +99,9 @@ docker run --rm --network host \
     fi
     pnpm test:style $STYLE_ARGS
     status=$?
-    chown -R "$HOST_UID:$HOST_GID" /work/tests/visual /work/.next 2>/dev/null || true
+    # `pnpm install` 的 postinstall 会以 root 跑 `prisma generate` 写 /work/generated：
+    # 不交还所有权，调用者下一次 `prisma generate` 会 EACCES。
+    chown -R "$HOST_UID:$HOST_GID" /work/tests/visual /work/.next /work/generated 2>/dev/null || true
     chown "$HOST_UID:$HOST_GID" /work/next-env.d.ts 2>/dev/null || true
     exit $status
   '

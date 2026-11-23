@@ -6,6 +6,32 @@
     "height": 900
   },
   "anchors": {
+    "releases.create-actions": [
+      {
+        "style": {
+          "display": "flex",
+          "position": "static",
+          "margin": "0px",
+          "padding": "0px 16px",
+          "fontSize": "12px",
+          "fontWeight": "400",
+          "lineHeight": "14.4px",
+          "color": "rgb(50, 105, 232)",
+          "backgroundColor": "rgb(255, 255, 255)",
+          "border": "1px solid rgb(134, 140, 149)",
+          "borderRadius": "8px",
+          "boxShadow": "none",
+          "width": "98.7812px",
+          "height": "40px"
+        },
+        "box": {
+          "x": 1043.61,
+          "y": 24,
+          "width": 98.78,
+          "height": 40
+        }
+      }
+    ],
     "releases.intro": [
       {
         "style": {
@@ -26,7 +52,7 @@
         },
         "box": {
           "x": 264,
-          "y": 67.5,
+          "y": 80,
           "width": 984,
           "height": 44.78
         }
@@ -37,24 +63,24 @@
         "style": {
           "display": "flex",
           "position": "static",
-          "margin": "0px 0px 12px",
-          "padding": "8px 0px",
+          "margin": "0px 0px 16px",
+          "padding": "0px",
           "fontSize": "14px",
           "fontWeight": "400",
           "lineHeight": "22.4px",
           "color": "rgb(32, 43, 60)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
-          "border": "0px none rgb(32, 43, 60)",
+          "border": "",
           "borderRadius": "0px",
           "boxShadow": "none",
           "width": "984px",
-          "height": "38.3906px"
+          "height": "35.7969px"
         },
         "box": {
           "x": 264,
-          "y": 158.67,
+          "y": 136.78,
           "width": 984,
-          "height": 38.39
+          "height": 35.8
         }
       }
     ],
@@ -64,23 +90,23 @@
           "display": "flex",
           "position": "static",
           "margin": "0px 0px 16px",
-          "padding": "8px",
+          "padding": "0px",
           "fontSize": "14px",
           "fontWeight": "400",
           "lineHeight": "22.4px",
           "color": "rgb(32, 43, 60)",
-          "backgroundColor": "rgb(255, 255, 255)",
-          "border": "1px solid rgb(232, 237, 242)",
-          "borderRadius": "16px",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "border": "0px none rgb(32, 43, 60)",
+          "borderRadius": "0px",
           "boxShadow": "none",
           "width": "984px",
-          "height": "64.3906px"
+          "height": "40px"
         },
         "box": {
           "x": 264,
-          "y": 209.06,
+          "y": 188.58,
           "width": 984,
-          "height": 64.39
+          "height": 40
         }
       }
     ],
@@ -89,50 +115,50 @@
         "style": {
           "display": "block",
           "position": "static",
-          "margin": "0px 0px 12px",
+          "margin": "0px",
           "padding": "0px",
-          "fontSize": "12.5px",
+          "fontSize": "12px",
           "fontWeight": "400",
-          "lineHeight": "20px",
+          "lineHeight": "19.2px",
           "color": "rgb(93, 104, 117)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
           "border": "0px none rgb(93, 104, 117)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "584.609px",
-          "height": "20px"
+          "width": "62.4219px",
+          "height": "19.1875px"
         },
         "box": {
-          "x": 264,
-          "y": 289.45,
-          "width": 584.61,
-          "height": 20
+          "x": 1185.58,
+          "y": 198.98,
+          "width": 62.42,
+          "height": 19.19
         }
       }
     ],
     "releases.table": [
       {
         "style": {
-          "display": "table",
+          "display": "block",
           "position": "static",
           "margin": "0px",
           "padding": "0px",
-          "fontSize": "13px",
+          "fontSize": "14px",
           "fontWeight": "400",
-          "lineHeight": "19.5px",
+          "lineHeight": "22.4px",
           "color": "rgb(32, 43, 60)",
           "backgroundColor": "rgb(255, 255, 255)",
-          "border": "0px none rgb(32, 43, 60)",
-          "borderRadius": "0px",
-          "boxShadow": "none",
-          "width": "982px",
-          "height": "227.797px"
+          "border": "1px solid rgb(232, 237, 242)",
+          "borderRadius": "12px",
+          "boxShadow": "rgba(35, 50, 75, 0.024) 0px 2px 7px 0px",
+          "width": "984px",
+          "height": "257.484px"
         },
         "box": {
-          "x": 265,
-          "y": 322.45,
-          "width": 982,
-          "height": 227.8
+          "x": 264,
+          "y": 244.58,
+          "width": 984,
+          "height": 257.48
         }
       }
     ],
@@ -151,14 +177,14 @@
           "border": "",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "86.5px",
-          "height": "65px"
+          "width": "111.312px",
+          "height": "59.5px"
         },
         "box": {
-          "x": 601.55,
-          "y": 355.75,
-          "width": 86.5,
-          "height": 65
+          "x": 789.05,
+          "y": 278.88,
+          "width": 111.31,
+          "height": 59.5
         }
       },
       {
@@ -175,14 +201,14 @@
           "border": "",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "86.5px",
-          "height": "65px"
+          "width": "111.312px",
+          "height": "59.5px"
         },
         "box": {
-          "x": 601.55,
-          "y": 420.75,
-          "width": 86.5,
-          "height": 65
+          "x": 789.05,
+          "y": 338.38,
+          "width": 111.31,
+          "height": 59.5
         }
       },
       {
@@ -199,40 +225,14 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "86.5px",
-          "height": "64.5px"
+          "width": "111.312px",
+          "height": "59px"
         },
         "box": {
-          "x": 601.55,
-          "y": 485.75,
-          "width": 86.5,
-          "height": 64.5
-        }
-      }
-    ],
-    "releases.create-actions": [
-      {
-        "style": {
-          "display": "flex",
-          "position": "static",
-          "margin": "0px 0px 12px",
-          "padding": "8px 0px",
-          "fontSize": "14px",
-          "fontWeight": "400",
-          "lineHeight": "22.4px",
-          "color": "rgb(32, 43, 60)",
-          "backgroundColor": "rgba(0, 0, 0, 0)",
-          "border": "0px none rgb(32, 43, 60)",
-          "borderRadius": "0px",
-          "boxShadow": "none",
-          "width": "984px",
-          "height": "56px"
-        },
-        "box": {
-          "x": 264,
-          "y": 567.25,
-          "width": 984,
-          "height": 56
+          "x": 789.05,
+          "y": 397.88,
+          "width": 111.31,
+          "height": 59
         }
       }
     ]

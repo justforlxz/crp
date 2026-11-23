@@ -2,13 +2,16 @@
  * 工作台：受保护页面，未登录会被 `requirePageAuth` 跳转到登录页。
  *
  * 页头就是页面名「工作台」。账号名、角色与退出登录在侧栏底部的账号区里（`components/page-shell.tsx`
- * 的 `AppNav`），不占页面标题 —— 那是只有工作台一个页面时的遗留，8 个页面各有各的名。
+ * 的 `AppNav`），不占页面标题。
  *
  * 页面本身不做角色判断，也不自己数数：统计卡、最近提测、队列摘要、项目概况、配置待办
  * 全部由 `lib/stats` 的 `loadDashboard` 一次读出来，数字都是数据库聚合查询的结果。
- * 切工作区（A6 建的那个控件）后服务端组件重新取数，因此数字只反映当前工作区。
+ * 切工作区后服务端组件重新取数，因此数字只反映当前工作区。
  *
- * 口径写在「概览」的副标题上：本周 = 最近 7 天。
+ * 结构与 class 名来自 `.agents/spec/design/prototype.html` 的工作台（MKACG-964 的模块移植）：
+ * `.stats` + `.stat` + `.stat-ico`、`.card panel` + `.panel-head`、`.queue-list` + `.queue-item`、
+ * `.tip`、`.empty`。原型里有 `.progress`，但 `lib/stats` 只给「1/2 个架构完成」这样的文字、
+ * 没有百分比，按「不改数据查询」的边界不自己造数字，进度文字放在 `.queue-info small` 里。
  */
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -35,6 +38,28 @@ function formatTime(value: Date | null): string {
   return `${value.toISOString().replace("T", " ").slice(0, 19)} UTC`;
 }
 
+/** 提测状态对应的 pill 配色（原型 `.p-*`）。 */
+function statusPillClass(status: string): string {
+  if (status === "success") {
+    return "pill p-green";
+  }
+
+  if (status === "failed" || status === "partial_failure") {
+    return "pill p-red";
+  }
+
+  if (status === "abandoned") {
+    return "pill p-orange";
+  }
+
+  // design.md 5.1：投递中与构建中用「信息」，待投递与排队中用「中性」。
+  if (status === "dispatching" || status === "building") {
+    return "pill p-blue";
+  }
+
+  return "pill p-gray";
+}
+
 export default async function DashboardPage() {
   const auth = await requirePageAuth("/dashboard");
   const workspaces = await listWorkspacesForAccount(
@@ -47,9 +72,21 @@ export default async function DashboardPage() {
   const stats = active === null ? null : await loadDashboard(active.id);
 
   return (
-    <PageShell title="工作台">
-      <section className="section" data-style-anchor="dashboard.workspace-switcher">
-        <h2>工作区</h2>
+    <PageShell
+      title="工作台"
+      actions={
+        <Link className="btn primary" href="/releases/new" data-style-anchor="dashboard.create-release">
+          ＋ 创建提测
+        </Link>
+      }
+    >
+      <div className="card panel" data-style-anchor="dashboard.workspace-switcher">
+        <div className="panel-head">
+          <div>
+            <h3>工作区</h3>
+            <div className="sub">切换后统计与列表只反映当前工作区</div>
+          </div>
+        </div>
         <WorkspaceSwitcher
           workspaces={workspaces.map((workspace) => ({
             id: workspace.id,
@@ -58,217 +95,316 @@ export default async function DashboardPage() {
           }))}
           activeId={active?.id ?? null}
         />
-      </section>
+      </div>
 
       {stats === null ? (
-        <section className="section">
-          <h2>概览</h2>
-          <p className="hint">先选一个工作区，再看它的提测统计。</p>
-        </section>
+        <div className="card panel section-gap">
+          <div className="empty" data-style-anchor="dashboard.empty">
+            先选一个工作区，再看它的提测统计。
+          </div>
+        </div>
       ) : (
         <>
-          <section className="section">
-            <h2 data-style-anchor="dashboard.overview-heading">概览</h2>
-            <p className="hint">
-              口径：本周 = 最近 {STATS_WINDOW_DAYS} 天（按提测创建时间）；本周成功率 =
-              本周已有结论的提测里成功的占比；等待构建 = 已投给 CRP、还没开始构建的包；
-              项目配置数只算未删除的项目。数据截至 {formatTime(stats.generatedAt)}。
-            </p>
+          <div className="grid stats section-gap" data-style-anchor="dashboard.stats">
+            <div className="card stat">
+              <div>
+                <div className="label">本周提测次数</div>
+                <div className="value">{stats.cards.weekReleaseCount}</div>
+                <div className="hint">最近 {STATS_WINDOW_DAYS} 天创建的提测</div>
+              </div>
+              <div className="stat-ico si-blue" data-style-anchor="dashboard.stat-icon" aria-hidden="true">
+                ⇧
+              </div>
+            </div>
 
-            <div className="stat-grid" data-style-anchor="dashboard.stats">
-              <div className="stat-card">
-                <strong>{stats.cards.weekReleaseCount}</strong>
-                本周提测次数
-                <br />
-                <small>最近 {STATS_WINDOW_DAYS} 天</small>
+            <div className="card stat">
+              <div>
+                <div className="label">等待构建</div>
+                <div className="value">{stats.cards.waitingBuildCount}</div>
+                <div className="hint">已投 CRP、还没开始构建的包</div>
               </div>
-              <div className="stat-card">
-                <strong>{stats.cards.waitingBuildCount}</strong>
-                等待构建数
-                <br />
-                <small>已投 CRP、还没开始构建</small>
+              <div className="stat-ico si-orange" data-style-anchor="dashboard.stat-icon" aria-hidden="true">
+                ☷
               </div>
-              <div className="stat-card">
-                <strong>
+            </div>
+
+            <div className="card stat">
+              <div>
+                <div className="label">本周成功率</div>
+                <div className="value">
                   {stats.cards.weekSuccessRate.percent === null
                     ? "—"
                     : `${stats.cards.weekSuccessRate.percent}%`}
-                </strong>
-                本周成功率
-                <br />
-                <small>
+                </div>
+                <div className="hint">
                   {stats.cards.weekSuccessRate.settled === 0
                     ? "还没有已结论的提测"
                     : `${stats.cards.weekSuccessRate.success}/${stats.cards.weekSuccessRate.settled} 条已有结论`}
-                </small>
+                </div>
               </div>
-              <div className="stat-card">
-                <strong>{stats.cards.projectCount}</strong>
-                项目配置数
-                <br />
-                <small>未删除的项目</small>
+              <div className="stat-ico si-green" data-style-anchor="dashboard.stat-icon" aria-hidden="true">
+                ✓
               </div>
             </div>
-          </section>
 
-          <section className="section" data-style-anchor="dashboard.recent-releases">
-            <h2>最近提测（前 5 条）</h2>
-            {stats.recentReleases.length === 0 ? (
-              <p className="empty">这个工作区还没有提测记录。</p>
-            ) : (
-              <div className="table-scroll">
-                <table className="data-table" data-style-anchor="dashboard.recent-releases-table">
-                  <thead>
-                    <tr>
-                      <th>项目</th>
-                      <th>提测版本</th>
-                      <th>状态</th>
-                      <th>来源</th>
-                      <th>创建时间</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {stats.recentReleases.map((release) => (
-                    <tr key={release.id}>
-                      <td>{release.projectName}</td>
-                      <td>
-                        <Link href={`/releases/${release.id}`}>
-                          <code>{release.version}</code>
-                        </Link>
-                      </td>
-                      <td>{release.statusLabel}</td>
-                      <td>{release.sourceLabel}</td>
-                      <td>{formatTime(release.createdAt)}</td>
-                    </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <div className="card stat">
+              <div>
+                <div className="label">项目配置数</div>
+                <div className="value">{stats.cards.projectCount}</div>
+                <div className="hint">未删除的项目</div>
               </div>
-            )}
-          </section>
+              <div className="stat-ico si-green" data-style-anchor="dashboard.stat-icon" aria-hidden="true">
+                ▤
+              </div>
+            </div>
+          </div>
 
-          <section className="section" data-style-anchor="dashboard.queue-summary">
-            <h2>构建队列摘要（前 5 条）</h2>
-            {stats.queueTasks.length === 0 ? (
-              <p className="empty">
-                当前没有排队或构建中的包。<Link href="/queue">去构建队列</Link>
+          <div className="tip" data-style-anchor="dashboard.tip">
+            <div className="tip-icon" aria-hidden="true">
+              ⓘ
+            </div>
+            <div>
+              <b>统计口径</b>
+              <p>
+                本周 = 最近 {STATS_WINDOW_DAYS} 天（按提测创建时间）；本周成功率 = 本周已有结论的提测里
+                成功的占比；等待构建 = 已投给 CRP、还没开始构建的包；项目配置数只算未删除的项目。数据截至{" "}
+                {formatTime(stats.generatedAt)}。
               </p>
-            ) : (
-              <>
-                <div className="table-scroll">
-                  <table className="data-table">
+            </div>
+          </div>
+
+          <div className="grid two-col section-gap">
+            <div className="card panel" data-style-anchor="dashboard.recent-releases">
+              <div className="panel-head">
+                <div>
+                  <h3>最近提测</h3>
+                  <div className="sub">按创建时间排序，前 5 条</div>
+                </div>
+                <Link className="text-link" href="/releases">
+                  查看全部 →
+                </Link>
+              </div>
+              {stats.recentReleases.length === 0 ? (
+                <div className="empty" data-style-anchor="dashboard.empty">
+                  这个工作区还没有提测记录。
+                </div>
+              ) : (
+                <div className="table-wrap">
+                  <table className="data-table" data-style-anchor="dashboard.recent-releases-table">
                     <thead>
                       <tr>
-                        <th>提测</th>
-                        <th>软件包</th>
-                        <th>阶段</th>
-                        <th>进度</th>
-                        <th>耗时</th>
+                        <th>提测记录 / 项目</th>
+                        <th>版本号</th>
+                        <th>状态</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {stats.queueTasks.map((task) => (
-                      <tr key={task.snapshotId}>
-                        <td>
-                          {task.projectName} · <code>{task.releaseVersion}</code>
-                        </td>
-                        <td>
-                          <code>{task.packageName}</code>
-                        </td>
-                        <td>{task.stage}</td>
-                        <td>{task.progress ?? "—"}</td>
-                        <td>{formatDuration(task.durationMs)}</td>
-                      </tr>
+                      {stats.recentReleases.map((release) => (
+                        <tr key={release.id}>
+                          <td>
+                            <div className="primary-cell">
+                              <Link href={`/releases/${release.id}`}>{release.projectName}</Link>
+                            </div>
+                            <div className="secondary">{release.sourceLabel}</div>
+                          </td>
+                          <td className="mono">{release.version}</td>
+                          <td>
+                            <span className={statusPillClass(release.status)}>
+                              {release.statusLabel}
+                            </span>
+                          </td>
+                          <td>{formatTime(release.createdAt)}</td>
+                          <td>
+                            <Link className="btn sm" href={`/releases/${release.id}`}>
+                              详情
+                            </Link>
+                          </td>
+                        </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-                <p className="hint">
-                  <Link href="/queue">去构建队列</Link>
-                  ，看完整的依赖拓扑与调度事件流水。
-                </p>
-              </>
-            )}
-          </section>
+              )}
+            </div>
 
-          <section className="section" data-style-anchor="dashboard.project-overview">
-            <h2>项目提测概况</h2>
-            {stats.projects.length === 0 ? (
-              <p className="empty">这个工作区还没有项目。</p>
-            ) : (
-              <div className="table-scroll">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>项目</th>
-                      <th>本周提测</th>
-                      <th>最近版本</th>
-                      <th>最近状态</th>
-                      <th>最近提测时间</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {stats.projects.map((project) => (
-                    <tr key={project.id}>
-                      <td>
-                        <Link href={`/projects/${project.id}`}>{project.name}</Link>
-                      </td>
-                      <td>{project.weekReleaseCount}</td>
-                      <td>{project.latestVersion === null ? "还没有提测" : <code>{project.latestVersion}</code>}</td>
-                      <td>{project.latestStatusLabel ?? "—"}</td>
-                      <td>{formatTime(project.latestAt)}</td>
-                    </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <div className="card panel" data-style-anchor="dashboard.queue-summary">
+              <div className="panel-head">
+                <div>
+                  <h3>构建队列</h3>
+                  <div className="sub">项目清单内的软件按依赖排序，前 5 条</div>
+                </div>
+                <Link className="text-link" href="/queue">
+                  队列详情 →
+                </Link>
               </div>
-            )}
-          </section>
+              {stats.queueTasks.length === 0 ? (
+                <div className="empty" data-style-anchor="dashboard.empty">
+                  当前没有排队或构建中的包。
+                </div>
+              ) : (
+                <div className="queue-list" data-style-anchor="dashboard.queue-list">
+                  {stats.queueTasks.map((task) => (
+                    <div className="queue-item" key={task.snapshotId} data-style-anchor="dashboard.queue-item">
+                      <div className="queue-icon" aria-hidden="true">
+                        ▣
+                      </div>
+                      <div className="queue-info">
+                        <b>{task.packageName}</b>
+                        <small>
+                          {task.projectName} · {task.releaseVersion}
+                          {task.progress === null ? null : ` · ${task.progress}`}
+                        </small>
+                      </div>
+                      <div className="queue-meta">
+                        <b>{task.stage}</b>
+                        <small>{formatDuration(task.durationMs)}</small>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="tip">
+                <div className="tip-icon" aria-hidden="true">
+                  ✦
+                </div>
+                <div>
+                  <b>依赖只用于构建排序</b>
+                  <p>
+                    项目清单中的全部软件都会参与本次提测；依赖关系来自软件包记录，清单内依赖按拓扑顺序
+                    提交，清单外依赖不自动加入。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
 
-          <section className="section" data-style-anchor="dashboard.config-todo">
-            <h2>配置待办</h2>
-            <h3>未配软件清单的项目</h3>
-            {stats.configTodo.missingSoftware.length === 0 ? (
-              <p className="hint">所有项目都配了软件清单。</p>
-            ) : (
-              <ul className="list">
-                {stats.configTodo.missingSoftware.map((project) => (
-                  <li key={project.id} className="row">
-                    <Link href={`/projects/${project.id}`}>{project.name}</Link>
-                    <code>{project.key}</code>
-                    <span>清单为空，创建提测会被阻断</span>
-                  </li>
-                ))}
-              </ul>
-            )}
+          <div className="grid two-col section-gap">
+            <div className="card panel" data-style-anchor="dashboard.project-overview">
+              <div className="panel-head">
+                <div>
+                  <h3>项目提测概况</h3>
+                  <div className="sub">当前工作区 · 最近 {STATS_WINDOW_DAYS} 天</div>
+                </div>
+                <Link className="text-link" href="/projects">
+                  项目配置 →
+                </Link>
+              </div>
+              {stats.projects.length === 0 ? (
+                <div className="empty" data-style-anchor="dashboard.empty">
+                  这个工作区还没有项目。
+                </div>
+              ) : (
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>项目</th>
+                        <th>本周提测</th>
+                        <th>最近版本</th>
+                        <th>最近状态</th>
+                        <th>最近提测时间</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stats.projects.map((project) => (
+                        <tr key={project.id}>
+                          <td>
+                            <div className="primary-cell">
+                              <Link href={`/projects/${project.id}`}>{project.name}</Link>
+                            </div>
+                          </td>
+                          <td>{project.weekReleaseCount}</td>
+                          <td className="mono">
+                            {project.latestVersion === null ? "—" : project.latestVersion}
+                          </td>
+                          <td>
+                            {project.latestStatus === null || project.latestStatusLabel === null ? (
+                              "—"
+                            ) : (
+                              <span className={statusPillClass(project.latestStatus)}>
+                                {project.latestStatusLabel}
+                              </span>
+                            )}
+                          </td>
+                          <td>{formatTime(project.latestAt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
 
-            <h3>依赖有环的项目</h3>
-            {stats.configTodo.dependencyCycles.length === 0 ? (
-              <p className="hint">所有项目的软件清单都没有依赖环。</p>
-            ) : (
-              <ul className="list">
-                {stats.configTodo.dependencyCycles.map((project) => (
-                  <li key={project.id} className="row">
-                    <Link href={`/projects/${project.id}`}>{project.name}</Link>
-                    <code>{project.key}</code>
-                    <span>清单内依赖成环：{project.cycle}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+            <div className="card panel" data-style-anchor="dashboard.config-todo">
+              <div className="panel-head">
+                <div>
+                  <h3>项目配置概况</h3>
+                  <div className="sub">需要关注的项目配置</div>
+                </div>
+                <span className="tag">
+                  {stats.configTodo.missingSoftware.length + stats.configTodo.dependencyCycles.length}{" "}
+                  个待配置
+                </span>
+              </div>
+              {stats.configTodo.missingSoftware.length === 0 &&
+              stats.configTodo.dependencyCycles.length === 0 ? (
+                <div className="empty" data-style-anchor="dashboard.empty">
+                  所有项目都已配置软件清单，也没有依赖环。
+                </div>
+              ) : (
+                <div className="queue-list" data-style-anchor="dashboard.config-list">
+                  {stats.configTodo.missingSoftware.map((project) => (
+                    <div className="queue-item" key={`missing-${project.id}`}>
+                      <div className="queue-icon" aria-hidden="true">
+                        ▤
+                      </div>
+                      <div className="queue-info">
+                        <b>{project.name}</b>
+                        <small>
+                          尚未配置软件包清单（{project.key}），创建提测会被阻断
+                        </small>
+                      </div>
+                      <Link className="btn sm" href={`/projects/${project.id}`}>
+                        配置项目
+                      </Link>
+                    </div>
+                  ))}
+                  {stats.configTodo.dependencyCycles.map((project) => (
+                    <div className="queue-item" key={`cycle-${project.id}`}>
+                      <div className="queue-icon" aria-hidden="true">
+                        ↺
+                      </div>
+                      <div className="queue-info">
+                        <b>{project.name}</b>
+                        <small>清单内依赖成环：{project.cycle}</small>
+                      </div>
+                      <Link className="btn sm" href={`/projects/${project.id}`}>
+                        配置项目
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {auth.account.isPlatformAdmin ? (
+            <div className="card panel section-gap" data-style-anchor="dashboard.invite-form">
+              <div className="panel-head">
+                <div>
+                  <h3>邀请成员到「{active?.name}」</h3>
+                  <div className="sub">
+                    邮箱已有账号时只补成员关系，不改原密码；没有账号时按填写的初始密码建号。
+                  </div>
+                </div>
+              </div>
+              <InviteMemberForm workspaceId={active?.id ?? ""} />
+            </div>
+          ) : null}
         </>
       )}
-
-      {auth.account.isPlatformAdmin && active !== null ? (
-        <section className="section" data-style-anchor="dashboard.invite-form">
-          <h2>邀请成员到「{active.name}」</h2>
-          <p className="hint">
-            邮箱已有账号时只补成员关系，不改原密码；没有账号时按填写的初始密码建号。
-          </p>
-          <InviteMemberForm workspaceId={active.id} />
-        </section>
-      ) : null}
     </PageShell>
   );
 }
