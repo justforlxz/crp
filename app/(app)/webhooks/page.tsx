@@ -1,11 +1,21 @@
 import Link from "next/link";
 
 import { PageShell } from "@/components/page-shell";
-import { listWebhookEndpoints, listWebhookWorkspaces } from "@/lib/webhook/endpoints";
+import { listWebhookEndpoints } from "@/lib/webhook/endpoints";
 import { isWebhookEventType, WEBHOOK_EVENT_LABELS, WEBHOOK_EVENT_TYPES } from "@/lib/webhook/events";
 import { listRecentDeliveries } from "@/lib/webhook/service";
 
+import { resolveWorkspaceScope } from "../workspaceScope";
 import { createEndpointAction, sendTestEventAction, toggleEndpointAction } from "./actions";
+
+/**
+ * Webhook 端点管理。
+ *
+ * 当前工作区走 `workspaceScope`，与提测记录、项目、项目经理、构建队列同一套解析与同一套排序：
+ * 页面里列的「（当前）」必须和侧栏之外的那几页指向同一个工作区。以前这里自己按 slug 取第一个，
+ * 同一个会话下别的页面显示「安全组（当前）」、这一页显示「桌面核心组（当前）」，而平台上没有
+ * 全局的工作区切换控件，用户看不出工作区已经变了。
+ */
 
 /** 数据来自数据库，不参与静态化。 */
 export const dynamic = "force-dynamic";
@@ -33,18 +43,20 @@ function formatTime(value: Date): string {
 
 export default async function WebhooksPage({ searchParams }: WebhooksPageProps) {
   const query = await searchParams;
-  const workspaces = await listWebhookWorkspaces();
+  const scope = await resolveWorkspaceScope("/webhooks", query.workspace);
 
-  if (workspaces.length === 0) {
+  if (scope.active === null) {
     return (
       <PageShell title="Webhook 端点">
-        <p>库里还没有工作区，先执行 `pnpm db:seed` 灌入种子数据。</p>
+        <p>
+          这个账号还不属于任何工作区，先请平台管理员把账号加入工作区。当前登录：
+          {scope.account.displayName}
+        </p>
       </PageShell>
     );
   }
 
-  const workspace =
-    workspaces.find((item) => item.slug === query.workspace) ?? workspaces[0];
+  const workspace = scope.active;
   const endpoints = await listWebhookEndpoints(workspace.id);
   const deliveries = await listRecentDeliveries(workspace.id);
 
@@ -57,7 +69,7 @@ export default async function WebhooksPage({ searchParams }: WebhooksPageProps) 
 
       <p>
         工作区：
-        {workspaces.map((item) => (
+        {scope.workspaces.map((item) => (
           <span key={item.id}>
             <Link href={`/webhooks?workspace=${encodeURIComponent(item.slug)}`}>
               {item.name}

@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * 工作台上的三个操作：切换工作区、退出登录、邀请成员（仅平台管理员）。
+ * 工作台上的两个操作：切换工作区、邀请成员（仅平台管理员）。
  *
  * 都是先调接口、成功后再 `router.refresh()` 让服务端组件重新取数，不在前端保存一份状态副本。
+ * 退出登录不在这里：它在侧栏底部的账号区（`components/page-shell.tsx`），任何页面都点得到。
  */
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
@@ -12,25 +13,6 @@ import { ROLE_LABELS, type Role } from "@/lib/auth/roles";
 import { readErrorMessage } from "../../http-error";
 
 type WorkspaceOption = { id: string; name: string; role: Role };
-
-export function LogoutButton() {
-  const router = useRouter();
-  const [pending, setPending] = useState(false);
-
-  async function handleClick(): Promise<void> {
-    setPending(true);
-    await fetch("/api/auth/logout", { method: "POST" });
-    setPending(false);
-    router.replace("/login");
-    router.refresh();
-  }
-
-  return (
-    <button type="button" className="btn btn-secondary btn-sm" onClick={handleClick} disabled={pending}>
-      {pending ? "退出中…" : "退出登录"}
-    </button>
-  );
-}
 
 export function WorkspaceSwitcher({
   workspaces,

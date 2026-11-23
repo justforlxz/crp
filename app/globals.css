@@ -220,6 +220,20 @@ legend {
 }
 
 .app-sidebar {
+  /*
+   * 竖着排：品牌、导航，最后是账号区。账号区用 `margin-top: auto` 顶到底部，
+   * 导航仍然从顶部往下排 —— 账号区在不在，导航项量到的位置都一样。
+   *
+   * 侧栏是一整屏高、跟着页面滚动的固定列：页面再长，账号区与退出登录也停在视口底部，
+   * 不用滚到页尾去点。`overflow-y: auto` 让导航在很矮的视口里自己滚，不会顶到账号区。
+   */
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  overflow-y: auto;
   flex: 0 0 var(--sidebar-width);
   width: var(--sidebar-width);
   padding: var(--space-4) var(--space-3);
@@ -265,6 +279,40 @@ legend {
   background: var(--color-primary-weak);
   color: var(--color-primary);
   font-weight: 600;
+}
+
+/*
+ * 侧栏底部的账号区：账号名、角色、邮箱与退出登录。
+ *
+ * 账号信息原先挂在工作台的页头（「账号名（角色）」加一行邮箱），只有工作台一个页面时够用；
+ * 现在侧栏在每个受保护页面上都在，账号信息就固定在它的底部，页头只管页面名。
+ *
+ * `margin-top: auto` 把这一块顶到底部；邮箱与账号名都可能很长，`overflow-wrap: anywhere`
+ * 让它折行而不是把侧栏撑宽 —— 375 宽那种窄屏下，页面不能整页横滚。
+ */
+.app-sidebar__account {
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.app-sidebar__account p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.app-sidebar__account-name {
+  font-weight: 600;
+}
+
+.app-sidebar__account-meta {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* 退出登录跟上面三行隔开一点，指下去时不会误点。 */
+.app-sidebar__logout {
+  margin-top: var(--space-2);
 }
 
 .app-body {
@@ -729,7 +777,12 @@ a.btn:hover {
     flex-direction: column;
   }
 
+  /* 窄屏侧栏回到页面顶部的一条横条：不吸顶、不占一整屏，跟内容一起滚。 */
   .app-sidebar {
+    position: static;
+    align-self: stretch;
+    height: auto;
+    overflow-y: visible;
     flex: 0 0 auto;
     width: 100%;
     padding: var(--space-2) var(--space-3);
@@ -756,6 +809,23 @@ a.btn:hover {
   .app-nav__link {
     padding: var(--space-1) var(--space-2);
     white-space: nowrap;
+  }
+
+  /*
+   * 窄屏侧栏是一条横向导航条，账号区跟着排成一行：放得下就一行，放不下自动折行，
+   * 不会盖住导航项。退出登录始终在这一行里，不靠悬停也不靠展开。
+   */
+  .app-sidebar__account {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1) var(--space-3);
+    margin-top: 0;
+    padding-top: var(--space-2);
+  }
+
+  .app-sidebar__logout {
+    margin-top: 0;
   }
 
   .page {

@@ -80,20 +80,6 @@ export async function createWebhookEndpoint(
   });
 }
 
-/**
- * 端点管理页要的工作区清单。
- *
- * 工作区与会话由 A6 节点接管，届时改成从会话取当前工作区；现在直接列库里已有的。
- */
-export async function listWebhookWorkspaces(): Promise<
-  { id: string; slug: string; name: string }[]
-> {
-  return prisma.workspace.findMany({
-    select: { id: true, slug: true, name: true },
-    orderBy: { slug: "asc" },
-  });
-}
-
 export async function setWebhookEndpointEnabled(
   id: string,
   enabled: boolean,

@@ -52,7 +52,6 @@ export type {
 
 export {
   listWebhookEndpoints,
-  listWebhookWorkspaces,
   createWebhookEndpoint,
   setWebhookEndpointEnabled,
 } from "./endpoints";

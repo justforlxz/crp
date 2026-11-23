@@ -338,9 +338,11 @@ export async function capturePages(input: {
 
         const anchors = await tab.evaluate(collectAnchors, [...properties]);
 
+        // 侧栏由 layout 在每个受保护页面上挂一次，六个页面各存一份只是把一次侧栏改动
+        // 的 diff 分散到六个文件里。只在保留共享锚点的那一页（工作台）入基线。
         if (!page.keepsSharedAnchors) {
           for (const name of Object.keys(anchors)) {
-            if (name.startsWith("nav.")) {
+            if (name.startsWith("nav.") || name.startsWith("sidebar.")) {
               delete anchors[name];
             }
           }
