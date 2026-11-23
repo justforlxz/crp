@@ -13,8 +13,8 @@
  */
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useState, type ReactNode } from "react";
 
 /** 侧栏导航项：地址与显示名。顺序就是用户在页面上的阅读顺序。 */
 export const APP_NAV: ReadonlyArray<{ href: string; label: string }> = [
@@ -38,8 +38,61 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-/** 受保护页面的侧栏。只有 `(app)` 路由组挂它，登录注册页走 PageShell 的 auth 版式。 */
-export function AppNav() {
+/**
+ * 侧栏底部账号区要显示的三样。
+ *
+ * 由服务端的 `app/(app)/layout.tsx` 从会话里取好再交下来：侧栏是客户端组件，读会话留在服务端。
+ */
+export type SidebarAccountInfo = {
+  displayName: string;
+  roleLabel: string;
+  email: string;
+};
+
+/** 退出登录：撤销会话后回登录页。放在侧栏底部，任何受保护页面都点得到。 */
+function LogoutButton() {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+
+  async function handleClick(): Promise<void> {
+    setPending(true);
+    await fetch("/api/auth/logout", { method: "POST" });
+    setPending(false);
+    router.replace("/login");
+    router.refresh();
+  }
+
+  return (
+    <button
+      type="button"
+      className="btn btn-secondary btn-sm app-sidebar__logout"
+      onClick={handleClick}
+      disabled={pending}
+    >
+      {pending ? "退出中…" : "退出登录"}
+    </button>
+  );
+}
+
+/** 侧栏底部的账号区：账号名、角色、邮箱与退出登录。 */
+function SidebarAccount({ account }: { account: SidebarAccountInfo }) {
+  return (
+    <div className="app-sidebar__account" data-style-anchor="sidebar.account">
+      <p className="app-sidebar__account-name">{account.displayName}</p>
+      <p className="app-sidebar__account-meta">{account.roleLabel}</p>
+      <p className="app-sidebar__account-meta">{account.email}</p>
+      <LogoutButton />
+    </div>
+  );
+}
+
+/**
+ * 受保护页面的侧栏。只有 `(app)` 路由组挂它，登录注册页走 PageShell 的 auth 版式。
+ *
+ * `account` 为 `null` 表示这次渲染还没拿到会话（未登录时页面自己会跳登录页）：
+ * 导航照常出，账号区不出。
+ */
+export function AppNav({ account }: { account: SidebarAccountInfo | null }) {
   const pathname = usePathname() ?? "";
 
   return (
@@ -61,6 +114,7 @@ export function AppNav() {
           ))}
         </ul>
       </nav>
+      {account === null ? null : <SidebarAccount account={account} />}
     </aside>
   );
 }

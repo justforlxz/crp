@@ -53,7 +53,7 @@ A19 之后：
 
 | 页面 | 基线文件 | 取样路径 | 进基线的锚点 | 说明 |
 | --- | --- | --- | --- | --- |
-| 工作台 | `dashboard.json` / `.png` | `/dashboard` | 9 + 侧栏 8 | 会话记住的工作区是 `desktop-core` |
+| 工作台 | `dashboard.json` / `.png` | `/dashboard` | 9 + 侧栏 9 | 会话记住的工作区是 `desktop-core` |
 | 提测记录 | `releases.json` / `.png` | `/releases?workspace=desktop-core` | 7 个名字 / 9 个实例 | `releases.row-status` 一行一个，种子 3 行 |
 | 提测详情 | `release-detail.json` / `.png` | `/releases/<id>?workspace=desktop-core` | 8 | 取种子里的 `桌面专业版 V25 / 25.0.1` |
 | 创建提测 | `release-new.json` / `.png` | `/releases/new?workspace=desktop-core` | 3 | 第一步（选项目）；第二步需要 Gerrit 数据，见下表 |
@@ -82,8 +82,9 @@ L1 的静态检查不受这 6 页限制：它扫全部 `app/**/page.tsx`。
 | `dashboard.config-todo` | 配置待办列表 | 1 | 入基线 |
 | `dashboard.invite-form` | 邀请成员表单 | 1 | 入基线 |
 | `nav.dashboard` … `nav.webhooks` | 侧栏导航项（8 项，当前页那项高亮） | 各 1 | 只在工作台入基线 |
+| `sidebar.account` | 侧栏底部的账号区（账号名、角色、邮箱、退出登录，MKACG-957 起） | 1 | 只在工作台入基线 |
 
-`nav.*` 每个受保护页面都有，完全相同。只留工作台一份：一次侧栏改动的 diff 不会分散到六个文件，侧栏坏了照样挡得住。
+`nav.*` 与 `sidebar.*` 每个受保护页面都有，完全相同。只留工作台一份：一次侧栏改动的 diff 不会分散到六个文件，侧栏坏了照样挡得住。
 
 提测记录 `/releases`
 
@@ -168,7 +169,7 @@ L1 的静态检查不受这 6 页限制：它扫全部 `app/**/page.tsx`。
 | 所有 `app/**/page.tsx` 经 `PageShell` 渲染 | 未使用者 0 个，失败时列出文件 |
 | 没有裸 `<table>` | 每个 `<table>` 开标签都要带 `className="data-table"`；横向滚动容器由 L2 的 `*.table-scroll` 锚点覆盖 |
 | 样式来源唯一 | `app/**/*.tsx` 与 `components/**/*.tsx` 里 `style={{` 命中 0 处 |
-| `app/globals.css` 规则数 | 不低于基线；规则数 = 去掉注释与字符串后 `{` 的个数（当前 108） |
+| `app/globals.css` 规则数 | 不低于基线；规则数 = 去掉注释与字符串后 `{` 的个数（当前 115） |
 | `app/globals.css` 设计变量 | `:root` 里每个变量的值与基线一致；变量被删也算失败，新增不算 |
 
 设计变量这一条是为了兜住「改了值但没有任何锚点落在上面」的情况：例如 `--radius-lg` 只影响 `.card`，而 `.card` 只在登录、注册与导入页出现，六个覆盖页面里没有它 —— 光靠锚点看不出这类改动。

@@ -44,7 +44,7 @@ export type CoveredPage = {
    */
   template: string;
   /**
-   * 是否保留 `nav.*` 侧栏锚点。
+   * 是否保留侧栏锚点（`nav.*` 与 `sidebar.*`）。
    *
    * 侧栏由 `components/page-shell.tsx` 里的 `AppNav` 在每个受保护页面上挂一次，六个页面各存一份
    * 完全是重复：既让基线变胖，也让一次侧栏改动的 diff 分散在六个文件里。只留工作台一份，

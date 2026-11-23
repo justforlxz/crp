@@ -1,6 +1,9 @@
 /**
  * 工作台：受保护页面，未登录会被 `requirePageAuth` 跳转到登录页。
  *
+ * 页头就是页面名「工作台」。账号名、角色与退出登录在侧栏底部的账号区里（`components/page-shell.tsx`
+ * 的 `AppNav`），不占页面标题 —— 那是只有工作台一个页面时的遗留，8 个页面各有各的名。
+ *
  * 页面本身不做角色判断，也不自己数数：统计卡、最近提测、队列摘要、项目概况、配置待办
  * 全部由 `lib/stats` 的 `loadDashboard` 一次读出来，数字都是数据库聚合查询的结果。
  * 切工作区（A6 建的那个控件）后服务端组件重新取数，因此数字只反映当前工作区。
@@ -11,13 +14,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { PageShell } from "@/components/page-shell";
-import { ROLE_LABELS } from "@/lib/auth/roles";
 import { requirePageAuth } from "@/lib/auth/server";
 import { listWorkspacesForAccount } from "@/lib/auth/store";
 import { pickActiveWorkspace } from "@/lib/auth/workspaces";
 import { formatDuration } from "@/lib/build";
 import { loadDashboard, STATS_WINDOW_DAYS } from "@/lib/stats";
-import { InviteMemberForm, LogoutButton, WorkspaceSwitcher } from "./controls";
+import { InviteMemberForm, WorkspaceSwitcher } from "./controls";
 
 export const metadata: Metadata = { title: "工作台 · CRP 提测平台" };
 
@@ -45,12 +47,7 @@ export default async function DashboardPage() {
   const stats = active === null ? null : await loadDashboard(active.id);
 
   return (
-    <PageShell
-      title={`${auth.account.displayName}（${ROLE_LABELS[auth.role]}）`}
-      actions={<LogoutButton />}
-    >
-      <p className="hint">{auth.account.email}</p>
-
+    <PageShell title="工作台">
       <section className="section" data-style-anchor="dashboard.workspace-switcher">
         <h2>工作区</h2>
         <WorkspaceSwitcher

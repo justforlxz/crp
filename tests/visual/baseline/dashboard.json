@@ -214,6 +214,32 @@
         }
       }
     ],
+    "sidebar.account": [
+      {
+        "style": {
+          "display": "block",
+          "position": "static",
+          "margin": "370.219px 0px 0px",
+          "padding": "12px 0px 0px",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "lineHeight": "22.4px",
+          "color": "rgb(31, 35, 41)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "border": "",
+          "borderRadius": "0px",
+          "boxShadow": "none",
+          "width": "183px",
+          "height": "124.984px"
+        },
+        "box": {
+          "x": 12,
+          "y": 759.02,
+          "width": 183,
+          "height": 124.98
+        }
+      }
+    ],
     "dashboard.workspace-switcher": [
       {
         "style": {
@@ -234,7 +260,7 @@
         },
         "box": {
           "x": 232,
-          "y": 140.8,
+          "y": 96.39,
           "width": 1024,
           "height": 193.39
         }
@@ -260,7 +286,7 @@
         },
         "box": {
           "x": 232,
-          "y": 366.19,
+          "y": 321.78,
           "width": 1024,
           "height": 27
         }
@@ -286,7 +312,7 @@
         },
         "box": {
           "x": 232,
-          "y": 454.78,
+          "y": 410.38,
           "width": 1024,
           "height": 115.17
         }
@@ -312,7 +338,7 @@
         },
         "box": {
           "x": 232,
-          "y": 601.95,
+          "y": 557.55,
           "width": 1024,
           "height": 195.19
         }
@@ -338,7 +364,7 @@
         },
         "box": {
           "x": 232,
-          "y": 636.95,
+          "y": 592.55,
           "width": 1024,
           "height": 160.19
         }
@@ -364,7 +390,7 @@
         },
         "box": {
           "x": 232,
-          "y": 829.14,
+          "y": 784.73,
           "width": 1024,
           "height": 89.8
         }
@@ -390,7 +416,7 @@
         },
         "box": {
           "x": 232,
-          "y": 950.94,
+          "y": 906.53,
           "width": 1024,
           "height": 154.19
         }
@@ -416,7 +442,7 @@
         },
         "box": {
           "x": 232,
-          "y": 1137.13,
+          "y": 1092.72,
           "width": 1024,
           "height": 175.78
         }
@@ -442,7 +468,7 @@
         },
         "box": {
           "x": 232,
-          "y": 1344.91,
+          "y": 1300.5,
           "width": 1024,
           "height": 402.98
         }
