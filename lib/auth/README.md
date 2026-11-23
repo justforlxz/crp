@@ -75,7 +75,11 @@ export async function POST(
 
 ## 会话
 
-- Cookie 名 `crp_session`，`httpOnly`、`SameSite=Lax`、生产环境 `Secure`，有效期 7 天。
+- Cookie 名 `crp_session`，`httpOnly`、`SameSite=Lax`，有效期 7 天。
+- `Secure` 由**请求协议**决定（`session.ts` 的 `isSecureRequest()`）：`x-forwarded-proto: https` 或请求 URL
+  是 `https` 时带上，否则不带；`SESSION_COOKIE_SECURE=true|false` 可显式覆盖。不看 `NODE_ENV` ——
+  `pnpm start` 恒为 production，而 http 部署的浏览器会直接丢掉带 `Secure` 的 Cookie，登录后立刻
+  变回未认证。写入与清除 Cookie 走同一个 `sessionCookieOptions()`。
 - Cookie 里是 32 字节随机令牌；库里只存它的 SHA-256（`session.token_hash`）。
 - 每次读取会话都会检查撤销与过期，并按需滑动续期（最多每小时写一次库）。
 - 撤销是「置 `revoked_at`」，行保留供排查。

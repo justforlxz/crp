@@ -314,6 +314,7 @@ scripts/style-check/container.sh --update   # 重写基线，只能人显式发�
 | `BUILD_POLL_JOB_TOKEN` | 用 `POST /api/jobs/build-poll` 时必需 | 定时任务轮询构建状态与 CRP 工作流进度用的独立 token；没配置时该接口一律返回 401 |
 | `SHUTTLE_BASE_URL` | 否 | Shuttle 接口前缀，默认 `https://shuttle.uniontech.com/api/shuttle`；基线软件包版本从它读 |
 | `CRP_BASE_URL` | 否 | CRP 接口前缀，默认 `https://crp.uniontech.com/api`；基线分支列表从它读，**不需要认证** |
+| `SESSION_COOKIE_SECURE` | 否 | 会话 Cookie 的 `Secure` 属性，`true` / `false` 显式覆盖，不填按请求协议判断（`x-forwarded-proto` → 请求 URL 协议）。**走 http 的部署（内网、LAN、没有 TLS）设成 `false`**，否则浏览器直接丢弃 Cookie、登录后立刻弹回登录页；https 部署不要设成 `false`，否则会话明文传输 |
 
 Gerrit 这三项只被 `lib/integrations/gerrit/` 读取，未配置时该模块抛错，其余功能不受影响。匿名访问会被 302 跳登录页，实测行为见 `lib/integrations/gerrit/FINDINGS.md`。
 

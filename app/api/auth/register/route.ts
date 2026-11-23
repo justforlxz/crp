@@ -64,5 +64,6 @@ export async function POST(request: Request): Promise<NextResponse> {
   return attachSessionCookie(
     NextResponse.json({ user: publicAccount(account) }, { status: 201 }),
     session,
+    request,
   );
 }

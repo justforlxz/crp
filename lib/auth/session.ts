@@ -66,7 +66,7 @@ export function initialExpiry(now: Date): Date {
 
 /**
  * Cookie 属性：httpOnly 挡住脚本读取，SameSite=Lax 挡住跨站提交，
- * 生产环境再加 Secure。`maxAge` 与库里过期时间一致。
+ * 走 https 时再加 Secure（由 `isSecureRequest()` 按请求协议判断）。`maxAge` 与库里过期时间一致。
  */
 export function sessionCookieOptions(
   expiresAt: Date,
@@ -88,4 +88,59 @@ export function sessionCookieOptions(
     expires: expiresAt,
     maxAge: Math.max(0, Math.floor((expiresAt.getTime() - now.getTime()) / 1000)),
   };
+}
+
+/** 显式覆盖 Cookie 的 `Secure` 属性。内网 http 部署把它设成 `false`。 */
+export const SESSION_COOKIE_SECURE_ENV = "SESSION_COOKIE_SECURE";
+
+/**
+ * 读 `SESSION_COOKIE_SECURE` 的取值：`true` / `false`（首尾空白与大小写不敏感）。
+ *
+ * 未设置、空串或取值不认识时返回 `null`，表示「按请求协议自动判断」。
+ */
+export function secureCookieOverride(raw: string | undefined): boolean | null {
+  const value = raw?.trim().toLowerCase();
+
+  if (value === "true") {
+    return true;
+  }
+
+  if (value === "false") {
+    return false;
+  }
+
+  return null;
+}
+
+/**
+ * 请求是否走 https —— 决定 Cookie 带不带 `Secure`。
+ *
+ * 顺序：`SESSION_COOKIE_SECURE` 显式覆盖 → `x-forwarded-proto`（反向代理知道真实协议，
+ * 代理追加多段时取第一段）→ 请求 URL 的协议。三个信号都没有时按 http 处理。
+ *
+ * 不看 `NODE_ENV`：`pnpm start` 下它恒为 production，但 http 部署的浏览器会直接丢掉带
+ * `Secure` 的 Cookie，登录后立刻变回未认证。也不看 `HOST`、端口号之类的间接信号。
+ */
+export function isSecureRequest(
+  url: string | null,
+  forwardedProto: string | null,
+  override: string | undefined,
+): boolean {
+  const explicit = secureCookieOverride(override);
+
+  if (explicit !== null) {
+    return explicit;
+  }
+
+  const forwarded = forwardedProto?.split(",")[0]?.trim().toLowerCase();
+
+  if (forwarded === "https") {
+    return true;
+  }
+
+  if (forwarded === "http") {
+    return false;
+  }
+
+  return url !== null && new URL(url).protocol === "https:";
 }

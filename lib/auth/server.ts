@@ -10,15 +10,17 @@
  * 会话每次读取都会检查过期与撤销，并按需滑动续期；续期时顺手把 Cookie 的过期时间往后推，
  * 页面渲染阶段 Cookie 只读，写不进去就跳过（服务端过期时间仍然生效）。
  */
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 
 import {
   SESSION_COOKIE_NAME,
+  SESSION_COOKIE_SECURE_ENV,
   generateSessionToken,
   hashSessionToken,
   initialExpiry,
+  isSecureRequest,
   isSessionUsable,
   sessionCookieOptions,
   slidExpiry,
@@ -60,7 +62,25 @@ export type RoleRequirement =
 /** 守卫结果。拦下时 `response` 就是要直接返回的 JSON 响应。 */
 export type GuardResult = { ok: true; auth: AuthContext } | { ok: false; response: NextResponse };
 
-const secureCookies = process.env.NODE_ENV === "production";
+/**
+ * 当前请求的 Cookie 带不带 `Secure`。
+ *
+ * 由请求协议推导，见 `session.ts` 的 `isSecureRequest()`。不看 `NODE_ENV`：`pnpm start`
+ * 下它恒为 production，而 http 部署的浏览器会直接丢掉带 `Secure` 的 Cookie，登录后立刻
+ * 变回未认证。写入与清除 Cookie 都走这里，避免一处带 `Secure` 另一处不带。
+ *
+ * `request` 只用来取请求 URL 的协议；页面渲染阶段拿不到 `Request` 对象时省略，
+ * 此时只剩 `x-forwarded-proto` 与 `SESSION_COOKIE_SECURE` 两个信号。
+ */
+async function secureCookies(request?: Request): Promise<boolean> {
+  const requestHeaders = await headers();
+
+  return isSecureRequest(
+    request?.url ?? null,
+    requestHeaders.get("x-forwarded-proto"),
+    process.env[SESSION_COOKIE_SECURE_ENV],
+  );
+}
 
 /** 统一的错误响应体：`code` 稳定可断言，`message` 给人看，不含任何内部细节。 */
 export function errorResponse(decision: Extract<Decision, { allowed: false }>): NextResponse {
@@ -90,7 +110,7 @@ async function readSession(
     await updateSessionExpiry(found.session.id, slid);
 
     try {
-      jar.set(SESSION_COOKIE_NAME, token, sessionCookieOptions(slid, now, secureCookies));
+      jar.set(SESSION_COOKIE_NAME, token, sessionCookieOptions(slid, now, await secureCookies()));
     } catch {
       // 页面渲染阶段 Cookie 只读：写不进去不影响服务端的过期时间。
     }
@@ -192,28 +212,35 @@ export async function endSession(now: Date = new Date()): Promise<void> {
   }
 }
 
-/** 把会话写进响应 Cookie。 */
-export function attachSessionCookie(
+/** 把会话写进响应 Cookie。`request` 用来判断协议，见 `secureCookies()`。 */
+export async function attachSessionCookie(
   response: NextResponse,
   session: { token: string; expiresAt: Date },
+  request?: Request,
   now: Date = new Date(),
-): NextResponse {
+): Promise<NextResponse> {
   response.cookies.set(
     SESSION_COOKIE_NAME,
     session.token,
-    sessionCookieOptions(session.expiresAt, now, secureCookies),
+    sessionCookieOptions(session.expiresAt, now, await secureCookies(request)),
   );
   return response;
 }
 
-/** 清掉会话 Cookie。 */
-export function clearSessionCookie(response: NextResponse): NextResponse {
-  response.cookies.set(SESSION_COOKIE_NAME, "", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: secureCookies,
-    path: "/",
-    maxAge: 0,
-  });
+/**
+ * 清掉会话 Cookie。
+ *
+ * 属性与写入时完全一致（同一个 `sessionCookieOptions()`），只是立即过期：
+ * 一处带 `Secure` 另一处不带时，浏览器会留下一个删不掉的同名 Cookie。
+ */
+export async function clearSessionCookie(
+  response: NextResponse,
+  request?: Request,
+): Promise<NextResponse> {
+  response.cookies.set(
+    SESSION_COOKIE_NAME,
+    "",
+    sessionCookieOptions(new Date(0), new Date(), await secureCookies(request)),
+  );
   return response;
 }

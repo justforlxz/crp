@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  SESSION_COOKIE_SECURE_ENV,
   SESSION_SLIDE_INTERVAL_MS,
   SESSION_TTL_MS,
   generateSessionToken,
   hashSessionToken,
   initialExpiry,
+  isSecureRequest,
   isSessionUsable,
+  secureCookieOverride,
   sessionCookieOptions,
   slidExpiry,
 } from "../lib/auth/session";
@@ -78,6 +81,47 @@ test("会话 Cookie 属性：httpOnly、SameSite=Lax、路径 /，maxAge 与过�
 
   // 关闭 cookie（maxAge 0）时 maxAge 不会出现负数。
   assert.equal(sessionCookieOptions(now, now, false).maxAge, 0);
+});
+
+test("Cookie 的 Secure 由请求协议推导：x-forwarded-proto 优先，其次请求 URL", () => {
+  const lan = "http://192.168.12.115:3211/api/auth/login";
+  const publicHttps = "https://crp.example.com/api/auth/login";
+
+  // 反向代理知道真实协议：代理说 https 就是 https，即使应用自己看到的是 http。
+  assert.equal(isSecureRequest(lan, "https", undefined), true);
+  assert.equal(isSecureRequest(publicHttps, "http", undefined), false);
+
+  // 代理追加多段时取第一段。
+  assert.equal(isSecureRequest(null, "https, http", undefined), true);
+  assert.equal(isSecureRequest(null, "HTTPS", undefined), true);
+
+  // 没有代理头：用请求 URL 的协议。
+  assert.equal(isSecureRequest(publicHttps, null, undefined), true);
+  assert.equal(isSecureRequest(lan, null, undefined), false);
+
+  // 三个信号都没有：按 http 处理，不猜。
+  assert.equal(isSecureRequest(null, null, undefined), false);
+});
+
+test("SESSION_COOKIE_SECURE 显式覆盖压过请求协议", () => {
+  assert.equal(SESSION_COOKIE_SECURE_ENV, "SESSION_COOKIE_SECURE");
+
+  // 内网 http 部署：即使代理头说 https 也不带 Secure。
+  assert.equal(isSecureRequest("https://crp.example.com/", "https", "false"), false);
+  // 反过来也一样。
+  assert.equal(isSecureRequest("http://192.168.12.115:3211/", "http", "true"), true);
+
+  assert.equal(secureCookieOverride("true"), true);
+  assert.equal(secureCookieOverride("false"), false);
+  assert.equal(secureCookieOverride(" TRUE "), true);
+  assert.equal(secureCookieOverride(" FALSE "), false);
+
+  // 未设置或取值不认识：当没设置，回到按协议判断。
+  assert.equal(secureCookieOverride(undefined), null);
+  assert.equal(secureCookieOverride(""), null);
+  assert.equal(secureCookieOverride("yes"), null);
+  assert.equal(isSecureRequest("https://crp.example.com/", "https", "yes"), true);
+  assert.equal(isSecureRequest("http://192.168.12.115:3211/", "http", "yes"), false);
 });
 
 /** 造一个与入参不同的令牌，用于断言哈希随值变化。 */
