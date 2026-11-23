@@ -16,18 +16,18 @@
           "fontSize": "14px",
           "fontWeight": "400",
           "lineHeight": "22.4px",
-          "color": "rgb(31, 35, 41)",
+          "color": "rgb(32, 43, 60)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
-          "border": "0px none rgb(31, 35, 41)",
+          "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1024px",
+          "width": "1000px",
           "height": "44.7812px"
         },
         "box": {
-          "x": 232,
-          "y": 80.39,
-          "width": 1024,
+          "x": 256,
+          "y": 77.69,
+          "width": 1000,
           "height": 44.78
         }
       }
@@ -42,18 +42,18 @@
           "fontSize": "14px",
           "fontWeight": "400",
           "lineHeight": "22.4px",
-          "color": "rgb(31, 35, 41)",
+          "color": "rgb(32, 43, 60)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
-          "border": "0px none rgb(31, 35, 41)",
+          "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1024px",
+          "width": "1000px",
           "height": "38.3906px"
         },
         "box": {
-          "x": 232,
-          "y": 137.17,
-          "width": 1024,
+          "x": 256,
+          "y": 134.47,
+          "width": 1000,
           "height": 38.39
         }
       }
@@ -68,19 +68,19 @@
           "fontSize": "14px",
           "fontWeight": "400",
           "lineHeight": "22.4px",
-          "color": "rgb(31, 35, 41)",
+          "color": "rgb(32, 43, 60)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
-          "border": "0px none rgb(31, 35, 41)",
+          "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1024px",
-          "height": "115.172px"
+          "width": "1000px",
+          "height": "112.469px"
         },
         "box": {
-          "x": 232,
-          "y": 242.56,
-          "width": 1024,
-          "height": 115.17
+          "x": 256,
+          "y": 234.45,
+          "width": 1000,
+          "height": 112.47
         }
       }
     ],
@@ -94,18 +94,18 @@
           "fontSize": "14px",
           "fontWeight": "400",
           "lineHeight": "22.4px",
-          "color": "rgb(31, 35, 41)",
+          "color": "rgb(32, 43, 60)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
-          "border": "0px none rgb(31, 35, 41)",
+          "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1024px",
+          "width": "1000px",
           "height": "40px"
         },
         "box": {
-          "x": 232,
-          "y": 408.13,
-          "width": 1024,
+          "x": 256,
+          "y": 397.31,
+          "width": 1000,
           "height": 40
         }
       }
@@ -117,22 +117,22 @@
           "position": "static",
           "margin": "32px 0px 8px",
           "padding": "0px",
-          "fontSize": "20px",
+          "fontSize": "16px",
           "fontWeight": "600",
-          "lineHeight": "27px",
-          "color": "rgb(31, 35, 41)",
+          "lineHeight": "21.6px",
+          "color": "rgb(32, 43, 60)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
-          "border": "0px none rgb(31, 35, 41)",
+          "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1024px",
-          "height": "27px"
+          "width": "1000px",
+          "height": "21.5938px"
         },
         "box": {
-          "x": 232,
-          "y": 524.91,
-          "width": 1024,
-          "height": 27
+          "x": 256,
+          "y": 514.09,
+          "width": 1000,
+          "height": 21.59
         }
       }
     ],
@@ -145,20 +145,20 @@
           "padding": "0px",
           "fontSize": "13px",
           "fontWeight": "400",
-          "lineHeight": "20.8px",
-          "color": "rgb(31, 35, 41)",
+          "lineHeight": "19.5px",
+          "color": "rgb(32, 43, 60)",
           "backgroundColor": "rgb(255, 255, 255)",
-          "border": "0px none rgb(31, 35, 41)",
+          "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1024px",
-          "height": "113.438px"
+          "width": "1000px",
+          "height": "110.844px"
         },
         "box": {
-          "x": 232,
-          "y": 756.34,
-          "width": 1024,
-          "height": 113.44
+          "x": 256,
+          "y": 731.75,
+          "width": 1000,
+          "height": 110.84
         }
       }
     ]

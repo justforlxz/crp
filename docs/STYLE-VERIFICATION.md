@@ -169,10 +169,10 @@ L1 的静态检查不受这 6 页限制：它扫全部 `app/**/page.tsx`。
 | 所有 `app/**/page.tsx` 经 `PageShell` 渲染 | 未使用者 0 个，失败时列出文件 |
 | 没有裸 `<table>` | 每个 `<table>` 开标签都要带 `className="data-table"`；横向滚动容器由 L2 的 `*.table-scroll` 锚点覆盖 |
 | 样式来源唯一 | `app/**/*.tsx` 与 `components/**/*.tsx` 里 `style={{` 命中 0 处 |
-| `app/globals.css` 规则数 | 不低于基线；规则数 = 去掉注释与字符串后 `{` 的个数（当前 115） |
+| `app/globals.css` 规则数 | 不低于基线；规则数 = 去掉注释与字符串后 `{` 的个数（当前 110） |
 | `app/globals.css` 设计变量 | `:root` 里每个变量的值与基线一致；变量被删也算失败，新增不算 |
 
-设计变量这一条是为了兜住「改了值但没有任何锚点落在上面」的情况：例如 `--radius-lg` 只影响 `.card`，而 `.card` 只在登录、注册与导入页出现，六个覆盖页面里没有它 —— 光靠锚点看不出这类改动。
+设计变量这一条是为了兜住「改了值但没有任何锚点落在上面」的情况：例如 `--radius-card` 只影响 `.card`，而 `.card` 只在登录、注册与导入页出现，六个覆盖页面里没有它 —— 光靠锚点看不出这类改动。
 
 实现：`scripts/style-check/lint.ts`。
 
@@ -229,6 +229,25 @@ color, backgroundColor, border, borderRadius, boxShadow, width, height
 整页高度变了（例如表格多一行）就没法逐像素对齐，直接判失败并报出两边的尺寸。
 
 实现：`scripts/style-check/compare.ts` 的 `comparePng()`。
+### 颜色对比度（独立命令 `pnpm test:contrast`）
+
+L2 只比「改没改」，不比「改得对不对」：把次要文字从 `#5d6875` 调成原型里的 `#758195`，
+快照会跟着变，门禁照样绿，而正文对比度已经从 5.67:1 掉到 3.94:1。无障碍坏了，界面看上去没坏。
+
+所以配色另有一道断言门禁，读 `app/globals.css` 的 `:root` 变量，按 WCAG 2.1 的相对亮度公式
+逐对算对比度：
+
+| 档位 | 阈值 | 适用 |
+| --- | --- | --- |
+| 正文 | 4.5:1 | 12–14px 的常规字（1.4.3 AA） |
+| 非文本 | 3:1 | 控件边框这类「能点的东西的边」（1.4.11） |
+
+另外扫一遍全表的十六进制色值：出现表外颜色即失败。**装饰线（`--color-line`）与控件边框
+（`--color-control-border`）不得混用**，混了会在这里露出来。
+
+配对表与色板都写在 `scripts/check-contrast.ts`；改配色要同时改那里、`app/globals.css` 与
+issue 正文的 token 表。CI 的 `checks` job 在 Lint 之后跑这一步。
+
 
 ## 七、基线维护
 
@@ -297,6 +316,7 @@ CI 变红，方向正好反了。
 - 必须同时提交基线更新（`scripts/style-check/container.sh --update` 的产物）；
 - 必须在 issue 里贴「哪些页面、哪些锚点、哪些属性变了」；
 - 未提交基线更新而比对失败，判定验收不通过。
+- 配色改动还要跑 `pnpm test:contrast`，退出码 0（不需要数据库与浏览器，本机直接跑）。
 
 ## 十、已知边界
 
