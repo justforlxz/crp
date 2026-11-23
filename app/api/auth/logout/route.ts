@@ -7,7 +7,7 @@ import { NextResponse } from "next/server";
 
 import { clearSessionCookie, endSession } from "@/lib/auth/server";
 
-export async function POST(): Promise<NextResponse> {
+export async function POST(request: Request): Promise<NextResponse> {
   await endSession();
-  return clearSessionCookie(new NextResponse(null, { status: 204 }));
+  return clearSessionCookie(new NextResponse(null, { status: 204 }), request);
 }

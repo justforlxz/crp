@@ -92,6 +92,7 @@ cp .env.example .env
 | `GERRIT_BASE_URL` | `https://gerrit.uniontech.com` | Gerrit 地址 |
 | `SHUTTLE_BASE_URL` | `https://shuttle.uniontech.com/api/shuttle` | Shuttle 地址 |
 | `SHUTTLE_TOKEN` | 空 | 当前用到的三个读接口实测不校验身份，不填也能用 |
+| `SESSION_COOKIE_SECURE` | 空（按请求协议判断） | 会话 Cookie 的 `Secure` 属性；`true` / `false` 显式覆盖。走 http 的部署必须设成 `false`，否则浏览器丢掉 Cookie、登录后立刻弹回登录页 |
 
 token 的生成方式：
 
@@ -130,7 +131,10 @@ pnpm build
 pnpm start            # 默认 3000 端口；改端口用 PORT=xxxx pnpm start
 ```
 
-开发时用 `pnpm dev`。反代到公网时把 `Cookie` 的 Secure 属性交给 HTTPS 层，应用本身按环境变量决定是否加 `Secure`。
+开发时用 `pnpm dev`。会话 Cookie 的 `Secure` 由**请求协议**决定：`x-forwarded-proto: https` 或请求 URL 是
+`https` 时带上，否则不带。反向代理必须把真实协议传进来（`proxy_set_header X-Forwarded-Proto $scheme;`），
+否则应用看到的是 http，https 部署也会退化成不带 `Secure`。内网 http 部署不需要额外配置；
+要强制指定就设 `SESSION_COOKIE_SECURE=true|false`。
 
 ### 3.6 第一个能登录的账号（种子环境与生产环境都要做）
 
