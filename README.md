@@ -97,6 +97,7 @@ lib/releases/abandon.ts(209,9): error TS2322: Type '"abandon_topic"' is not assi
 | `pnpm tsx scripts/verify-projects.ts` | 用真实数据库验收项目经理与项目：归属校验、共用基线、复制不带提交历史、软删后提测记录仍可查；只动自己建的临时行 |
 | `pnpm tsx scripts/verify-webhook.ts` | 本机起一个 Webhook 接收端点，验收投递、签名与重试，约 15 秒 |
 | `pnpm tsx scripts/verify-webhook-signature.ts` | 独立复算某次投递的签名，参数见 `docs/WEBHOOK.md` |
+| `pnpm tsx scripts/verify-base-url.ts --base-url=http://127.0.0.1:3000` | 从 base URL 打开：不带会话落到 `/login?next=%2Fdashboard`、带会话落到 `/dashboard`，且没有占位页原文。需要跑起来的服务与 `pnpm db:seed` 过的库，几秒；`scripts/e2e.sh` 的第 0 步就是它 |
 | `scripts/style-check/container.sh` | 在门禁镜像里跑样式回归检查（L1 静态结构 + L2 计算样式 + L3 几何与整页截图）；加 `--update` 重写基线。判定口径见 [docs/STYLE-VERIFICATION.md](docs/STYLE-VERIFICATION.md) |
 
 ## 账号与登录

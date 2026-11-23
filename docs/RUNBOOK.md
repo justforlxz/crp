@@ -312,6 +312,7 @@ systemctl enable --now crp-dispatch.timer crp-poll.timer crp-sync.timer
 
 一条命令在真实 CRP 上跑完整链路，并在结束时自己清理：
 
+0. 从 base URL 打开一次（`scripts/verify-base-url.ts`，几秒）：不带会话落到 `/login?next=%2Fdashboard`，带会话落到 `/dashboard`，两种身份的响应里都没有占位页原文。这一步在主链路之前，重定向被改坏了先在这里失败，不用等一小时的构建；
 1. 建项目经理 → 建项目（基线 `eagle-1071`）；
 2. 同步一次基线，拿到投递要用的架构（`Baseline.arches`），打印出来；
 3. `POST /api/packages` 登记软件包（`name` + `crpProjectName` 两个名字）；
@@ -321,6 +322,15 @@ systemctl enable --now crp-dispatch.timer crp-poll.timer crp-sync.timer
 7. 断言提测到达 `success`，核对提测详情页与构建队列页；
 8. 演练 A17：往提测里补一个包（`deepin-kde/xwayland` → CRP 项目 `v25_xwayland`）+ 换掉 wayland 的 Commit，断言旧 Release 被放弃、按新轮次重投（`--skip-a17` 跳过）；
 9. 取消提测（删 CRP Release + 放弃 Topic），删掉本次建的项目与经理。
+
+第 0 步也可以单独跑，只要有一个 `pnpm db:seed` 过的库和一个跑起来的服务：
+
+```bash
+DATABASE_URL=... pnpm tsx scripts/verify-base-url.ts --base-url=http://127.0.0.1:3000
+```
+
+退出码 0 通过；1 断言失败（打印每一跳与失败理由）；2 参数或环境不对，什么都没查。会话按
+`lib/auth/session.ts` 的规则直接写一条会话行，跑完删掉 —— 种子账号的密码是占位哈希，登录接口进不去。
 
 项目经理、项目、软件清单、依赖关系在平台里只有页面表单（Server Action），没有对外 HTTP 接口，所以脚本直接调用表单所用的同一份服务层函数；从「创建提测」开始全部走真实 HTTP 端点。
 
@@ -398,6 +408,8 @@ scripts/e2e.sh --keep                         # 保留本次记录与 CRP Topic�
   | A17 更新接口的补包名单里没有要补的包 | `更新接口的补包名单里没有 <包名>：实际有 …` |
   | CRP 侧限流：`POST /topics/<id>/new_release` 返回 `HTTP 429`（`CrpRateLimitedError`，一次都不重试） | `POST /api/jobs/build-dispatch 里本次提测（…）报错：CrpRateLimitedError: … （HTTP 429）：CRP 限流，请稍后重试（Retry-After: …）`；**不是平台的问题，也不要去查链路** —— 限流窗口里唯一的做法是等，等过去再跑一次，演练失败时也会自行清理 |
   | CRP 侧抖动：`HTTP 500`（`CrpNetworkError`，重试 3 次仍失败） | `POST /api/jobs/build-dispatch 里本次提测（…）报错：CrpNetworkError: … （HTTP 500）：CRP 服务端异常，重试 3 次后仍失败`；等几分钟再跑一次 |
+  | 从 base URL 打开没有落到该去的地方（`/` 的重定向被删、被改成 308、或跳到了别的页） | `不带会话：/ 必须是 307 临时重定向，实际 404（…）`、`带会话：/ 应当重定向到 /dashboard，实际 /releases`；**这一步在主链路之前，失败时什么都没建，不需要清理** |
+  | 从 base URL 打开看到了占位页（`app/page.tsx` 被重新加回来） | `带会话：响应里出现了占位页原文「项目骨架已就绪，业务页面按节点计划在后续实现。」，占位页又回来了` |
 - 退出码 2：环境变量缺失或服务起不来，什么都没做。
 
 ### 6.5 清理边界
@@ -698,10 +710,11 @@ select name, arches, synced_at from baseline where name = 'eagle-1071';
 - [ ] 上游失败时下游被阻断，`blockedByPackage` 与 `statusReason` 正确
 - [ ] Webhook 端点返回 500 时投递记录为 `failed`，业务不受影响
 - [ ] 提测详情页、构建队列页、工作台数据与数据库一致
+- [ ] **从 base URL（`/`）打开**：不带会话落到 `/login?next=%2Fdashboard`，带会话落到 `/dashboard`，两种身份的响应里都没有占位页原文（`pnpm tsx scripts/verify-base-url.ts --base-url=…` 退出码 0，或 `scripts/e2e.sh` 的第 0 步通过）。**这一条不许省**：37 个节点的验收全部从 `/login` 或 `/dashboard` 直接进，A1 的占位页就是在 `/` 上活了整个项目周期才被发现（MKACG-958 / MKACG-959）
 - [ ] 全链路演练 `scripts/e2e.sh --with-build-deps` 退出码 0，提测到 `success`，Topic 链接与详情页截图留证
 - [ ] 第十二节的复现检查表 11 条，逐条的现象都对得上（执行者自己走一遍）
 
-> **复现人签字不在这 12 条里，它是另一道门。** AC3「RUNBOOK 被另一位同学按步骤复现成功」由复现人本人
+> **复现人签字不在这 13 条里，它是另一道门。** AC3「RUNBOOK 被另一位同学按步骤复现成功」由复现人本人
 > 在 issue 里发签字评论，执行者与 PL 都不代签，所以它不能作为这张清单的一项 —— 否则清单永远勾不满，
 > 而它其实还没发生。签字的写法见第十二节末尾。
 
@@ -802,7 +815,7 @@ select name, arches, synced_at from baseline where name = 'eagle-1071';
 | 8 | 6.6 场景二：Shuttle 超时 | 见 6.6 的「算通过」（要等第 6 步投出第一个包之后才能做，先跑一次 6.6 里那条 SQL 确认） | 1 分钟（与第 6 步同时） |
 | 9 | 6.6 场景三：Webhook 端点 500 | 脚本最后打印「全部通过」 | 1 分钟 |
 | 10 | 6.6 场景四：上游失败导致阻断 | 见 6.6 的「算通过」 | 5 分钟 |
-| 11 | 第十节「上线前检查清单」逐条过 | 12 条全部能勾上 | 10 分钟 |
+| 11 | 第十节「上线前检查清单」逐条过 | 13 条全部能勾上 | 10 分钟 |
 
 **第 2 步必须排在第 3 步之前。** 门禁会先跑一次 `pnpm db:seed` 来确认库是纯种子数据（种子里的账号数也是被核对的），
 而第 3 步注册的账号会让这项校验不通过、门禁直接退出 2。顺序反过来会看到
