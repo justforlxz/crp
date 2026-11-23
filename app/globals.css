@@ -713,6 +713,36 @@ legend {
   color: var(--color-text-muted);
 }
 
+/*
+ * 进度条用原生 `<progress>`：宽度由 `value`/`max` 表达，不需要内联 `style`（样式契约禁止），
+ * 也不需要照抄原型里硬编码的 68%。轨道用中性浅底，条用主色。
+ */
+.progress {
+  display: block;
+  width: 100%;
+  height: 5px;
+  margin-top: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-neutral-weak);
+  appearance: none;
+}
+
+.progress::-webkit-progress-bar {
+  border-radius: var(--radius-pill);
+  background: var(--color-neutral-weak);
+}
+
+.progress::-webkit-progress-value {
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+}
+
+.progress::-moz-progress-bar {
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+}
+
 
 /* 提示块：图标 + 标题 + 正文。 */
 .tip {
@@ -843,8 +873,13 @@ legend {
   border-radius: var(--radius-control);
 }
 
-/* 放进 `.table-card` 时不再画第二道边：卡片自己已经收边了。 */
-.table-card .table-scroll {
+/*
+ * 嵌在卡片里时不再画第二道边：卡片自己已经收边了。
+ *
+ * `.table-scroll` 单独用时按 design.md 第七节带 1px 装饰线与 8px 圆角；放进 `.card`（面板或
+ * `.table-card`）时由卡片收边，容器只负责横向滚动 —— 原型的表格就是贴在卡片边上的。
+ */
+.card .table-scroll {
   margin-bottom: 0;
   border: 0;
   border-radius: 0;

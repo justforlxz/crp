@@ -10,8 +10,8 @@
  *
  * 结构与 class 名来自 `.agents/spec/design/prototype.html` 的工作台（MKACG-964 的模块移植）：
  * `.stats` + `.stat` + `.stat-ico`、`.card panel` + `.panel-head`、`.queue-list` + `.queue-item`、
- * `.tip`、`.empty`。原型里有 `.progress`，但 `lib/stats` 只给「1/2 个架构完成」这样的文字、
- * 没有百分比，按「不改数据查询」的边界不自己造数字，进度文字放在 `.queue-info small` 里。
+ * `.tip`、`.empty`。队列条目的 `.progress` 用真实进度：`lib/build/queue.ts` 的 `jobProgress`
+ * 算出「已完成架构 / 全部架构」，文字与百分比出自同一份计数，不照抄原型里硬编码的 68%。
  */
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -168,7 +168,7 @@ export default async function DashboardPage() {
                   这个工作区还没有提测记录。
                 </div>
               ) : (
-                <div className="table-wrap">
+                <div className="table-wrap table-scroll">
                   <table className="data-table" data-style-anchor="dashboard.recent-releases-table">
                     <thead>
                       <tr>
@@ -235,6 +235,14 @@ export default async function DashboardPage() {
                           {task.projectName} · {task.releaseVersion}
                           {task.progress === null ? null : ` · ${task.progress}`}
                         </small>
+                        {task.progressPercent === null ? null : (
+                          <progress
+                            className="progress"
+                            value={task.progressPercent}
+                            max={100}
+                            aria-label={`${task.packageName} 构建进度`}
+                          />
+                        )}
                       </div>
                       <div className="queue-meta">
                         <b>{task.stage}</b>
@@ -275,7 +283,7 @@ export default async function DashboardPage() {
                   这个工作区还没有项目。
                 </div>
               ) : (
-                <div className="table-wrap">
+                <div className="table-wrap table-scroll">
                   <table className="data-table">
                     <thead>
                       <tr>

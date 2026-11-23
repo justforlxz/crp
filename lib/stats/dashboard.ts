@@ -78,6 +78,8 @@ export type QueueSummaryRow = {
   stage: string;
   /** 构建进度，例如「1/2 个架构完成」；还没开始构建时为空。 */
   progress: string | null;
+  /** 同上进度的百分比（0–100）；没有作业时为空。页面画进度条用它。 */
+  progressPercent: number | null;
   /** 耗时（毫秒），页面用 `formatDuration` 显示。 */
   durationMs: number | null;
 };
@@ -269,6 +271,7 @@ export async function loadDashboard(
           packageName: task.packageName,
           stage: task.stage,
           progress: task.progress,
+          progressPercent: task.progressPercent,
           durationMs: task.durationMs,
         })),
       )
