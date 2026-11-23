@@ -1254,6 +1254,19 @@ a.btn:hover {
     padding: var(--space-4);
   }
 
+  /*
+   * 原型 `@media(max-width:1050px)` 的两条：统计卡 4 列 → 2 列，`.two-col` 折成一列。
+   * `.two-col` 的第二列有 330px 的最小宽度，不折的话第一列会被压到 0 宽（375 下实测 50px），
+   * 而 `minmax(0, …)` 只会收缩不会溢出，整页横滚检查看不出来 —— 必须显式接管。
+   */
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .two-col {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1326,7 +1339,13 @@ a.btn:hover {
     margin-top: var(--space-2);
   }
 
-  .stat-grid {
-    grid-template-columns: minmax(0, 1fr);
+  /*
+   * 统计卡在这一档仍是 2 列。原型 `@media(max-width:720px)` 写的是 `.stats{1fr 1fr}`，
+   * 而 design.md 4.3 原写「1 列」；两处不一致时按 design.md 开头的「以 prototype.html 为准，
+   * 并把本文件补齐」取原型，`design.md` 4.3 已同步改成 2 列。
+   */
+  .stat-grid,
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

@@ -21,6 +21,7 @@ import { requirePageAuth } from "@/lib/auth/server";
 import { listWorkspacesForAccount } from "@/lib/auth/store";
 import { pickActiveWorkspace } from "@/lib/auth/workspaces";
 import { formatDuration } from "@/lib/build";
+import { releaseStatusPillClass } from "@/lib/releases";
 import { loadDashboard, STATS_WINDOW_DAYS } from "@/lib/stats";
 import { InviteMemberForm, WorkspaceSwitcher } from "./controls";
 
@@ -36,28 +37,6 @@ function formatTime(value: Date | null): string {
   }
 
   return `${value.toISOString().replace("T", " ").slice(0, 19)} UTC`;
-}
-
-/** 提测状态对应的 pill 配色（原型 `.p-*`）。 */
-function statusPillClass(status: string): string {
-  if (status === "success") {
-    return "pill p-green";
-  }
-
-  if (status === "failed" || status === "partial_failure") {
-    return "pill p-red";
-  }
-
-  if (status === "abandoned") {
-    return "pill p-orange";
-  }
-
-  // design.md 5.1：投递中与构建中用「信息」，待投递与排队中用「中性」。
-  if (status === "dispatching" || status === "building") {
-    return "pill p-blue";
-  }
-
-  return "pill p-gray";
 }
 
 export default async function DashboardPage() {
@@ -211,7 +190,7 @@ export default async function DashboardPage() {
                           </td>
                           <td className="mono">{release.version}</td>
                           <td>
-                            <span className={statusPillClass(release.status)}>
+                            <span className={releaseStatusPillClass(release.status)}>
                               {release.statusLabel}
                             </span>
                           </td>
@@ -323,7 +302,7 @@ export default async function DashboardPage() {
                             {project.latestStatus === null || project.latestStatusLabel === null ? (
                               "—"
                             ) : (
-                              <span className={statusPillClass(project.latestStatus)}>
+                              <span className={releaseStatusPillClass(project.latestStatus)}>
                                 {project.latestStatusLabel}
                               </span>
                             )}

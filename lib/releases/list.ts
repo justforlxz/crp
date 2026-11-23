@@ -71,6 +71,35 @@ export function releaseStatusLabel(status: string): string {
   return RELEASE_STATUS_LABELS[status as ReleaseStatus] ?? status;
 }
 
+/**
+ * 状态 pill 的配色档位（原型 `.p-*`）。只决定颜色，不改任何文案。
+ *
+ * 口径来自 `design.md` 5.1：绿 = 成功，红 = 失败，橙 = 警告/已放弃，
+ * 蓝 =「投递中、构建中」这类进行中的信息色，中性 = 待投递、排队中。
+ *
+ * 放在这里而不是页面里：工作台与提测记录都要用，接下来还要迁七页，
+ * 逐页抄一份迟早会出现两页配色不一致。
+ */
+export function releaseStatusPillClass(status: string): string {
+  if (status === "success") {
+    return "pill p-green";
+  }
+
+  if (status === "failed" || status === "partial_failure") {
+    return "pill p-red";
+  }
+
+  if (status === "abandoned") {
+    return "pill p-orange";
+  }
+
+  if (status === "dispatching" || status === "building") {
+    return "pill p-blue";
+  }
+
+  return "pill p-gray";
+}
+
 /** 来源的中文名；认不出的取值原样返回。 */
 export function releaseSourceLabel(source: string): string {
   return RELEASE_SOURCE_LABELS[source as "platform" | "imported"] ?? source;

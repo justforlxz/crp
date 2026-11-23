@@ -25,6 +25,7 @@ import {
   RELEASE_TAB_LABELS,
   releaseSourceLabel,
   releaseStatusLabel,
+  releaseStatusPillClass,
   type ReleaseStatusTab,
 } from "@/lib/releases";
 import { resolveWorkspaceScope } from "../workspaceScope";
@@ -50,28 +51,6 @@ type ListFilters = {
 
 function formatTime(value: Date): string {
   return `${value.toISOString().replace("T", " ").slice(0, 19)} UTC`;
-}
-
-/** 状态 pill 的配色档位（原型 `.p-*`）：只决定颜色，不改任何文案。 */
-function statusPillClass(status: string): string {
-  if (status === "success") {
-    return "pill p-green";
-  }
-
-  if (status === "failed" || status === "partial_failure") {
-    return "pill p-red";
-  }
-
-  if (status === "abandoned") {
-    return "pill p-orange";
-  }
-
-  // design.md 5.1：投递中与构建中用「信息」，待投递与排队中用「中性」。
-  if (status === "dispatching" || status === "building") {
-    return "pill p-blue";
-  }
-
-  return "pill p-gray";
 }
 
 /** 当前筛选拼成链接；切换页签或翻筛选都不丢掉其余条件。 */
@@ -269,7 +248,7 @@ export default async function ReleasesPage({ searchParams }: ReleasesPageProps) 
                   <td>第 {row.revision} 轮</td>
                   <td>{row.packageCount} 个软件包</td>
                   <td data-style-anchor="releases.row-status">
-                    <span className={statusPillClass(row.status)}>{releaseStatusLabel(row.status)}</span>
+                    <span className={releaseStatusPillClass(row.status)}>{releaseStatusLabel(row.status)}</span>
                   </td>
                   <td>
                     {row.createdByName}

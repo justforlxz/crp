@@ -84,7 +84,7 @@
 | --- | --- |
 | > 1100px | 完整布局；统计卡 4 列 |
 | 760–1100px | 侧栏保持；统计卡 2 列；页头与内容区内边距降到 16 |
-| ≤ 760px | 侧栏变横向导航条（品牌 + 图标），账号区隐藏；统计卡 1 列；页头竖排 |
+| ≤ 760px | 侧栏变横向导航条（品牌 + 图标），账号区隐藏；统计卡 2 列（原型 `@media(max-width:720px)` 为 `.stats{1fr 1fr}`，此处按「以 prototype.html 为准」补齐）；页头竖排 |
 
 **硬约束**：任何断点下 `document.scrollingElement.scrollWidth <= clientWidth`。宽表在自己的 `.table-scroll` 容器里滚，不允许整页横滚。
 

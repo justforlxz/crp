@@ -23,6 +23,7 @@ import {
   parseStatusTab,
   releaseSourceLabel,
   releaseStatusLabel,
+  releaseStatusPillClass,
   RELEASE_STATUS_TABS,
   RELEASE_TAB_LABELS,
   RELEASE_TAB_STATUSES,
@@ -321,6 +322,20 @@ test("状态与来源都有中文名，认不出的取值原样返回", () => {
   assert.equal(releaseSourceLabel("imported"), "从 CRP 导入");
   assert.equal(releaseSourceLabel("platform"), "平台创建");
   assert.equal(releaseSourceLabel("whatever"), "whatever");
+});
+
+test("状态 pill 的配色只在进行中/终局之间分档，认不出的取值落到中性色", () => {
+  // design.md 5.1：绿 = 成功，红 = 失败，橙 = 警告（已放弃），蓝 = 进行中，中性 = 待投递/排队中。
+  assert.equal(releaseStatusPillClass("success"), "pill p-green");
+  assert.equal(releaseStatusPillClass("failed"), "pill p-red");
+  assert.equal(releaseStatusPillClass("partial_failure"), "pill p-red");
+  assert.equal(releaseStatusPillClass("abandoned"), "pill p-orange");
+  assert.equal(releaseStatusPillClass("dispatching"), "pill p-blue");
+  assert.equal(releaseStatusPillClass("building"), "pill p-blue");
+  assert.equal(releaseStatusPillClass("pending"), "pill p-gray");
+
+  // 认不出的取值不抛错、也不假装是某种状态。
+  assert.equal(releaseStatusPillClass("unknown"), "pill p-gray");
 });
 
 test("全部页签列出本工作区的 7 条，别的工作区一条都不出现", async () => {

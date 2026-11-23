@@ -117,6 +117,7 @@ export {
   RELEASE_TAB_STATUSES,
   releaseSourceLabel,
   releaseStatusLabel,
+  releaseStatusPillClass,
   type ReleaseListQuery,
   type ReleaseListResult,
   type ReleaseListRow,
