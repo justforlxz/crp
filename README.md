@@ -6,6 +6,12 @@
 软件包（`/packages`）、Webhook 端点（`/webhooks`）、基线（`/baselines`）与构建队列（`/queue`）；
 外部系统（CRP、Gerrit、Shuttle）的客户端只被对应的领域模块与 Route Handler 调用。
 
+## 界面规范
+
+改界面前先读 [`.agents/spec/design/design.md`](.agents/spec/design/design.md)，可交互原型是 [`.agents/spec/design/prototype.html`](.agents/spec/design/prototype.html)（单文件，双击即开）。
+
+两份文件是界面的唯一基准：颜色、布局、组件、页面结构全部写成可核对的数字。**任何 UI 讨论先改原型，涉及 UI 的 PR 必须经 lxz 确认才能合并。**
+
 ## 环境要求
 
 | 项 | 要求 |
