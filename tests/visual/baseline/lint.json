@@ -1,5 +1,5 @@
 {
-  "globalsRuleCount": 110,
+  "globalsRuleCount": 111,
   "variables": {
     "--color-bg": "#f5f7fa",
     "--color-surface": "#ffffff",
@@ -39,7 +39,10 @@
     "--font-size-base": "14px",
     "--font-size-lg": "16px",
     "--font-size-xl": "22px",
-    "--line-height-tight": "1.35",
+    "--font-size-hint": "12.5px",
+    "--font-size-stat": "25px",
+    "--line-height-h1": "1.25",
+    "--line-height-heading": "1.4",
     "--line-height-base": "1.6",
     "--line-height-table": "1.5",
     "--shadow-card": "0 2px 7px rgba(35, 50, 75, 0.025)",

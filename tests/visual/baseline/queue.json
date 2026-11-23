@@ -21,13 +21,13 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
+          "width": "984px",
           "height": "44.7812px"
         },
         "box": {
-          "x": 256,
-          "y": 77.69,
-          "width": 1000,
+          "x": 264,
+          "y": 67.5,
+          "width": 984,
           "height": 44.78
         }
       }
@@ -47,13 +47,13 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
+          "width": "984px",
           "height": "38.3906px"
         },
         "box": {
-          "x": 256,
-          "y": 134.47,
-          "width": 1000,
+          "x": 264,
+          "y": 124.28,
+          "width": 984,
           "height": 38.39
         }
       }
@@ -73,14 +73,14 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
-          "height": "112.469px"
+          "width": "984px",
+          "height": "107.781px"
         },
         "box": {
-          "x": 256,
-          "y": 234.45,
-          "width": 1000,
-          "height": 112.47
+          "x": 264,
+          "y": 225.06,
+          "width": 984,
+          "height": 107.78
         }
       }
     ],
@@ -99,13 +99,13 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
+          "width": "984px",
           "height": "40px"
         },
         "box": {
-          "x": 256,
-          "y": 397.31,
-          "width": 1000,
+          "x": 264,
+          "y": 383.23,
+          "width": 984,
           "height": 40
         }
       }
@@ -119,20 +119,20 @@
           "padding": "0px",
           "fontSize": "16px",
           "fontWeight": "600",
-          "lineHeight": "21.6px",
+          "lineHeight": "22.4px",
           "color": "rgb(32, 43, 60)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
-          "height": "21.5938px"
+          "width": "984px",
+          "height": "22.3906px"
         },
         "box": {
-          "x": 256,
-          "y": 514.09,
-          "width": 1000,
-          "height": 21.59
+          "x": 264,
+          "y": 500.02,
+          "width": 984,
+          "height": 22.39
         }
       }
     ],
@@ -151,14 +151,14 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
-          "height": "110.844px"
+          "width": "982px",
+          "height": "108.641px"
         },
         "box": {
-          "x": 256,
-          "y": 731.75,
-          "width": 1000,
-          "height": 110.84
+          "x": 265,
+          "y": 721.39,
+          "width": 982,
+          "height": 108.64
         }
       }
     ]

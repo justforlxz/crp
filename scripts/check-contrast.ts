@@ -323,7 +323,12 @@ export function checkContrast(variables: Record<string, string>): {
   return { results, missing };
 }
 
-/** 扫出样式表里所有十六进制色值，返回不在色板里的那些（去重、按出现顺序）。 */
+/**
+ * 扫出样式表里所有十六进制色值，返回不在色板里的那些（去重、按出现顺序）。
+ *
+ * 解析不了的写法（4/5/7/8 位）不在这里报，交给 `findUnparseableColors()`：那是「写法不认识」，
+ * 不是「颜色不对」，两种失败要分开看。
+ */
 export function findUnlistedColors(css: string, palette: readonly string[]): string[] {
   const allowed = new Set(
     palette
@@ -349,6 +354,48 @@ export function findUnlistedColors(css: string, palette: readonly string[]): str
   }
 
   return unlisted;
+}
+
+/**
+ * design.md 给定的两条阴影整值。它们不是色板里的颜色，是「阴影」这个整体的一条值。
+ */
+export const SHADOW_VALUES: readonly string[] = [
+  "rgba(35,50,75,0.025)",
+  "rgba(31,35,41,0.08)",
+];
+
+/**
+ * 扫出「写法不认识」的颜色：`rgb()` / `hsl()` 这类函数写法，以及 4/5/7/8 位十六进制。
+ *
+ * 为什么必须报：色板门禁只认 `#rgb` / `#rrggbb`。若静默跳过，写一句
+ * `color: rgb(200, 0, 0)` 就能绕过「只准用表里的颜色」这条约定，而门禁照样绿。
+ */
+export function findUnparseableColors(css: string): string[] {
+  const allowed = new Set(SHADOW_VALUES.map((value) => value.replace(/\s+/gu, "")));
+  const found: { index: number; text: string }[] = [];
+
+  const report = (index: number, value: string): void => {
+    const normalized = value.replace(/\s+/gu, "");
+
+    if (allowed.has(normalized) || found.some((item) => item.text === value)) {
+      return;
+    }
+
+    found.push({ index, text: value });
+  };
+
+  for (const match of css.matchAll(/#[0-9a-f]{3,8}\b/giu)) {
+    if (parseHexColor(match[0]) === null) {
+      report(match.index, match[0]);
+    }
+  }
+
+  for (const match of css.matchAll(/\b(?:rgba?|hsla?)\([^)]*\)/giu)) {
+    report(match.index, match[0]);
+  }
+
+  // 按在样式表里出现的顺序报，日志和文件对得上。
+  return found.sort((left, right) => left.index - right.index).map((item) => item.text);
 }
 
 function section(title: string): void {
@@ -406,6 +453,17 @@ function main(): number {
       `  不通过：${String(unlisted.length)} 个颜色不在表内（新增颜色要同时改 issue 正文与 scripts/check-contrast.ts）：${unlisted.join("、")}`,
     );
     failures += unlisted.length;
+  }
+
+  const unparseable = findUnparseableColors(css);
+
+  if (unparseable.length === 0) {
+    console.log("  通过：没有 rgb() / hsl() 这类色板门禁认不出的写法");
+  } else {
+    console.log(
+      `  不通过：${String(unparseable.length)} 处颜色写法认不出（只认 #rgb / #rrggbb，阴影整值除外）：${unparseable.join("、")}`,
+    );
+    failures += unparseable.length;
   }
 
   section("结论");

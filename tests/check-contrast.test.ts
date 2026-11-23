@@ -22,6 +22,7 @@ import {
   TEXT_MINIMUM,
   checkContrast,
   contrastRatio,
+  findUnparseableColors,
   findUnlistedColors,
   normalizeHexColor,
   parseHexColor,
@@ -181,4 +182,37 @@ test("真实样式表：没有表外颜色", () => {
   const css = readFileSync(join(process.cwd(), GLOBALS_CSS), "utf8");
 
   assert.deepEqual(findUnlistedColors(css, PALETTE), []);
+});
+
+test("认不出的写法：rgb() / hsl() 与 4/5/7 位十六进制都要报出来", () => {
+  const css = `
+    .a { color: rgb(200, 0, 0); }
+    .b { color: hsl(0 100% 50%); }
+    .c { color: #12345; }
+    .d { color: #1234567; }
+  `;
+
+  assert.deepEqual(findUnparseableColors(css), [
+    "rgb(200, 0, 0)",
+    "hsl(0 100% 50%)",
+    "#12345",
+    "#1234567",
+  ]);
+});
+
+test("认不出的写法：design.md 给定的两条阴影整值不算", () => {
+  const css = `
+    :root {
+      --shadow-card: 0 2px 7px rgba(35, 50, 75, 0.025);
+      --shadow-raised: 0 6px 20px rgba(31, 35, 41, 0.08);
+    }
+  `;
+
+  assert.deepEqual(findUnparseableColors(css), []);
+});
+
+test("真实样式表：没有认不出的颜色写法", () => {
+  const css = readFileSync(join(process.cwd(), GLOBALS_CSS), "utf8");
+
+  assert.deepEqual(findUnparseableColors(css), []);
 });

@@ -255,14 +255,14 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
-          "height": "187.984px"
+          "width": "984px",
+          "height": "188.781px"
         },
         "box": {
-          "x": 256,
-          "y": 93.69,
-          "width": 1000,
-          "height": 187.98
+          "x": 264,
+          "y": 83.5,
+          "width": 984,
+          "height": 188.78
         }
       }
     ],
@@ -275,20 +275,20 @@
           "padding": "0px",
           "fontSize": "16px",
           "fontWeight": "600",
-          "lineHeight": "21.6px",
+          "lineHeight": "22.4px",
           "color": "rgb(32, 43, 60)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
-          "height": "21.5938px"
+          "width": "984px",
+          "height": "22.3906px"
         },
         "box": {
-          "x": 256,
-          "y": 313.67,
-          "width": 1000,
-          "height": 21.59
+          "x": 264,
+          "y": 304.28,
+          "width": 984,
+          "height": 22.39
         }
       }
     ],
@@ -307,14 +307,14 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
-          "height": "112.469px"
+          "width": "984px",
+          "height": "107.781px"
         },
         "box": {
-          "x": 256,
-          "y": 396.86,
-          "width": 1000,
-          "height": 112.47
+          "x": 264,
+          "y": 406.67,
+          "width": 984,
+          "height": 107.78
         }
       }
     ],
@@ -333,14 +333,14 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
-          "height": "187.594px"
+          "width": "984px",
+          "height": "188.188px"
         },
         "box": {
-          "x": 256,
-          "y": 541.33,
-          "width": 1000,
-          "height": 187.59
+          "x": 264,
+          "y": 546.45,
+          "width": 984,
+          "height": 188.19
         }
       }
     ],
@@ -359,14 +359,14 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
-          "height": "158px"
+          "width": "982px",
+          "height": "155.797px"
         },
         "box": {
-          "x": 256,
-          "y": 570.92,
-          "width": 1000,
-          "height": 158
+          "x": 265,
+          "y": 577.84,
+          "width": 982,
+          "height": 155.8
         }
       }
     ],
@@ -385,14 +385,14 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
-          "height": "84.3906px"
+          "width": "984px",
+          "height": "85.1875px"
         },
         "box": {
-          "x": 256,
-          "y": 760.92,
-          "width": 1000,
-          "height": 84.39
+          "x": 264,
+          "y": 766.64,
+          "width": 984,
+          "height": 85.19
         }
       }
     ],
@@ -411,14 +411,14 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
-          "height": "146.594px"
+          "width": "984px",
+          "height": "147.188px"
         },
         "box": {
-          "x": 256,
-          "y": 877.31,
-          "width": 1000,
-          "height": 146.59
+          "x": 264,
+          "y": 883.83,
+          "width": 984,
+          "height": 147.19
         }
       }
     ],
@@ -437,14 +437,14 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
-          "height": "164.969px"
+          "width": "984px",
+          "height": "165.578px"
         },
         "box": {
-          "x": 256,
-          "y": 1055.91,
-          "width": 1000,
-          "height": 164.97
+          "x": 264,
+          "y": 1063.02,
+          "width": 984,
+          "height": 165.58
         }
       }
     ],
@@ -463,13 +463,13 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
+          "width": "984px",
           "height": "397.578px"
         },
         "box": {
-          "x": 256,
-          "y": 1252.88,
-          "width": 1000,
+          "x": 264,
+          "y": 1260.59,
+          "width": 984,
           "height": 397.58
         }
       }

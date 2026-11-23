@@ -21,13 +21,13 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
+          "width": "984px",
           "height": "207.578px"
         },
         "box": {
-          "x": 256,
-          "y": 150.97,
-          "width": 1000,
+          "x": 264,
+          "y": 141.48,
+          "width": 984,
           "height": 207.58
         }
       }
@@ -47,14 +47,14 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
-          "height": "416.562px"
+          "width": "984px",
+          "height": "419.906px"
         },
         "box": {
-          "x": 256,
-          "y": 382.55,
-          "width": 1000,
-          "height": 416.56
+          "x": 264,
+          "y": 373.06,
+          "width": 984,
+          "height": 419.91
         }
       }
     ],
@@ -67,20 +67,20 @@
           "padding": "0px",
           "fontSize": "14px",
           "fontWeight": "600",
-          "lineHeight": "18.9px",
+          "lineHeight": "19.6px",
           "color": "rgb(32, 43, 60)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
-          "height": "18.8906px"
+          "width": "984px",
+          "height": "19.5938px"
         },
         "box": {
-          "x": 256,
-          "y": 823.11,
-          "width": 1000,
-          "height": 18.89
+          "x": 264,
+          "y": 816.97,
+          "width": 984,
+          "height": 19.59
         }
       }
     ],
@@ -96,16 +96,16 @@
           "lineHeight": "22.4px",
           "color": "rgb(32, 43, 60)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
-          "border": "0px none rgb(32, 43, 60)",
-          "borderRadius": "0px",
+          "border": "1px solid rgb(232, 237, 242)",
+          "borderRadius": "8px",
           "boxShadow": "none",
-          "width": "1000px",
+          "width": "984px",
           "height": "420px"
         },
         "box": {
-          "x": 256,
-          "y": 1188.55,
-          "width": 1000,
+          "x": 264,
+          "y": 1184.52,
+          "width": 984,
           "height": 420
         }
       }
@@ -125,14 +125,14 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
-          "height": "552.25px"
+          "width": "982px",
+          "height": "577.672px"
         },
         "box": {
-          "x": 256,
-          "y": 1188.55,
-          "width": 1000,
-          "height": 552.25
+          "x": 265,
+          "y": 1185.52,
+          "width": 982,
+          "height": 577.67
         }
       }
     ],
@@ -151,14 +151,14 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
-          "height": "329.219px"
+          "width": "982px",
+          "height": "327.016px"
         },
         "box": {
-          "x": 256,
-          "y": 1659.44,
-          "width": 1000,
-          "height": 329.22
+          "x": 265,
+          "y": 1657.11,
+          "width": 982,
+          "height": 327.02
         }
       }
     ],
@@ -177,13 +177,13 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
+          "width": "984px",
           "height": "180.391px"
         },
         "box": {
-          "x": 256,
-          "y": 2231.91,
-          "width": 1000,
+          "x": 264,
+          "y": 2229.08,
+          "width": 984,
           "height": 180.39
         }
       }
@@ -203,14 +203,14 @@
           "border": "",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
-          "height": "126.375px"
+          "width": "984px",
+          "height": "127.172px"
         },
         "box": {
-          "x": 256,
-          "y": 2460.3,
-          "width": 1000,
-          "height": 126.38
+          "x": 264,
+          "y": 2457.47,
+          "width": 984,
+          "height": 127.17
         }
       }
     ]

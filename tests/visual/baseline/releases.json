@@ -21,13 +21,13 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
+          "width": "984px",
           "height": "44.7812px"
         },
         "box": {
-          "x": 256,
-          "y": 77.69,
-          "width": 1000,
+          "x": 264,
+          "y": 67.5,
+          "width": 984,
           "height": 44.78
         }
       }
@@ -47,13 +47,13 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
+          "width": "984px",
           "height": "38.3906px"
         },
         "box": {
-          "x": 256,
-          "y": 168.86,
-          "width": 1000,
+          "x": 264,
+          "y": 158.67,
+          "width": 984,
           "height": 38.39
         }
       }
@@ -73,13 +73,13 @@
           "border": "1px solid rgb(232, 237, 242)",
           "borderRadius": "16px",
           "boxShadow": "none",
-          "width": "1000px",
+          "width": "984px",
           "height": "64.3906px"
         },
         "box": {
-          "x": 256,
-          "y": 219.25,
-          "width": 1000,
+          "x": 264,
+          "y": 209.06,
+          "width": 984,
           "height": 64.39
         }
       }
@@ -91,22 +91,22 @@
           "position": "static",
           "margin": "0px 0px 12px",
           "padding": "0px",
-          "fontSize": "13px",
+          "fontSize": "12.5px",
           "fontWeight": "400",
-          "lineHeight": "20.8px",
+          "lineHeight": "20px",
           "color": "rgb(93, 104, 117)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
           "border": "0px none rgb(93, 104, 117)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
-          "height": "20.7969px"
+          "width": "584.609px",
+          "height": "20px"
         },
         "box": {
-          "x": 256,
-          "y": 299.64,
-          "width": 1000,
-          "height": 20.8
+          "x": 264,
+          "y": 289.45,
+          "width": 584.61,
+          "height": 20
         }
       }
     ],
@@ -125,14 +125,14 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
-          "height": "230px"
+          "width": "982px",
+          "height": "227.797px"
         },
         "box": {
-          "x": 256,
-          "y": 332.44,
-          "width": 1000,
-          "height": 230
+          "x": 265,
+          "y": 322.45,
+          "width": 982,
+          "height": 227.8
         }
       }
     ],
@@ -151,13 +151,13 @@
           "border": "",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "76px",
+          "width": "86.5px",
           "height": "65px"
         },
         "box": {
-          "x": 613.28,
-          "y": 366.94,
-          "width": 76,
+          "x": 601.55,
+          "y": 355.75,
+          "width": 86.5,
           "height": 65
         }
       },
@@ -175,13 +175,13 @@
           "border": "",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "76px",
+          "width": "86.5px",
           "height": "65px"
         },
         "box": {
-          "x": 613.28,
-          "y": 431.94,
-          "width": 76,
+          "x": 601.55,
+          "y": 420.75,
+          "width": 86.5,
           "height": 65
         }
       },
@@ -196,17 +196,17 @@
           "lineHeight": "19.5px",
           "color": "rgb(32, 43, 60)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
-          "border": "",
+          "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "76px",
-          "height": "65px"
+          "width": "86.5px",
+          "height": "64.5px"
         },
         "box": {
-          "x": 613.28,
-          "y": 496.94,
-          "width": 76,
-          "height": 65
+          "x": 601.55,
+          "y": 485.75,
+          "width": 86.5,
+          "height": 64.5
         }
       }
     ],
@@ -225,13 +225,13 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1000px",
+          "width": "984px",
           "height": "56px"
         },
         "box": {
-          "x": 256,
-          "y": 578.44,
-          "width": 1000,
+          "x": 264,
+          "y": 567.25,
+          "width": 984,
           "height": 56
         }
       }

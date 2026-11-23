@@ -75,8 +75,13 @@
   --font-size-base: 14px;
   --font-size-lg: 16px;
   --font-size-xl: 22px;
+  /* 一句话说明与统计数字不在正文刻度上，各自单独一档（design.md 第六节）。 */
+  --font-size-hint: 12.5px;
+  --font-size-stat: 25px;
 
-  --line-height-tight: 1.35;
+  /* 行高：h1 单列 1.25，其余标题 1.4，正文 1.6，表格 1.5，表头 1.4。 */
+  --line-height-h1: 1.25;
+  --line-height-heading: 1.4;
   --line-height-base: 1.6;
   /* 表格比正文紧一档：一屏能看到更多行，行与行仍靠 1px 浅线分开。 */
   --line-height-table: 1.5;
@@ -117,13 +122,16 @@ h2,
 h3,
 h4 {
   margin: 0 0 var(--space-2);
-  line-height: var(--line-height-tight);
+  line-height: var(--line-height-heading);
   font-weight: 600;
 }
 
 h1 {
   font-size: var(--font-size-xl);
+  line-height: var(--line-height-h1);
   font-weight: 650;
+  /* 22px 的中文标题按默认字距偏松，收 0.2px 才和正文的节奏对得上。 */
+  letter-spacing: -0.2px;
 }
 
 h2 {
@@ -372,7 +380,11 @@ legend {
 .page {
   max-width: var(--content-width);
   margin: 0 auto;
-  padding: var(--space-6) var(--space-5) var(--space-7);
+  /*
+   * 页头与内容区共用一个容器：上 24（页头顶）、左右 32、下 48（内容区底）。
+   * 页头的下边距由 `.page__header` 的 margin-bottom 出，见 design.md 4.1。
+   */
+  padding: var(--space-5) var(--space-6) var(--space-7);
 }
 
 .page--auth {
@@ -405,8 +417,11 @@ legend {
 }
 
 .hint {
+  /* 一句话说明：比次要文字再小一档，行宽收到 78ch，长句不会横穿整屏。 */
+  max-width: 78ch;
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-hint);
+  line-height: var(--line-height-base);
 }
 
 .list {
@@ -431,7 +446,8 @@ legend {
  * 会让密集表格页显脏，也正是这次要改掉的东西。
  */
 .card {
-  padding: var(--space-5);
+  /* 内边距 16/24（design.md 第七节）：上下紧、左右松，密集页里一行卡片不会显得臃肿。 */
+  padding: var(--space-4) var(--space-5);
   background: var(--color-surface);
   border: 1px solid var(--color-line);
   border-radius: var(--radius-card);
@@ -439,13 +455,14 @@ legend {
 }
 
 .card--wide {
-  max-width: 760px;
+  max-width: 800px;
   margin: 0 auto;
 }
 
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  /* 统计卡固定 4 列（design.md 4.3）：两处用它的页面都是 4 张卡，auto-fit 会在窄档位留下空格。 */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-3);
   margin: 0 0 var(--space-4);
 }
@@ -459,10 +476,13 @@ legend {
 }
 
 .stat-card strong {
+  /* 统计数字：25px/720、行高 1、字距收 0.7px（原型 `.stat .value`）。 */
   display: block;
   margin-bottom: var(--space-1);
-  font-size: var(--font-size-xl);
-  line-height: var(--line-height-tight);
+  font-size: var(--font-size-stat);
+  font-weight: 720;
+  line-height: 1;
+  letter-spacing: -0.7px;
 }
 
 /* ---------- 数据表 ---------- */
@@ -472,6 +492,9 @@ legend {
   max-width: 100%;
   margin-bottom: var(--space-4);
   overflow-x: auto;
+  /* 1px 装饰线 + 8px 圆角把表格收成一块（design.md 第七节）：宽表在容器里滚，容器自己有边。 */
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
 }
 
 /*
@@ -488,8 +511,7 @@ legend {
 
 /*
  * 表格比正文紧一档：13px / 1.5。行与行靠 1px 装饰线分开，不铺斑马纹 ——
- * 表头的弱面、悬停的弱面、选中行的主色浅底已经是三层状态，再加一层斑马纹，
- * 行的悬停就看不出来了。
+ * 表头的弱面、悬停的弱面已经是两层状态，再加一层斑马纹，行的悬停就看不出来了。
  */
 .data-table {
   width: 100%;
@@ -515,6 +537,7 @@ legend {
   z-index: 2;
   font-weight: 600;
   font-size: var(--font-size-xs);
+  line-height: var(--line-height-heading);
   color: var(--color-text-muted);
   text-transform: none;
   background: var(--color-surface-muted);
@@ -522,14 +545,16 @@ legend {
   white-space: nowrap;
 }
 
-/* 行悬停与选中行：悬停浅一级，选中用主色浅底（不应答键盘，不需要焦点环）。 */
+/* 行悬停：浅一级。表格没有行选中功能，所以也没有选中态 —— 见 PR 说明。 */
 .data-table tbody tr:hover {
   background: var(--color-surface-muted);
 }
 
-.data-table tbody tr[aria-selected="true"] {
-  background: var(--color-primary-weak);
+/* 最后一行不再画线：容器的 1px 边已经收住了表格，再画一条会成双线。 */
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
 }
+
 
 .data-table td form {
   display: flex;
@@ -607,17 +632,6 @@ textarea:disabled {
   color: var(--color-text-muted);
 }
 
-.form-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  align-items: center;
-  margin-bottom: var(--space-3);
-}
-
-.form-row > .input {
-  flex: 1 1 160px;
-}
 
 /* ---------- 按钮 ---------- */
 
@@ -631,11 +645,12 @@ button,
   align-items: center;
   justify-content: center;
   gap: var(--space-1);
-  padding: var(--space-2) var(--space-4);
+  /* 内边距 0/16（design.md 第七节）：高度全交给 40px 命中区，横向留白由左右内边距给。 */
+  padding: 0 var(--space-4);
   /* 命中区下限 40px：按 dense desktop 的口径，只补高度，字号不动。 */
   min-height: 40px;
   font-family: inherit;
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-xs);
   line-height: 1.2;
   color: var(--color-primary);
   background: var(--color-surface);
@@ -697,8 +712,9 @@ button:disabled {
 }
 
 .btn-sm {
+  /* 小号只收内边距，字号不再往下掉：12px 是 design.md 第十节的下限。 */
   padding: var(--space-1) var(--space-2);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
 }
 
 /* 链接当按钮用时（例如「新建软件包」入口）：去掉下划线，对齐按钮外观。 */
@@ -714,16 +730,30 @@ a.btn:hover {
 
 /* ---------- 徽标 ---------- */
 
-/* pill：文字色与底色严格成对，见 `scripts/check-contrast.ts` 的断言表。 */
+/*
+ * pill：文字色与底色严格成对，见 `scripts/check-contrast.ts` 的断言表。
+ * 圆点用 `currentColor`，所以五组配色的圆点自动跟着文字色走，不用各写一条。
+ */
 .badge {
-  display: inline-block;
-  padding: 1px var(--space-2);
-  font-size: var(--font-size-xs);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
   line-height: 1.5;
   border-radius: var(--radius-pill);
   color: var(--color-neutral);
   background: var(--color-neutral-weak);
   white-space: nowrap;
+}
+
+.badge::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .badge--success {
@@ -781,13 +811,18 @@ a.btn:hover {
 }
 
 .empty {
+  /*
+   * 空状态：1px 虚线 + 12px 圆角 + 弱面底（design.md 第七节）。
+   * 这里的虚线用控件边框色 #868c95 —— 空状态不是「装饰线」，它要让人看见「这里本该有内容」，
+   * 1.18:1 的装饰线在这个位置会消失。
+   */
   padding: var(--space-4);
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
   text-align: center;
   background: var(--color-surface-muted);
-  border: 1px dashed var(--color-line);
-  border-radius: var(--radius-control);
+  border: 1px dashed var(--color-control-border);
+  border-radius: var(--radius-card);
 }
 
 .filter-bar {
@@ -828,9 +863,28 @@ a.btn:hover {
   margin-top: 0;
 }
 
-/* ---------- 窄屏 ---------- */
+/* ---------- 响应式 ---------- */
 
-@media (max-width: 767px) {
+/*
+ * 三档（design.md 4.3）：
+ *
+ *   > 1100px   完整布局，统计卡 4 列；
+ *   760–1100   侧栏保持，统计卡 2 列，页头与内容区内边距降到 16；
+ *   ≤ 760      侧栏变横向导航条，账号区隐藏，统计卡 1 列，页头竖排。
+ *
+ * 硬约束：任何一档都不能整页横滚，宽表在自己的 `.table-scroll` 里滚。
+ */
+@media (max-width: 1100px) {
+  .page {
+    padding: var(--space-4);
+  }
+
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
   .app-layout {
     flex-direction: column;
   }
@@ -871,24 +925,17 @@ a.btn:hover {
   }
 
   /*
-   * 窄屏侧栏是一条横向导航条，账号区跟着排成一行：放得下就一行，放不下自动折行，
-   * 不会盖住导航项。退出登录始终在这一行里，不靠悬停也不靠展开。
+   * 账号区在这一档隐藏（design.md 4.3）：窄屏只保证「能看」，导航条上再塞账号名、角色、
+   * 邮箱与退出登录会把导航挤成两行。桌面档位里它照常固定在侧栏底部。
    */
   .app-sidebar__account {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-1) var(--space-3);
-    margin-top: 0;
-    padding-top: var(--space-2);
+    display: none;
   }
 
-  .app-sidebar__logout {
-    margin-top: 0;
-  }
-
-  .page {
-    padding: var(--space-4) var(--space-3) var(--space-6);
+  /* 页头竖排：标题与主操作各占一行，窄屏下不抢同一行的宽度。 */
+  .page__header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .page--auth {
@@ -905,6 +952,6 @@ a.btn:hover {
   }
 
   .stat-grid {
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    grid-template-columns: minmax(0, 1fr);
   }
 }
