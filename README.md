@@ -105,6 +105,7 @@ lib/releases/abandon.ts(209,9): error TS2322: Type '"abandon_topic"' is not assi
 | `pnpm tsx scripts/verify-webhook-signature.ts` | 独立复算某次投递的签名，参数见 `docs/WEBHOOK.md` |
 | `pnpm tsx scripts/verify-base-url.ts --base-url=http://127.0.0.1:3000` | 从 base URL 打开：不带会话落到 `/login?next=%2Fdashboard`、带会话落到 `/dashboard`，且没有占位页原文。需要跑起来的服务与 `pnpm db:seed` 过的库，几秒；`scripts/e2e.sh` 的第 0 步就是它 |
 | `scripts/style-check/container.sh` | 在门禁镜像里跑样式回归检查（L1 静态结构 + L2 计算样式 + L3 几何与整页截图）；加 `--update` 重写基线。判定口径见 [docs/STYLE-VERIFICATION.md](docs/STYLE-VERIFICATION.md) |
+| `pnpm check:modules` | 拿 `.agents/spec/design/modules.json` 的清单逐页比对实现，列出还缺哪些原型模块；有缺失退 1。加 `--report` 只报告、退出码恒为 0 |
 
 ## 账号与登录
 
@@ -267,11 +268,13 @@ lib/releases/abandon.ts(209,9): error TS2322: Type '"abandon_topic"' is not assi
 
 ## 持续集成
 
-`.github/workflows/ci.yml` 在 `push` 到 `main` 与向 `main` 提 PR 时触发，两个 job：
+`.github/workflows/ci.yml` 在 `push` 到 `main` 与向 `main` 提 PR 时触发，三个 job：
 
 **`checks`**（功能）：`pnpm install --frozen-lockfile` → `pnpm db:migrate` → `pnpm db:seed` → `pnpm db:reset`（连续两次） → `pnpm lint` → `pnpm typecheck` → `pnpm test`
 
 **`style`**（样式门禁）：跑在 `mcr.microsoft.com/playwright:v1.65.1-noble` 里 —— 与基线生成用的是同一个镜像，浏览器和字体都随镜像固定，不需要另外下载或缓存；步骤是 `pnpm install` → `pnpm db:migrate` → `pnpm db:seed` → `pnpm test:style`。样式改坏时这个 job 失败、PR 标红；`--update` 在 CI 里被脚本拒绝。
+
+**`模块对照`**（模块清单比对）：`pnpm install` → `pnpm check:modules --report`。**暂不阻断** —— 模块移植还没做完，默认模式必然退 1，现在就让 job 失败会让 CI 常红；`--report` 只报告、退出码恒为 0，日志里仍有完整清单。模块移植完成后去掉 `--report`，缺失才变成失败。
 
 - `checks` 的 Node 用 `22.x`，与 `package.json` 的 `engines.node` 同一条版本线；pnpm 的版本由 `package.json` 的 `packageManager` 决定（当前 `pnpm@9.15.9`），由 `pnpm/action-setup` 安装，不在 workflow 里重复写版本。
 - `style` job 在容器里跑，Node 来自镜像，pnpm 由 job 按 `package.json` 的 `packageManager` 装上（版本只有这一个来源）；容器用 `--network` 默认桥接，靠 service 名 `postgres` 连库。
@@ -301,6 +304,47 @@ scripts/style-check/container.sh --update   # 重写基线，只能人显式发�
 - **必须进门禁镜像**（`mcr.microsoft.com/playwright:v1.65.1-noble`）：截图与几何对字体敏感，基线与 CI 都在这个镜像里。本机其它系统直接跑会报字体差异，那不是样式坏了。
 - **`--update` 在 CI 里被拒绝**（退出码 2）。基线更新必须与引发它的样式改动在同一个 PR，Reviewer 要看基线 diff。
 - **基线一次刷新全部**：六页的 JSON + PNG 加 `lint.json` 的规则数与设计变量，不允许只更新一部分；L1 结构检查没通过时一个也不写。
+
+## 模块对照（`pnpm check:modules`）
+
+原型里有哪些模块、实现里有没有跟上，靠一条命令回答，不用人逐页数 class。清单在
+`.agents/spec/design/modules.json`（模块名与 `.agents/spec/design/prototype.html` 的 class 一致），
+脚本是 `scripts/check-modules.ts`。
+
+```bash
+pnpm check:modules            # 有缺失：逐页列出来，退出码 1（用来阻断）
+pnpm check:modules --report   # 输出完全相同，但退出码恒为 0（CI 现在用这一档）
+pnpm check:modules --help     # 这条差别也写在帮助里
+```
+
+两种模式的唯一区别是退出码，报告内容一个字不差；`--report` 用来在模块还没移植完时先观察。
+
+判定口径只有一条：**只认 `className` 上下文里的字符串**。
+
+- 算：`className="a b"`、`` className={`a ${x}`} ``、`className={ok ? "a" : "b"}`、
+  `className={clsx("a", ...)}`，以及对象字面量里的 `className: "a"`。
+- 不算：注释、变量名、`id="a"` / `data-x="a"` 这类别的属性、正文文字。
+- 不算：`className={styles.tip}` —— 真实 class 名不在这里，猜出来就是假通过。
+
+为什么不做全文匹配：`app/(app)/releases/page.tsx` 里有 `listHref(filters)` 这样的变量名，
+全文搜字符串会把 `filters` 当成 `.filters` 模块已具备。同一份代码、同一份清单，全文匹配
+判「已具备」16 项，只认 `className` 判「已具备」11 项 —— 差的 5 项全是变量名撞的，检查
+因此会误报通过。
+
+报告形如：
+
+```
+页面：/releases
+  缺失：.page-tabs   .filters   .search-field
+  已具备：.table-scroll   .empty
+
+全局模块缺失：.modal   .toast
+
+结论：9 个页面里 9 个有缺失，共缺 39 个模块（页面 37 个 + 全局 2 个）
+```
+
+全局模块按所有页面扫描到的 class 合起来判定；页面模块只看这一页自己的 `sources`，页面之间
+不互相顶替。模块名一律来自 `modules.json`，脚本里不写第二份清单。
 
 ## 环境变量
 
@@ -347,7 +391,9 @@ components/          跨页面复用的服务端组件：build-status.tsx（提�
 lib/projects/        项目经理与项目：输入校验、清单排序、读写与业务规则
 lib/releases/        创建提测：阻断条件、快照组装、输入校验与写库（Gerrit 读取见 gerrit.ts）
 scripts/             接真实外部系统的验证脚本，不经 CI 执行
+scripts/check-modules.ts  模块对照：按 modules.json 逐页比对实现的 className（CI 里以 --report 跑）
 scripts/style-check/ 样式门禁：L1 静态检查、L2/L3 取样与比对、`--update`、门禁镜像入口
+.agents/spec/design/   原型（prototype.html）、设计规范与模块清单（modules.json）
 prisma/              schema、migrations、seed
 tests/               单元测试
 tests/visual/baseline/  样式门禁的基线（每页一份计算样式 JSON + 一张整页截图）
