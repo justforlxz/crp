@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRP 提测平台 · 界面原型 v2</title>
+<style>
+:root{
+  --bg:#f5f7fa; --surface:#ffffff; --surface-muted:#fafbfc;
+  --line:#e8edf2; --line-control:#868c95;
+  --text:#202b3c; --text-muted:#5d6875;
+  --primary:#3269e8; --primary-weak:#edf3ff; --primary-strong:#2a5ac4;
+  --nav:#172338; --nav-text:#aab7ca; --nav-active:#2d57a8; --nav-hover:#202f49;
+  --ok-fg:#0f6b4a; --ok-bg:#eaf8f1;
+  --err-fg:#b0363d; --err-bg:#fff0f0;
+  --warn-fg:#8a5b12; --warn-bg:#fff5e8;
+  --info-fg:#2a5ac4; --info-bg:#edf3ff;
+  --neutral-fg:#4f5866; --neutral-bg:#f1f3f6;
+  --radius-card:12px; --radius-control:8px; --radius-tag:6px; --radius-pill:999px;
+  --shadow-card:0 2px 7px rgba(35,50,75,.025);
+  --shadow-raised:0 6px 20px rgba(31,35,41,.08);
+  --sidebar-w:232px; --content-max:1440px;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--text);
+  font:14px/1.6 system-ui,-apple-system,"Noto Sans CJK SC","Source Han Sans SC",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--primary);text-decoration:none}
+a:hover{text-decoration:underline}
+code,.mono{font-family:var(--mono);font-size:.92em;font-variant-numeric:tabular-nums}
+
+/* ---------- 骨架 ---------- */
+.app{display:flex;min-height:100vh}
+.sidebar{
+  width:var(--sidebar-w);flex:0 0 var(--sidebar-w);
+  background:var(--nav);color:var(--nav-text);
+  display:flex;flex-direction:column;
+  position:sticky;top:0;height:100vh;overflow-y:auto;
+  padding:var(--s4) var(--s3);
+}
+.brand{display:flex;align-items:center;gap:10px;padding:0 var(--s2) var(--s5);border-bottom:1px solid rgba(255,255,255,.08)}
+.brand-mark{width:32px;height:32px;border-radius:9px;background:linear-gradient(145deg,#6fa4ff,#3269e8);display:grid;place-items:center;color:#fff;font-weight:700;font-size:15px}
+.brand b{display:block;color:#fff;font-size:14px;font-weight:600;letter-spacing:.2px}
+.brand small{display:block;color:#7d8ca3;font-size:10px;letter-spacing:1.2px}
+.nav-label{font-size:10px;letter-spacing:1.2px;color:#6b7c94;padding:var(--s5) var(--s2) var(--s2)}
+.nav{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.nav a{
+  display:flex;align-items:center;gap:10px;
+  min-height:40px;padding:var(--s2) var(--s3);border-radius:var(--radius-control);
+  color:var(--nav-text);font-size:13.5px;
+}
+.nav a:hover{background:var(--nav-hover);color:#fff;text-decoration:none}
+.nav a[aria-current="page"]{background:var(--nav-active);color:#fff;font-weight:600}
+.nav .ico{width:16px;text-align:center;opacity:.9}
+.account{margin-top:auto;padding-top:var(--s3);border-top:1px solid rgba(255,255,255,.08)}
+.account b{display:block;color:#e8eef8;font-size:13px}
+.account small{display:block;color:#8190a6;font-size:11px;overflow-wrap:anywhere}
+.account button{
+  margin-top:var(--s2);width:100%;min-height:40px;border-radius:var(--radius-control);
+  border:1px solid rgba(255,255,255,.16);background:transparent;color:var(--nav-text);
+  font:inherit;font-size:12.5px;cursor:pointer;
+}
+.account button:hover{background:var(--nav-hover);color:#fff}
+
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.page-header{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s4);
+  padding:var(--s5) var(--s6) var(--s4);
+  max-width:var(--content-max);width:100%;margin:0 auto;
+}
+.page-header h1{margin:0;font-size:22px;font-weight:650;letter-spacing:-.2px;line-height:1.25}
+.page-header p{margin:6px 0 0;color:var(--text-muted);font-size:12.5px;max-width:78ch}
+.actions{display:flex;gap:var(--s2);flex-wrap:wrap}
+.view{padding:0 var(--s6) var(--s7);max-width:var(--content-max);width:100%;margin:0 auto}
+
+/* ---------- 卡片与分组 ---------- */
+.section{margin-top:var(--s6)}
+.section>h2{margin:0 0 var(--s1);font-size:16px;font-weight:600}
+.section>h2+.hint{margin:0 0 var(--s3)}
+.hint{margin:0;color:var(--text-muted);font-size:12.5px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-card);box-shadow:var(--shadow-card);padding:var(--s4) var(--s5)}
+.card+.card{margin-top:var(--s3)}
+.card-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--s3);margin-bottom:var(--s3)}
+.card-head b{font-size:13.5px}
+.card-head small{color:var(--text-muted);font-size:11.5px}
+
+/* ---------- 统计卡 ---------- */
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s3);margin-top:var(--s4)}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-card);box-shadow:var(--shadow-card);padding:var(--s4) var(--s5)}
+.stat small{display:block;color:var(--text-muted);font-size:11.5px}
+.stat b{display:block;font-size:26px;font-weight:650;letter-spacing:-.6px;line-height:1.15;margin:6px 0 4px;font-variant-numeric:tabular-nums}
+.stat span{font-size:11px;color:var(--text-muted)}
+
+/* ---------- 表格 ---------- */
+.table-scroll{width:100%;overflow-x:auto;border-radius:var(--radius-control);border:1px solid var(--line)}
+table{width:100%;border-collapse:collapse;white-space:nowrap;font-size:13px}
+thead th{
+  position:sticky;top:0;z-index:1;
+  background:var(--surface-muted);color:var(--text-muted);
+  font-size:12px;font-weight:600;text-align:left;
+  padding:10px 12px;border-bottom:1px solid var(--line);
+}
+tbody td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover{background:var(--surface-muted)}
+td .sub{display:block;color:var(--text-muted);font-size:11px;margin-top:2px}
+.primary{font-weight:600}
+
+/* ---------- pill ---------- */
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:var(--radius-pill);padding:2px 9px;font-size:11.5px;font-weight:600;line-height:1.6}
+.pill::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor}
+.pill-ok{color:var(--ok-fg);background:var(--ok-bg)}
+.pill-err{color:var(--err-fg);background:var(--err-bg)}
+.pill-warn{color:var(--warn-fg);background:var(--warn-bg)}
+.pill-info{color:var(--info-fg);background:var(--info-bg)}
+.pill-neutral{color:var(--neutral-fg);background:var(--neutral-bg)}
+.tag{display:inline-block;border-radius:var(--radius-tag);padding:2px 7px;background:var(--neutral-bg);color:var(--neutral-fg);font-size:11px}
+
+/* ---------- 按钮 ---------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  min-height:40px;padding:0 var(--s4);border-radius:var(--radius-control);
+  border:1px solid var(--line-control);background:var(--surface);color:var(--text);
+  font:inherit;font-size:13px;cursor:pointer;transition:background .12s ease,border-color .12s ease;
+}
+.btn:hover{background:var(--surface-muted)}
+.btn:active{transform:scale(.96)}
+.btn:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-strong);border-color:var(--primary-strong)}
+.btn-danger{background:var(--surface);border-color:var(--err-fg);color:var(--err-fg)}
+.btn-danger:hover{background:var(--err-bg)}
+.btn-sm{min-height:40px;padding:0 var(--s3);font-size:12.5px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* ---------- 表单 ---------- */
+.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s3)}
+.field{display:flex;flex-direction:column;gap:6px}
+.field.full{grid-column:1/-1}
+.field label{font-size:12px;font-weight:600;color:var(--text-muted)}
+.field input,.field select,.field textarea{
+  min-height:40px;padding:8px 10px;border:1px solid var(--line-control);
+  border-radius:var(--radius-control);background:var(--surface);color:var(--text);font:inherit;font-size:13px;
+}
+.field input:focus,.field select:focus,.field textarea:focus{outline:2px solid var(--primary);outline-offset:1px;border-color:var(--primary)}
+.field .helper{font-size:11px;color:var(--text-muted)}
+
+/* ---------- 危险区 ---------- */
+.danger-zone{
+  margin-top:var(--s7);padding:var(--s4) 0 var(--s4) var(--s4);
+  border-left:2px solid var(--err-fg);
+}
+.danger-zone h2{margin:0 0 var(--s2);font-size:16px;font-weight:600}
+.danger-zone p{margin:0 0 var(--s3);color:var(--text-muted);font-size:12.5px;max-width:78ch}
+
+/* ---------- 空状态 ---------- */
+.empty{padding:var(--s7) var(--s5);text-align:center;border:1px dashed var(--line-control);border-radius:var(--radius-card);background:var(--surface-muted)}
+.empty b{display:block;font-size:14px;margin-bottom:4px}
+.empty p{margin:0;color:var(--text-muted);font-size:12.5px}
+
+/* ---------- 概览定义列表 ---------- */
+.kv{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s4);margin:0}
+.kv div{min-width:0}
+.kv dt{font-size:11.5px;color:var(--text-muted);margin-bottom:4px}
+.kv dd{margin:0;font-size:13px}
+
+/* ---------- 响应式 ---------- */
+@media(max-width:1100px){
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kv{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .page-header,.view{padding-left:var(--s4);padding-right:var(--s4)}
+}
+@media(max-width:760px){
+  .app{display:block}
+  .sidebar{position:static;height:auto;width:auto;flex:none;flex-direction:row;align-items:center;gap:var(--s2);overflow-x:auto;padding:var(--s2) var(--s3)}
+  .brand{padding:0;border:0;flex:0 0 auto}
+  .brand small,.nav-label,.account{display:none}
+  .nav{flex-direction:row;gap:var(--s1)}
+  .nav a{min-height:40px;padding:var(--s2);white-space:nowrap}
+  .nav .label-text{display:none}
+  .fields{grid-template-columns:1fr}
+  .stats,.kv{grid-template-columns:1fr}
+  .page-header{flex-direction:column;padding-top:var(--s4)}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">R</div>
+      <div><b>CRP 提测平台</b><small>RELEASE HUB</small></div>
+    </div>
+    <div class="nav-label">工作空间</div>
+    <ul class="nav" id="nav"></ul>
+    <div class="account">
+      <b>预览账号</b>
+      <small>平台管理员 · preview@local.test</small>
+      <button type="button">退出登录</button>
+    </div>
+  </aside>
+  <main class="main">
+    <header class="page-header">
+      <div><h1 id="title"></h1><p id="desc"></p></div>
+      <div class="actions" id="actions"></div>
+    </header>
+    <section class="view" id="view"></section>
+  </main>
+</div>
+<script>
+const P = (cls, text) => `<span class="pill pill-${cls}">${text}</span>`;
+const MONO = t => `<code>${t}</code>`;
+
+const DATA = {
+  releases: [
+    {id:'REL-2026-0118', project:'安全组件', version:'2.1.0', rev:1, status:'info', statusText:'投递中', source:'平台创建', pkgs:3, creator:'张敏', topic:'8901', time:'2026-11-18 07:55 UTC'},
+    {id:'REL-2026-0117', project:'桌面核心组', version:'25.11.17-02', rev:2, status:'ok', statusText:'提测成功', source:'平台创建', pkgs:6, creator:'李伟', topic:'8874', time:'2026-11-17 16:20 UTC'},
+    {id:'REL-2026-0116', project:'安全组件', version:'1.4.0', rev:1, status:'err', statusText:'构建失败', source:'从 CRP 导入', pkgs:2, creator:'张敏', topic:'8867', time:'2026-11-17 14:18 UTC'}
+  ],
+  projects: [
+    {name:'安全组件', key:'security-suite', mgr:'张敏', baseline:'eagle-1076', pkgs:3, deps:2, desc:'安全组件交付线'},
+    {name:'桌面核心组', key:'desktop-core', mgr:'李伟', baseline:'eagle-1071', pkgs:6, deps:5, desc:'桌面核心组件'}
+  ],
+  packages: [
+    {name:'kwin', repo:'deepin-kde/kwin', crp:'v25_kwin', branch:'develop/snipe', ver:'6.1.60', commit:'8df1b1b', deps:'wayland', used:1},
+    {name:'wayland', repo:'deepin-kde/wayland', crp:'v25_wayland', branch:'develop/eagle', ver:'1.21.0.10', commit:'587bde6', deps:'—', used:2},
+    {name:'deepin-polkit-agent', repo:'deepin/deepin-polkit-agent', crp:'v25_polkit', branch:'develop/eagle', ver:'0.9.2', commit:'a1b2c3d', deps:'—', used:1}
+  ],
+  baselines: [
+    {name:'eagle-1071', desc:'V20 桌面交付分支', check:'IsCheck=1（已停止维护）', pkgs:124, arches:'6 个', sync:'2026-11-23 04:20 UTC', status:'ok'},
+    {name:'eagle-1076', desc:'V20 安全组件交付分支', check:'IsCheck=1（已停止维护）', pkgs:88, arches:'6 个', sync:'2026-11-23 04:20 UTC', status:'ok'},
+    {name:'snipe-2500u2', desc:'V25 第二轮交付分支', check:'IsCheck=0（可用）', pkgs:488, arches:'6 个', sync:'2026-11-23 04:20 UTC', status:'ok'}
+  ],
+  queue: [
+    {pkg:'deepin-polkit-agent', release:'安全组件 · 2.1.0', stage:'投递中', progress:'68%', cost:'2m 18s'},
+    {pkg:'dde-appearance', release:'安全组件 · 2.1.0', stage:'待投递', progress:'—', cost:'—'},
+    {pkg:'dde-control-center', release:'安全组件 · 2.1.0', stage:'等待依赖', progress:'—', cost:'依赖 deepin-polkit-agent'}
+  ],
+  hooks: [
+    {name:'研发协作群通知', url:'https://notify.example.com/hooks/release', events:['提测创建','构建完成','提测失败'], on:true, last:'今天 10:24 · HTTP 200 · 128ms'},
+    {name:'项目经理提醒', url:'https://workflow.example.com/crp-event', events:['提测创建','构建完成'], on:true, last:'昨天 17:42 · HTTP 200 · 96ms'}
+  ],
+  managers: [
+    {name:'张敏', ws:'安全组', projects:1},
+    {name:'李伟', ws:'桌面核心组', projects:1},
+    {name:'刘洋', ws:'桌面核心组', projects:0}
+  ]
+};
+
+const NAV = [
+  ['dashboard','▦','工作台'], ['releases','⇧','提测记录'], ['projects','▤','项目'],
+  ['packages','▢','软件包'], ['baselines','◈','基线'], ['queue','☷','构建队列'],
+  ['webhooks','⌁','Webhook'], ['managers','♙','项目经理']
+];
+
+const VIEWS = {
+  dashboard: () => ({
+    title:'工作台',
+    desc:'当前工作区的提测进展、构建队列与项目配置。口径：本周 = 最近 7 天，按提测创建时间。',
+    actions:`<button class="btn btn-primary">＋ 创建提测</button>`,
+    body:`
+      <div class="stats">
+        <div class="stat"><small>本周提测次数</small><b>12</b><span>最近 7 天</span></div>
+        <div class="stat"><small>等待构建数</small><b>4</b><span>已投 CRP、还没开始构建</span></div>
+        <div class="stat"><small>本周成功率</small><b>92%</b><span>23/25 条已有结论</span></div>
+        <div class="stat"><small>项目配置数</small><b>2</b><span>未删除的项目</span></div>
+      </div>
+      <section class="section">
+        <h2>最近提测</h2>
+        <p class="hint">按创建时间倒序，前 3 条。完整列表见「提测记录」。</p>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="table-scroll" style="border:0;border-radius:0">
+            <table><thead><tr><th>提测记录</th><th>项目</th><th>版本</th><th>状态</th><th>软件数</th><th>创建时间</th></tr></thead>
+            <tbody>${DATA.releases.map(r=>`<tr><td class="primary">${r.id}<span class="sub">${MONO('CRP-'+r.topic)}</span></td><td>${r.project}</td><td>${MONO(r.version)}</td><td>${P(r.status,r.statusText)}</td><td>${r.pkgs}</td><td>${r.time}</td></tr>`).join('')}</tbody></table>
+          </div>
+        </div>
+      </section>
+      <section class="section">
+        <h2>构建队列摘要</h2>
+        <p class="hint">只读库里的状态，由服务端定时轮询写入。</p>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="table-scroll" style="border:0;border-radius:0">
+            <table><thead><tr><th>提测</th><th>软件包</th><th>阶段</th><th>进度</th><th>耗时 / 依赖</th></tr></thead>
+            <tbody>${DATA.queue.map(q=>`<tr><td>${q.release}</td><td class="primary">${q.pkg}</td><td>${q.stage==='投递中'?P('info',q.stage):P('neutral',q.stage)}</td><td>${q.progress}</td><td>${q.cost}</td></tr>`).join('')}</tbody></table>
+          </div>
+        </div>
+      </section>`
+  }),
+
+  releases: () => ({
+    title:'提测记录',
+    desc:'一次提测对应 CRP 的一个 Topic。快照只追加不改写，唯一的变更入口是详情页的「更新提测」。',
+    actions:`<button class="btn">导出 CSV</button><button class="btn btn-primary">＋ 创建提测</button>`,
+    body:`
+      <section class="section">
+        <h2>全部记录</h2>
+        <p class="hint">共 3 条。按状态、项目与关键字筛选。</p>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="table-scroll" style="border:0;border-radius:0">
+            <table><thead><tr><th>提测记录 / Topic</th><th>项目</th><th>版本</th><th>轮次</th><th>状态</th><th>来源</th><th>软件数</th><th>创建人</th><th>创建时间</th><th>操作</th></tr></thead>
+            <tbody>${DATA.releases.map(r=>`<tr><td class="primary">${r.id}<span class="sub">${MONO('CRP-'+r.topic)}</span></td><td>${r.project}</td><td>${MONO(r.version)}</td><td>第 ${r.rev} 轮</td><td>${P(r.status,r.statusText)}</td><td>${r.source}</td><td>${r.pkgs}</td><td>${r.creator}</td><td>${r.time}</td><td><a href="#">详情</a></td></tr>`).join('')}</tbody></table>
+          </div>
+        </div>
+      </section>`
+  }),
+
+  projects: () => ({
+    title:'项目',
+    desc:'一个项目就是一个提测归属单位：固定一位项目经理、一个 CRP 基线、一份软件清单。依赖只在软件包上维护。',
+    actions:`<button class="btn">＋ 新建项目经理</button><button class="btn btn-primary">＋ 新建项目</button>`,
+    body:`
+      <section class="section">
+        <h2>项目列表</h2>
+        <p class="hint">项目只维护软件包清单和默认跟踪分支；构建依赖从软件包记录读取。</p>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="table-scroll" style="border:0;border-radius:0">
+            <table><thead><tr><th>项目</th><th>标识</th><th>项目经理</th><th>CRP 基线</th><th>软件数</th><th>依赖数</th><th>说明</th></tr></thead>
+            <tbody>${DATA.projects.map(p=>`<tr><td class="primary">${p.name}</td><td>${MONO(p.key)}</td><td>${p.mgr}</td><td>${MONO(p.baseline)}</td><td>${p.pkgs}</td><td>${p.deps}</td><td>${p.desc}</td></tr>`).join('')}</tbody></table>
+          </div>
+        </div>
+      </section>`
+  }),
+
+  packages: () => ({
+    title:'软件包',
+    desc:'软件包全平台共用一份登记，依赖只在软件包上维护一次，项目只读引用。',
+    actions:`<button class="btn">⟳ 同步 CRP 列表</button><button class="btn btn-primary">＋ 新建软件包</button>`,
+    body:`
+      <section class="section">
+        <h2>已登记</h2>
+        <p class="hint">共 3 个。标识符列一律等宽，版本号用 tabular-nums 对齐。</p>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="table-scroll" style="border:0;border-radius:0">
+            <table><thead><tr><th>名称</th><th>仓库路径</th><th>CRP 项目名</th><th>默认分支</th><th>当前版本</th><th>当前 Commit</th><th>上游依赖</th><th>被引用</th></tr></thead>
+            <tbody>${DATA.packages.map(p=>`<tr><td class="primary">${p.name}</td><td>${MONO(p.repo)}</td><td>${MONO(p.crp)}</td><td>${MONO(p.branch)}</td><td>${MONO(p.ver)}</td><td>${MONO(p.commit)}</td><td>${p.deps==='—'?'<span class="hint">—</span>':`<span class="tag">${p.deps}</span>`}</td><td>${p.used} 个项目</td></tr>`).join('')}</tbody></table>
+          </div>
+        </div>
+      </section>`
+  }),
+
+  baselines: () => ({
+    title:'基线',
+    desc:'基线就是 CRP 的一条交付分支，平铺清单，不做任何分类。项目从这份清单里挑一个作为目标基线。',
+    actions:`<button class="btn btn-primary">⟳ 手动同步</button>`,
+    body:`
+      <section class="section">
+        <h2>分支清单</h2>
+        <p class="hint">最近一次同步：2026-11-23 04:20 UTC，成功，108 条。</p>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="table-scroll" style="border:0;border-radius:0">
+            <table><thead><tr><th>分支名</th><th>说明</th><th>是否可用于打包</th><th>可选软件包数</th><th>投递架构</th><th>最近同步</th><th>状态</th></tr></thead>
+            <tbody>${DATA.baselines.map(b=>`<tr><td class="primary">${MONO(b.name)}</td><td>${b.desc}</td><td>${b.check}</td><td>${b.pkgs}</td><td>${b.arches}</td><td>${b.sync}</td><td>${P('ok','已同步')}</td></tr>`).join('')}</tbody></table>
+          </div>
+        </div>
+      </section>`
+  }),
+
+  queue: () => ({
+    title:'构建队列',
+    desc:'哪些包还在排队、各自卡在哪个上游、这一轮调度做了什么。页面只读库里的状态。',
+    actions:`<button class="btn">立即轮询</button>`,
+    body:`
+      <section class="section">
+        <h2>任务列表</h2>
+        <p class="hint">按实际可执行顺序排列，上游在前。</p>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="table-scroll" style="border:0;border-radius:0">
+            <table><thead><tr><th>#</th><th>软件包</th><th>提测</th><th>阶段</th><th>进度</th><th>耗时 / 依赖</th></tr></thead>
+            <tbody>${DATA.queue.map((q,i)=>`<tr><td>${i+1}</td><td class="primary">${q.pkg}</td><td>${q.release}</td><td>${q.stage==='投递中'?P('info',q.stage):P('neutral',q.stage)}</td><td>${q.progress}</td><td>${q.cost}</td></tr>`).join('')}</tbody></table>
+          </div>
+        </div>
+      </section>`
+  }),
+
+  webhooks: () => ({
+    title:'Webhook 端点',
+    desc:'提测与构建事件按端点订阅推给外部系统。每次投递都留记录，签名可被外部独立复算。',
+    actions:`<button class="btn btn-primary">＋ 新建端点</button>`,
+    body:`
+      <section class="section">
+        <h2>端点</h2>
+        <p class="hint">共 2 个，全部启用。</p>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="table-scroll" style="border:0;border-radius:0">
+            <table><thead><tr><th>名称</th><th>回调地址</th><th>订阅事件</th><th>状态</th><th>最近投递</th></tr></thead>
+            <tbody>${DATA.hooks.map(h=>`<tr><td class="primary">${h.name}</td><td>${MONO(h.url)}</td><td>${h.events.map(e=>`<span class="tag">${e}</span>`).join(' ')}</td><td>${P('ok','已启用')}</td><td>${h.last}</td></tr>`).join('')}</tbody></table>
+          </div>
+        </div>
+      </section>`
+  }),
+
+  managers: () => ({
+    title:'项目经理',
+    desc:'项目经理归属于一个工作区，是项目的必填归属人。一个项目只能挂一位，一位可以负责多个项目。',
+    actions:`<button class="btn btn-primary">＋ 新建项目经理</button>`,
+    body:`
+      <section class="section">
+        <h2>清单</h2>
+        <p class="hint">同一工作区内不能重名。</p>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="table-scroll" style="border:0;border-radius:0">
+            <table><thead><tr><th>姓名</th><th>工作区</th><th>名下项目数</th><th>操作</th></tr></thead>
+            <tbody>${DATA.managers.map(m=>`<tr><td class="primary">${m.name}</td><td>${m.ws}</td><td>${m.projects}</td><td><a href="#">改名</a></td></tr>`).join('')}</tbody></table>
+          </div>
+        </div>
+      </section>`
+  }),
+
+  detail: () => ({
+    title:'REL-2026-0118',
+    desc:'安全组件 · 2.1.0 · CRP-8901 · 创建于 2026-11-18 07:55 UTC',
+    actions:`<button class="btn">导出提测单</button>`,
+    body:`
+      <section class="section">
+        <h2>概要</h2>
+        <div class="card">
+          <dl class="kv">
+            <div><dt>提测版本</dt><dd>${MONO('2.1.0')}</dd></div>
+            <div><dt>项目 / 基线</dt><dd>安全组件 · ${MONO('eagle-1076')}</dd></div>
+            <div><dt>软件数</dt><dd>3</dd></div>
+            <div><dt>来源</dt><dd>平台创建</dd></div>
+          </dl>
+          <p class="hint" style="margin-top:var(--s3)">说明：正在按依赖顺序投递，polkit 已发出，其余等上游。</p>
+        </div>
+      </section>
+      <section class="section">
+        <h2>软件包提交快照</h2>
+        <p class="hint">创建提测时固化；后续仓库变化不影响此处记录。表格顺序即向 CRP 提交的顺序。</p>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="table-scroll" style="border:0;border-radius:0">
+            <table><thead><tr><th>顺序</th><th>软件包</th><th>分支</th><th>代码版本</th><th>基线仓库版本</th><th>本次提测版本</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td class="primary">deepin-polkit-agent<span class="sub">${MONO('deepin/deepin-polkit-agent')}</span></td><td>${MONO('develop/eagle')}</td><td>${MONO('0.9.2')}</td><td>${MONO('0.9.1')}</td><td>${MONO('0.9.2')}</td><td>${P('info','投递中')}</td></tr>
+              <tr><td>2</td><td class="primary">dde-appearance<span class="sub">${MONO('deepin/dde-appearance')}</span></td><td>${MONO('develop/eagle')}</td><td>${MONO('1.0.10')}</td><td>${MONO('1.0.9')}</td><td>${MONO('1.0.10')}</td><td>${P('neutral','待投递')}</td></tr>
+              <tr><td>3</td><td class="primary">dde-control-center<span class="sub">${MONO('deepin/dde-control-center')}</span></td><td>${MONO('develop/eagle')}</td><td>${MONO('6.0.19')}</td><td>${MONO('6.0.18')}</td><td>${MONO('6.0.19')}</td><td>${P('neutral','等待依赖')}</td></tr>
+            </tbody></table>
+          </div>
+        </div>
+      </section>
+      <section class="danger-zone">
+        <h2>危险操作</h2>
+        <p>这条提测是在平台上创建的，它自己的 Release 要连同主题一起清理，走「取消提测」。「放弃提测主题」只用于从 CRP 导入的提测：导入主题里的 Release 是别人投的，不能删。</p>
+        <button class="btn btn-danger" type="button">取消提测</button>
+      </section>`
+  })
+};
+
+const nav = document.getElementById('nav');
+nav.innerHTML = NAV.map(([k,ico,label]) =>
+  `<li><a href="#${k}" data-view="${k}"><span class="ico">${ico}</span><span class="label-text">${label}</span></a></li>`
+).join('');
+
+function render(key){
+  const v = (VIEWS[key] || VIEWS.dashboard)();
+  document.getElementById('title').textContent = v.title;
+  document.getElementById('desc').textContent = v.desc;
+  document.getElementById('actions').innerHTML = v.actions || '';
+  document.getElementById('view').innerHTML = v.body;
+  document.querySelectorAll('.nav a').forEach(a => {
+    if (a.dataset.view === key) a.setAttribute('aria-current','page');
+    else a.removeAttribute('aria-current');
+  });
+  window.scrollTo(0,0);
+}
+
+window.addEventListener('hashchange', () => render(location.hash.slice(1)));
+render(location.hash.slice(1) || 'dashboard');
+</script>
+</body>
+</html>
