@@ -55,7 +55,7 @@ A19 之后：
 | --- | --- | --- | --- | --- |
 | 工作台 | `dashboard.json` / `.png` | `/dashboard` | 9 + 侧栏 9 | 会话记住的工作区是 `desktop-core` |
 | 提测记录 | `releases.json` / `.png` | `/releases?workspace=desktop-core` | 7 个名字 / 9 个实例 | `releases.row-status` 一行一个，种子 3 行 |
-| 提测详情 | `release-detail.json` / `.png` | `/releases/<id>?workspace=desktop-core` | 8 | 取种子里的 `桌面专业版 V25 / 25.0.1` |
+| 提测详情 | `release-detail.json` / `.png` | `/releases/<id>?workspace=desktop-core` | 11 | 取种子里的 `桌面专业版 V25 / 25.0.1` |
 | 创建提测 | `release-new.json` / `.png` | `/releases/new?workspace=desktop-core` | 3 | 第一步（选项目）；第二步需要 Gerrit 数据，见下表 |
 | 构建队列 | `queue.json` / `.png` | `/queue?workspace=system-apps` | 6 | `desktop-core` 的提测都已完结，任务表为空，所以换工作区取样 |
 | 软件包 | `packages.json` / `.png` | `/packages` | 6 | — |
@@ -113,16 +113,19 @@ MKACG-964 起，提测记录的页签从普通链接行换成原型的 `.page-ta
 
 | 锚点 | 元素用途 | 实例 | 状态 |
 | --- | --- | --- | --- |
-| `release-detail.summary` | 概要定义列表 | 1 | 入基线 |
+| `release-detail.summary` | 概要条：`.card panel` 里嵌 `.summary-strip` + 4 个 `.summary-cell`（MKACG-970） | 1 | 入基线 |
 | `release-detail.build-status` | 构建状态区块 | 1 | 入基线 |
-| `release-detail.update-entry` | 「更新提测」入口区 | 1 | 入基线 |
-| `release-detail.history-table-scroll` | 更新历史的滚动容器 | 0 | 条件锚点：提测有更新历史才出现 |
-| `release-detail.history-table` | 更新历史数据表 | 0 | 条件锚点：同上 |
+| `release-detail.update-entry` | 「更新提测」入口卡片 | 1 | 入基线 |
+| `release-detail.project-card` | 项目概要卡 `.project-card`（MKACG-970） | 1 | 入基线 |
+| `release-detail.timeline` | 状态流转与活动记录 `.timeline`，一条记录一个 `.tl-item`（MKACG-970） | 1 | 入基线 |
+| `release-detail.risk-box` | `.risk-box` 风险 / 阻塞提示框（MKACG-970） | 0–1 | 条件锚点：有构建失败或当前改不了才出现；种子记录已转测，所以入基线 |
 | `release-detail.snapshot-table-scroll` | 软件包快照滚动容器 | 1 | 入基线 |
 | `release-detail.snapshot-table` | 软件包快照数据表 | 1 | 入基线 |
 | `release-detail.repo-records-table` | CRP 仓库记录数据表 | 1 | 入基线 |
 | `release-detail.crp-info` | 提测信息定义列表 | 1 | 入基线 |
 | `release-detail.danger-zone` | 「危险操作」整节（MKACG-950 追加标题；MKACG-953 起锚点标在这一节的外层，2px 竖线、16px 左内边距与 48px 上外边距都量在它上面） | 1 | 入基线 |
+
+MKACG-970 起，提测详情按原型移植模块：概要从定义列表换成 `.summary-strip` + `.summary-cell`，新增项目概要卡 `.project-card`、`.timeline` + `.tl-item` 与条件渲染的 `.risk-box`，页面级提示改用 `.tip`，「导出提测单」移到页头。原来的「更新历史」表格换成 `.timeline` 的一条条记录，所以 `release-detail.history-table-scroll` / `release-detail.history-table` 两个条件锚点随之删除；表里的数据（轮次、时间、操作人、动作、加的包、放弃的包、重投的包）一条不少地进时间线。
 
 创建提测 `/releases/new`
 
