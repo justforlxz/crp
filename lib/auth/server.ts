@@ -88,7 +88,7 @@ export function errorResponse(decision: Extract<Decision, { allowed: false }>): 
 }
 
 /** 取当前会话：没有 Cookie、令牌查不到、已撤销、已过期都返回 null。 */
-async function readSession(
+export async function readSession(
   now: Date = new Date(),
 ): Promise<{ session: SessionRecord; account: AccountRecord } | null> {
   const jar = await cookies();

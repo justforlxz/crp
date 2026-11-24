@@ -1,9 +1,19 @@
 /**
- * 工作台（A15）：一屏回答「这周提测多少、卡在哪、哪个项目没配好」。
+ * 工作台（A15 + 界面规范 v2）：一屏回答「有多少条在跑、卡在哪、哪个项目没配好」。
  *
- * 只做读模型：四张统计卡的数字全部由数据库聚合查询得出（`count` / `groupBy`），
- * 页面只负责排版，不自己数行、不在前端拼算。切工作区后 `workspaceId` 变，全部查询跟着变，
- * 因此「数字随之变化、且只统计该工作区」由这一层的 `where` 保证，不靠页面过滤。
+ * 只做读模型：四张统计卡的数字全部由一次 `groupBy` 得出，页面只负责排版，不自己数行、
+ * 不在前端拼算。切工作区后 `workspaceId` 变，全部查询跟着变，因此「数字随之变化、且只统计
+ * 该工作区」由这一层的 `where` 保证，不靠页面过滤。
+ *
+ * 四张卡的口径照 `design.md` 与原型：**按提测状态计，不按软件包计，不设时间窗**。
+ * 「进行中」不含「待投递」—— 待投递单独一张卡，两者相加才是全部未完结的提测。
+ *
+ * | 卡片 | 状态 |
+ * | --- | --- |
+ * | 进行中的提测 | `dispatching`、`building` |
+ * | 构建成功 | `success` |
+ * | 构建失败 | `failed`、`partial_failure` |
+ * | 等待投递 | `pending` |
  *
  * 复用的现成能力（不另写一套）：
  *
@@ -11,58 +21,45 @@
  * | --- | --- |
  * | 构建队列摘要与队列统计 | `lib/build` 的 `loadBuildQueue` |
  * | 依赖环检测与展示 | `lib/packages` 的 `findDependencyCycle`、`formatCycle` |
- * | 提测状态 / 来源的中文名 | `lib/releases` 的 `releaseStatusLabel`、`releaseSourceLabel` |
- * | 「本周」「成功率」的口径 | `./period` |
+ * | 提测状态 / 来源的中文名与状态点档位 | `lib/releases` 的 `releaseStatusLabel`、`releaseStatusTone`、`releaseSourceLabel` |
  *
- * 不建宽表、不建缓存表（MUST NOT）：每次进页面现算，数据量由「未完结提测」与
- * 「最近 7 天」两个条件自然收敛。
+ * 不建宽表、不建缓存表（MUST NOT）：每次进页面现算，数据量由「未完结提测」与「最近 5 条」自然收敛。
  */
 
-import { ACTIVE_RELEASE_STATES, loadBuildQueue } from "../build";
+import { loadBuildQueue } from "../build";
 import { prisma } from "../db";
 import { findDependencyCycle, formatCycle, type DependencyEdge } from "../packages";
-import { releaseSourceLabel, releaseStatusLabel } from "../releases";
-import {
-  recentWindowStart,
-  SETTLED_RELEASE_STATUSES,
-  successRatePercent,
-  STATS_WINDOW_DAYS,
-} from "./period";
+import { releaseSourceLabel, releaseStatusLabel, releaseStatusTone } from "../releases";
+
 
 /** 四张统计卡。 */
 export type DashboardCards = {
-  /** 「本周提测次数」：最近 7 天创建的提测数，全部状态都算。 */
-  weekReleaseCount: number;
-  /**
-   * 「等待构建数」：已投给 CRP、还没开始构建的包（`build_task.status = pending`）。
-   *
-   * 只算当前轮快照、且提测未完结的那些：被 A17 换掉的旧轮、被取消的提测都会留下
-   * 永远不会被推进的残留任务，它们不算「在等构建」。
-   */
-  waitingBuildCount: number;
-  /** 「本周成功率」：最近 7 天已有结论的提测里成功的占比。 */
-  weekSuccessRate: {
-    /** 整数百分比；一条结论都没有时为空，页面显示「—」。 */
-    percent: number | null;
-    success: number;
-    settled: number;
-  };
-  /** 「项目配置数」：未软删的项目数。 */
-  projectCount: number;
+  /** 「进行中的提测」：正在投递或构建中（不含待投递）。 */
+  inProgressReleases: number;
+  /** 「构建成功」：状态为 `success` 的提测数。 */
+  succeededReleases: number;
+  /** 「构建失败」：状态为 `failed` 或 `partial_failure` 的提测数。 */
+  failedReleases: number;
+  /** 「等待投递」：已创建、还没投给 CRP 的提测数。 */
+  waitingReleases: number;
 };
 
 /** 最近提测表的一行。 */
 export type RecentReleaseRow = {
   id: string;
   version: string;
-  /** 状态码，页面按它选 pill 的配色档位。 */
+  /** 状态码，页面按它选状态点的档位。 */
   status: string;
   /** 状态中文名，与提测记录列表同一套说法。 */
   statusLabel: string;
+  /** 状态点档位（`.is-ok` 这类），与列表页同一份判定。 */
+  statusTone: string;
   /** 来源中文名：平台创建 / 从 CRP 导入。 */
   sourceLabel: string;
   projectName: string;
   projectKey: string;
+  /** 当前这一轮的软件包数。 */
+  packageCount: number;
   createdAt: Date;
 };
 
@@ -84,19 +81,30 @@ export type QueueSummaryRow = {
   durationMs: number | null;
 };
 
-/** 项目提测概况的一行。 */
+/**
+ * 项目提测概况的一行。
+ *
+ * 列与原型一致：项目 / 项目经理 / 软件包 / 依赖 / 最近提测。前四列是项目配置的事实，
+ * 最后一列是「这个项目最近一次提测是什么、什么时候」。
+ */
 export type ProjectOverviewRow = {
   id: string;
   key: string;
   name: string;
-  /** 最近 7 天的提测数。 */
-  weekReleaseCount: number;
+  /** 负责这个项目的项目经理名。 */
+  managerName: string;
+  /** 清单里的软件包数。 */
+  packageCount: number;
+  /** 清单内部的依赖边数（清单外的上游不参与这次提测，不计）。 */
+  dependencyCount: number;
   /** 最近一次提测的版本；从没提测过时为空。 */
   latestVersion: string | null;
-  /** 最近一次提测的状态码；从没提测过时为空。页面按它选 pill 的配色档位。 */
+  /** 最近一次提测的状态码；从没提测过时为空。 */
   latestStatus: string | null;
   /** 最近一次提测的状态中文名；从没提测过时为空。 */
   latestStatusLabel: string | null;
+  /** 最近一次提测的状态点档位；从没提测过时为空。 */
+  latestStatusTone: string | null;
   latestAt: Date | null;
 };
 
@@ -122,7 +130,7 @@ export type DashboardView = {
 };
 
 export type LoadDashboardOptions = {
-  /** 注入用，测试固定「本周」的参照时刻。 */
+  /** 注入用，测试固定队列摘要的参照时刻。 */
   now?: Date;
 };
 
@@ -133,84 +141,60 @@ const QUEUE_SUMMARY_LIMIT = 5;
 /**
  * 读一个工作区的工作台数据。
  *
- * 八次查询全部按 `workspaceId` 收窄，且互相独立，并发发出。
+ * 各次查询全部按 `workspaceId` 收窄，且互相独立，并发发出。
  */
 export async function loadDashboard(
   workspaceId: string,
   options: LoadDashboardOptions = {},
 ): Promise<DashboardView> {
   const now = options.now ?? new Date();
-  const windowStart = recentWindowStart(now, STATS_WINDOW_DAYS);
 
-  const [weekStatusRows, waitingBuildCount, projectCount, recentReleases, queue, projectRows] =
-    await Promise.all([
-      // 一次 groupBy 拿到本周全部状态的分组数，本周提测数、成功数、已结论数都从它算。
-      prisma.release.groupBy({
-        by: ["status"],
-        where: { project: { workspaceId }, createdAt: { gte: windowStart } },
-        _count: { _all: true },
-      }),
-      // 只算「当前这一轮、且提测还没完结」的待开始任务：
-      // A17 换包只把旧轮快照标 superseded，旧轮的构建任务会停在 pending（`lib/releases/update.ts`
-      // 的 `supersedeOldRounds` 不碰 build_task）；取消提测也只改快照与提测状态
-      // （`cancelRelease` 同样不碰 build_task）。这两类残留任务永远不会被轮询推进，
-      // 不排除就会让卡片数字永久偏大，与「已投给 CRP、还没开始构建的包」这句话对不上。
-      prisma.buildTask.count({
-        where: {
-          status: "pending",
-          snapshot: { supersededById: null },
-          release: {
-            project: { workspaceId },
-            status: { in: [...ACTIVE_RELEASE_STATES] },
-          },
-        },
-      }),
-      prisma.project.count({ where: { workspaceId, deletedAt: null } }),
-      prisma.release.findMany({
-        where: { project: { workspaceId } },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        take: RECENT_LIMIT,
-        select: {
-          id: true,
-          version: true,
-          status: true,
-          source: true,
-          createdAt: true,
-          project: { select: { key: true, name: true } },
-        },
-      }),
-      loadBuildQueue(workspaceId, { now }),
-      prisma.project.findMany({
-        where: { workspaceId, deletedAt: null },
-        orderBy: { name: "asc" },
-        select: {
-          id: true,
-          key: true,
-          name: true,
-          software: {
-            select: {
-              package: {
-                select: {
-                  name: true,
-                  dependencies: { select: { upstreamPackage: { select: { name: true } } } },
-                },
+  const [statusRows, recentReleases, queue, projectRows] = await Promise.all([
+    // 一次 groupBy 拿到全部状态的分组数，四张卡都从它算。
+    prisma.release.groupBy({
+      by: ["status"],
+      where: { project: { workspaceId } },
+      _count: { _all: true },
+    }),
+    prisma.release.findMany({
+      where: { project: { workspaceId } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: RECENT_LIMIT,
+      select: {
+        id: true,
+        version: true,
+        status: true,
+        source: true,
+        createdAt: true,
+        project: { select: { key: true, name: true } },
+      },
+    }),
+    loadBuildQueue(workspaceId, { now }),
+    prisma.project.findMany({
+      where: { workspaceId, deletedAt: null },
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        key: true,
+        name: true,
+        projectManager: { select: { name: true } },
+        software: {
+          select: {
+            package: {
+              select: {
+                name: true,
+                dependencies: { select: { upstreamPackage: { select: { name: true } } } },
               },
             },
           },
         },
-      }),
-    ]);
+      },
+    }),
+  ]);
 
   const projectIds = projectRows.map((project) => project.id);
 
-  const [weekCountRows, latestRows] = await Promise.all([
-    projectIds.length === 0
-      ? []
-      : prisma.release.groupBy({
-          by: ["projectId"],
-          where: { projectId: { in: projectIds }, createdAt: { gte: windowStart } },
-          _count: { _all: true },
-        }),
+  const [latestRows, packageCountRows] = await Promise.all([
     projectIds.length === 0
       ? []
       : prisma.release.findMany({
@@ -220,45 +204,47 @@ export async function loadDashboard(
           distinct: ["projectId"],
           select: { projectId: true, version: true, status: true, createdAt: true },
         }),
+    recentReleases.length === 0
+      ? []
+      : prisma.releasePackageSnapshot.groupBy({
+          by: ["releaseId"],
+          where: { releaseId: { in: recentReleases.map((release) => release.id) }, supersededById: null },
+          _count: { _all: true },
+        }),
   ]);
 
-  const weekCountByProject = new Map(
-    weekCountRows.map((row) => [row.projectId, row._count._all] as const),
-  );
   const latestByProject = new Map(
     latestRows.map(
       (row) => [row.projectId, { version: row.version, status: row.status, at: row.createdAt }] as const,
     ),
   );
+  const packageCountByRelease = new Map(
+    packageCountRows.map((row) => [row.releaseId, row._count._all] as const),
+  );
 
   const countOf = (predicate: (status: string) => boolean): number =>
-    weekStatusRows.reduce(
+    statusRows.reduce(
       (sum, row) => (predicate(row.status) ? sum + row._count._all : sum),
       0,
     );
 
-  const weekSuccessCount = countOf((status) => status === "success");
-  const weekSettledCount = countOf((status) => SETTLED_RELEASE_STATUSES.includes(status));
-
   return {
     cards: {
-      weekReleaseCount: countOf(() => true),
-      waitingBuildCount,
-      weekSuccessRate: {
-        percent: successRatePercent(weekSuccessCount, weekSettledCount),
-        success: weekSuccessCount,
-        settled: weekSettledCount,
-      },
-      projectCount,
+      inProgressReleases: countOf((status) => status === "dispatching" || status === "building"),
+      succeededReleases: countOf((status) => status === "success"),
+      failedReleases: countOf((status) => status === "failed" || status === "partial_failure"),
+      waitingReleases: countOf((status) => status === "pending"),
     },
     recentReleases: recentReleases.map((release) => ({
       id: release.id,
       version: release.version,
       status: release.status,
       statusLabel: releaseStatusLabel(release.status),
+      statusTone: releaseStatusTone(release.status),
       sourceLabel: releaseSourceLabel(release.source),
       projectName: release.project.name,
       projectKey: release.project.key,
+      packageCount: packageCountByRelease.get(release.id) ?? 0,
       createdAt: release.createdAt,
     })),
     queueTasks: queue.releases
@@ -278,15 +264,19 @@ export async function loadDashboard(
       .slice(0, QUEUE_SUMMARY_LIMIT),
     projects: projectRows.map((project) => {
       const latest = latestByProject.get(project.id) ?? null;
+      const edges = projectEdges(project.software);
 
       return {
         id: project.id,
         key: project.key,
         name: project.name,
-        weekReleaseCount: weekCountByProject.get(project.id) ?? 0,
+        managerName: project.projectManager.name,
+        packageCount: project.software.length,
+        dependencyCount: edges.length,
         latestVersion: latest?.version ?? null,
         latestStatus: latest?.status ?? null,
         latestStatusLabel: latest === null ? null : releaseStatusLabel(latest.status),
+        latestStatusTone: latest === null ? null : releaseStatusTone(latest.status),
         latestAt: latest?.at ?? null,
       };
     }),
@@ -295,7 +285,7 @@ export async function loadDashboard(
         .filter((project) => project.software.length === 0)
         .map(({ id, key, name }) => ({ id, key, name })),
       dependencyCycles: projectRows.flatMap((project) => {
-        const cycle = projectCycle(project.software);
+        const cycle = findCycle(projectEdges(project.software));
 
         return cycle === null ? [] : [{ id: project.id, key: project.key, name: project.name, cycle }];
       }),
@@ -312,13 +302,13 @@ type SoftwareRow = {
 };
 
 /**
- * 一个项目软件清单里的第一条依赖环。
+ * 一个项目清单内部的依赖边（下游 → 上游）。
  *
  * 只看清单内部的边：清单外的上游不参与这次提测，构不成先后关系，这与项目卡片的
  * `buildSoftwareView` 是同一个口径（同一份清单在两处不能一个有环、一个没环）。
- * 检测本身用 `lib/packages` 的 `findDependencyCycle`，不在这里另写一套。
+ * 依赖条数与依赖环检测都用这一份边，不各算一遍。
  */
-function projectCycle(software: readonly SoftwareRow[]): string | null {
+function projectEdges(software: readonly SoftwareRow[]): DependencyEdge[] {
   const inside = new Set(software.map((item) => item.package.name));
   const edges: DependencyEdge[] = [];
 
@@ -332,6 +322,11 @@ function projectCycle(software: readonly SoftwareRow[]): string | null {
     }
   }
 
+  return edges;
+}
+
+/** 一个项目软件清单里的第一条依赖环；检测本身用 `lib/packages`，不在这里另写一套。 */
+function findCycle(edges: readonly DependencyEdge[]): string | null {
   const cycle = findDependencyCycle(edges);
 
   return cycle === null ? null : formatCycle(cycle);
