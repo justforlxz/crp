@@ -1,10 +1,10 @@
 /**
  * 颜色对比度门禁（MKACG-964）。
  *
- * 为什么要有它：这一版把配色从「默认模板」换成产品原型那套视觉语言，其中几个值按 WCAG 2.1 的
- * 相对亮度公式重算过 —— 原型里的 `#758195` 与三个状态 pill 都低于 4.5:1，不能照抄。重算出来的
- * 值一旦被谁「顺手调亮一点」，界面看上去没坏，无障碍却已经坏了，而评审看不出来。所以把 issue
- * 正文那张表里的每一对「文字 on 底色」都写成断言，接进 CI：任何一对低于阈值即失败。
+ * 为什么要有它：界面规范 v2 的配色是原型那套视觉语言，`design.md` 第五节把每个 token 的
+ * 用途与实测对比度都写了下来。这些值一旦被谁「顺手调亮一点」，界面看上去没坏，无障碍却已经
+ * 坏了，而评审看不出来。所以把那张表里的每一对「文字 on 底色」写成断言，接进 CI：
+ * 任何一对低于阈值即失败。
  *
  * 断言读的是 `app/globals.css` 的 `:root` 变量，不是脚本里另抄一份色值 —— 抄一份的话，改 CSS
  * 不会失败，这道门禁就白设了。
@@ -17,7 +17,8 @@
  * 另外扫一遍全表的十六进制色值：出现表外的颜色即失败。装饰线（`--color-line`）与控件边框
  * （`--color-control-border`）是两个不同的东西，混用会在这里露出来。
  *
- * 阴影用的是 issue 正文给定的整条 `rgba(...)` 值，不是十六进制色值，不参与色板扫描。
+ * 阴影、遮罩与侧栏半透明底用的是整条 `rgba(...)` 值，不是十六进制色值：它们在
+ * `TRANSLUCENT_COLOR_VALUES` 里登记，不参与色板扫描。
  *
  * 用法（在仓库根执行）：
  *
@@ -57,164 +58,91 @@ export type ContrastPair = {
 };
 
 /**
- * issue 正文那张表的逐条翻译。
+ * `design.md` 第五节「颜色」那张表的逐条翻译。
  *
- * 顺序与表一致：先面与字，再侧栏，最后状态 pill。改配色要同时改这里与 `app/globals.css`，
- * 并同步 issue 正文。
+ * 表里的「实测对比度」一列就是这个文件的期望值：顺序与表一致，先墨色层级，再强调与状态，
+ * 最后侧栏与控件边框。表里还有一行「侧栏组标题 `#8593a8`」，原型把它的色值直接写在
+ * `.nav-label` 上、没有做成变量，读不到 `:root` 就没有可断言的一对，所以它只在色板里，
+ * 不在下面这张断言表里。
+ *
+ * 改配色要同时改这里与 `app/globals.css`，并回头改 `design.md` 第五节的实测值。
  */
 export const CONTRAST_PAIRS: readonly ContrastPair[] = [
-  { label: "正文 / 卡片面", foreground: "--color-text", background: "--color-surface", minimum: TEXT_MINIMUM },
-  { label: "正文 / 画布", foreground: "--color-text", background: "--color-bg", minimum: TEXT_MINIMUM },
+  { label: "正文 / 卡片面", foreground: "--ink", background: "--card", minimum: TEXT_MINIMUM },
+  { label: "次级文字 / 卡片面", foreground: "--ink-2", background: "--card", minimum: TEXT_MINIMUM },
+  { label: "标签说明 / 卡片面", foreground: "--ink-3", background: "--card", minimum: TEXT_MINIMUM },
+  { label: "三级信息 / 卡片面", foreground: "--ink-4", background: "--card", minimum: TEXT_MINIMUM },
+  { label: "强调文字 / 卡片面", foreground: "--accent-ink", background: "--card", minimum: TEXT_MINIMUM },
+  { label: "主按钮文字 / 主色底", foreground: "--card", background: "--accent", minimum: TEXT_MINIMUM },
   {
-    label: "正文 / 弱面",
-    foreground: "--color-text",
-    background: "--color-surface-muted",
+    label: "强调文字 / 强调浅底",
+    foreground: "--accent-ink",
+    background: "--accent-bg",
     minimum: TEXT_MINIMUM,
   },
-  {
-    label: "正文 / 主色浅底",
-    foreground: "--color-text",
-    background: "--color-primary-weak",
-    minimum: TEXT_MINIMUM,
-  },
-  {
-    label: "主色文字 / 弱面",
-    foreground: "--color-primary",
-    background: "--color-surface-muted",
-    minimum: TEXT_MINIMUM,
-  },
-  {
-    label: "次要文字 / 卡片面",
-    foreground: "--color-text-muted",
-    background: "--color-surface",
-    minimum: TEXT_MINIMUM,
-  },
-  {
-    label: "次要文字 / 画布",
-    foreground: "--color-text-muted",
-    background: "--color-bg",
-    minimum: TEXT_MINIMUM,
-  },
-  {
-    label: "次要文字 / 弱面",
-    foreground: "--color-text-muted",
-    background: "--color-surface-muted",
-    minimum: TEXT_MINIMUM,
-  },
-  {
-    label: "主色文字 / 卡片面",
-    foreground: "--color-primary",
-    background: "--color-surface",
-    minimum: TEXT_MINIMUM,
-  },
-  {
-    label: "主色文字 / 画布",
-    foreground: "--color-primary",
-    background: "--color-bg",
-    minimum: TEXT_MINIMUM,
-  },
-  {
-    label: "侧栏文字 / 侧栏底",
-    foreground: "--color-sidebar-text",
-    background: "--color-sidebar",
-    minimum: TEXT_MINIMUM,
-  },
-  {
-    label: "侧栏选中文字 / 选中底",
-    foreground: "--color-text-inverse",
-    background: "--color-sidebar-selected",
-    minimum: TEXT_MINIMUM,
-  },
-  {
-    label: "主按钮文字 / 主色",
-    foreground: "--color-text-inverse",
-    background: "--color-primary",
-    minimum: TEXT_MINIMUM,
-  },
-  {
-    label: "危险按钮文字 / 危险色",
-    foreground: "--color-text-inverse",
-    background: "--color-danger",
-    minimum: TEXT_MINIMUM,
-  },
-  {
-    label: "危险描边文字 / 卡片面",
-    foreground: "--color-danger",
-    background: "--color-surface",
-    minimum: TEXT_MINIMUM,
-  },
-  {
-    label: "成功 pill 文字 / 底",
-    foreground: "--color-success",
-    background: "--color-success-weak",
-    minimum: TEXT_MINIMUM,
-  },
-  {
-    label: "失败 pill 文字 / 底",
-    foreground: "--color-danger",
-    background: "--color-danger-weak",
-    minimum: TEXT_MINIMUM,
-  },
-  {
-    label: "警告 pill 文字 / 底",
-    foreground: "--color-warn",
-    background: "--color-warn-weak",
-    minimum: TEXT_MINIMUM,
-  },
-  {
-    label: "信息 pill 文字 / 底",
-    foreground: "--color-info",
-    background: "--color-primary-weak",
-    minimum: TEXT_MINIMUM,
-  },
-  {
-    label: "中性 pill 文字 / 底",
-    foreground: "--color-neutral",
-    background: "--color-neutral-weak",
-    minimum: TEXT_MINIMUM,
-  },
-  {
-    label: "控件边框 / 卡片面",
-    foreground: "--color-control-border",
-    background: "--color-surface",
-    minimum: NON_TEXT_MINIMUM,
-  },
-  {
-    label: "控件边框 / 画布",
-    foreground: "--color-control-border",
-    background: "--color-bg",
-    minimum: NON_TEXT_MINIMUM,
-  },
+  { label: "成功状态 / 成功浅底", foreground: "--ok", background: "--ok-bg", minimum: TEXT_MINIMUM },
+  { label: "有更新 / 风险浅底", foreground: "--warn", background: "--warn-bg", minimum: TEXT_MINIMUM },
+  { label: "失败状态 / 失败浅底", foreground: "--bad", background: "--bad-bg", minimum: TEXT_MINIMUM },
+  { label: "等待状态 / 等待浅底", foreground: "--wait", background: "--wait-bg", minimum: TEXT_MINIMUM },
+  { label: "三级信息 / 画布", foreground: "--ink-4", background: "--canvas", minimum: TEXT_MINIMUM },
+  { label: "侧栏项文字 / 侧栏底", foreground: "--nav-ink", background: "--nav", minimum: TEXT_MINIMUM },
+  { label: "侧栏选中文字 / 选中底", foreground: "--card", background: "--nav-3", minimum: TEXT_MINIMUM },
+  { label: "控件边框 / 卡片面", foreground: "--line-ctl", background: "--card", minimum: NON_TEXT_MINIMUM },
+  { label: "控件边框 / 画布", foreground: "--line-ctl", background: "--canvas", minimum: NON_TEXT_MINIMUM },
 ];
 
 /**
- * 允许出现在 `app/globals.css` 里的颜色，就是 issue 正文那张表的色值去重。
+ * 允许出现在 `app/globals.css` 里的颜色：原型 `<style>` 块里出现的全部十六进制色值去重。
  *
  * 与 `CONTRAST_PAIRS` 分开写：配对说明「哪些颜色放在一起要够清楚」，色板说明「只准用这些
- * 颜色」。新增一个表外颜色可能不参与任何配对，只有色板这一层能挡住它。
+ * 颜色」。原型里有一批只作悬停、描边、浅底用的色值（例如主按钮悬停的 `#2a60d8`），它们不参与
+ * 任何一对断言，只有色板这一层能挡住「顺手加一个新颜色」。
+ *
+ * 新增颜色要同时改这里与 `design.md` 第五节，否则 `pnpm test:contrast` 会报出来。
  */
 export const PALETTE: readonly string[] = [
-  "#f5f7fa",
-  "#ffffff",
-  "#fafbfc",
-  "#e8edf2",
+  "#0f7a52",
+  "#101828",
+  "#101a2c",
+  "#18233a",
+  "#1e2b45",
+  "#1e4fc4",
+  "#2a60d8",
+  "#2b3a55",
+  "#2f6bef",
+  "#344054",
+  "#4a2f00",
+  "#4f8bff",
+  "#5b6472",
+  "#5c3a00",
+  "#667085",
+  "#8593a8",
   "#868c95",
-  "#202b3c",
-  "#5d6875",
-  "#3269e8",
-  "#edf3ff",
-  "#172338",
-  "#aab7ca",
-  "#2d57a8",
-  "#0f6b4a",
-  "#eaf8f1",
-  "#b0363d",
-  "#fff0f0",
-  "#8a5b12",
-  "#fff5e8",
-  "#2a5ac4",
-  "#4f5866",
-  "#f1f3f6",
+  "#8f5400",
+  "#98a6bb",
+  "#b42318",
+  "#c3c9d2",
+  "#cfd7e3",
+  "#cfd9e8",
+  "#d5dce7",
+  "#dbe6fb",
+  "#e3e8ef",
+  "#e6b3ae",
+  "#e9f6f0",
+  "#eaf0fe",
+  "#eef2f6",
+  "#f0f2f5",
+  "#f2d9b3",
+  "#f4f8ff",
+  "#f6f7f9",
+  "#f8f9fb",
+  "#fafbfc",
+  "#fafbfd",
+  "#fafbff",
+  "#fcfcfd",
+  "#fdecea",
+  "#fdf3e4",
+  "#ffffff",
 ];
 
 /**
@@ -357,11 +285,21 @@ export function findUnlistedColors(css: string, palette: readonly string[]): str
 }
 
 /**
- * design.md 给定的两条阴影整值。它们不是色板里的颜色，是「阴影」这个整体的一条值。
+ * 带透明度的整条颜色值：卡片阴影、弹窗遮罩、侧栏里的半透明白底。
+ *
+ * 这些不是色板里的「一个颜色」，是「一层叠加」这个整体的一条值：阴影的 rgba 要跟底色一起看
+ * 才有意义，拆成十六进制就去掉alpha了。它们同样不参与色板扫描，但要在这里登记，
+ * 否则 `findUnparseableColors()` 会把它们当成「认不出的写法」报出来。
  */
-export const SHADOW_VALUES: readonly string[] = [
-  "rgba(35,50,75,0.025)",
-  "rgba(31,35,41,0.08)",
+export const TRANSLUCENT_COLOR_VALUES: readonly string[] = [
+  "rgba(16,24,40,.04)",
+  "rgba(16,24,40,.08)",
+  "rgba(16,24,40,.18)",
+  "rgba(16,24,40,.45)",
+  "rgba(255,255,255,.04)",
+  "rgba(255,255,255,.07)",
+  "rgba(255,255,255,.08)",
+  "rgba(255,255,255,.88)",
 ];
 
 /**
@@ -371,7 +309,7 @@ export const SHADOW_VALUES: readonly string[] = [
  * `color: rgb(200, 0, 0)` 就能绕过「只准用表里的颜色」这条约定，而门禁照样绿。
  */
 export function findUnparseableColors(css: string): string[] {
-  const allowed = new Set(SHADOW_VALUES.map((value) => value.replace(/\s+/gu, "")));
+  const allowed = new Set(TRANSLUCENT_COLOR_VALUES.map((value) => value.replace(/\s+/gu, "")));
   const found: { index: number; text: string }[] = [];
 
   const report = (index: number, value: string): void => {
@@ -450,7 +388,7 @@ function main(): number {
     console.log(`  通过：${GLOBALS_CSS} 里的 ${String(usedCount)} 个颜色全部在表内`);
   } else {
     console.log(
-      `  不通过：${String(unlisted.length)} 个颜色不在表内（新增颜色要同时改 issue 正文与 scripts/check-contrast.ts）：${unlisted.join("、")}`,
+      `  不通过：${String(unlisted.length)} 个颜色不在表内（新增颜色要同时改 design.md 第五节与 scripts/check-contrast.ts）：${unlisted.join("、")}`,
     );
     failures += unlisted.length;
   }
@@ -461,7 +399,7 @@ function main(): number {
     console.log("  通过：没有 rgb() / hsl() 这类色板门禁认不出的写法");
   } else {
     console.log(
-      `  不通过：${String(unparseable.length)} 处颜色写法认不出（只认 #rgb / #rrggbb，阴影整值除外）：${unparseable.join("、")}`,
+      `  不通过：${String(unparseable.length)} 处颜色写法认不出（只认 #rgb / #rrggbb，阴影与遮罩整值除外）：${unparseable.join("、")}`,
     );
     failures += unparseable.length;
   }

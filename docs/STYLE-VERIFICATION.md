@@ -44,7 +44,7 @@ A19 之后：
 
 - 全局样式表 `app/globals.css`，在 `app/layout.tsx` 引入，规则与设计变量都在这一个文件里；
 - 页面外壳组件 `components/page-shell.tsx`，所有页面经它渲染；
-- 表格统一 `.table-scroll` 容器 + `.data-table` 外观；
+- 表格统一 `.table-scroll` 容器 + `table.grid` 外观（界面规范 v1 的 `.data-table` 同样认）；
 - 仓库里没有 `app/styles.ts`，也没有内联 `style={{`。
 
 唯一入口是「比什么」的前提：来源只有一个时，样式坏了必然体现在这三层里。
@@ -53,10 +53,10 @@ A19 之后：
 
 | 页面 | 基线文件 | 取样路径 | 进基线的锚点 | 说明 |
 | --- | --- | --- | --- | --- |
-| 工作台 | `dashboard.json` / `.png` | `/dashboard` | 9 + 侧栏 9 | 会话记住的工作区是 `desktop-core` |
-| 提测记录 | `releases.json` / `.png` | `/releases?workspace=desktop-core` | 7 个名字 / 9 个实例 | `releases.row-status` 一行一个，种子 3 行 |
+| 工作台 | `dashboard.json` / `.png` | `/dashboard` | 22 个名字 / 25 个实例（含侧栏 9） | 会话记住的工作区是 `desktop-core` |
+| 提测记录 | `releases.json` / `.png` | `/releases?workspace=desktop-core` | 6 个名字 / 8 个实例 | `releases.row-status` 一行一个，种子 3 行 |
 | 提测详情 | `release-detail.json` / `.png` | `/releases/<id>?workspace=desktop-core` | 11 | 取种子里的 `桌面专业版 V25 / 25.0.1` |
-| 创建提测 | `release-new.json` / `.png` | `/releases/new?workspace=desktop-core` | 3 | 第一步（选项目）；第二步需要 Gerrit 数据，见下表 |
+| 创建提测 | `release-new.json` / `.png` | `/releases/new?workspace=desktop-core` | 3 | 经理下拉 / 项目下拉 / 5 格基线摘要；第二步起需要 Gerrit 数据，见下表 |
 | 构建队列 | `queue.json` / `.png` | `/queue?workspace=system-apps` | 6 | `desktop-core` 的提测都已完结，任务表为空，所以换工作区取样 |
 | 软件包 | `packages.json` / `.png` | `/packages` | 6 | — |
 
@@ -72,25 +72,32 @@ L1 的静态检查不受这 6 页限制：它扫全部 `app/**/page.tsx`。
 
 | 锚点 | 元素用途 | 实例 | 状态 |
 | --- | --- | --- | --- |
-| `dashboard.workspace-switcher` | 工作区区块（`.card panel` + 切换按钮） | 1 | 入基线 |
-| `dashboard.create-release` | 页头的「＋ 创建提测」主操作 | 1 | 入基线 |
-| `dashboard.stats` | 四张统计卡的 `.grid.stats` | 1 | 入基线 |
+| `dashboard.workspace-bar` | 内容区第一行的 `.filters`，放工作区切换 | 1 | 入基线 |
+| `dashboard.workspace-switcher` | 那一行里的工作区下拉（`.select`） | 1 | 入基线 |
+| `dashboard.create-release` | 顶栏主操作区的「创建提测」按钮 | 1 | 入基线 |
+| `dashboard.stats` | 四张统计卡的 `.stats` | 1 | 入基线 |
 | `dashboard.stat-icon` | 统计卡右侧的 `.stat-ico` 图标块 | 4 | 入基线（多实例） |
-| `dashboard.tip` | 页面级「统计口径」`.tip` | 1 | 入基线 |
-| `dashboard.recent-releases` | 最近提测面板（`.card panel`） | 1 | 入基线 |
-| `dashboard.recent-releases-table` | 最近提测数据表 | 1 | 入基线 |
+| `dashboard.tip` | 页面级「投递是串行的」`.tip` | 1 | 入基线 |
+| `dashboard.recent-releases` | 最近提测面板（`.panel`） | 1 | 入基线 |
+| `dashboard.recent-releases-table` | 最近提测数据表（`table.grid`） | 1 | 入基线 |
 | `dashboard.queue-summary` | 构建队列面板 | 1 | 入基线 |
 | `dashboard.queue-list` | 队列条目的 `.queue-list` | 1 | 条件锚点：当前工作区没有排队任务时不出现 |
+| `dashboard.queue-empty` | 队列为空的 `.empty` | 0–1 | 条件锚点：与 `dashboard.queue-list` 二选一 |
 | `dashboard.queue-item` | 队列条目 `.queue-item` | 0–5 | 条件锚点：同上 |
-| `dashboard.project-overview` | 项目提测概况面板 | 1 | 入基线 |
-| `dashboard.config-todo` | 项目配置概况面板 | 1 | 入基线 |
-| `dashboard.config-list` | 待配置项目的 `.queue-list` | 0–1 | 条件锚点：没有待配置项时给 `.empty` |
-| `dashboard.empty` | 空状态块 | 0 | 条件锚点：区块为空才出现 |
+| `dashboard.project-overview` | 项目概况面板 | 1 | 入基线 |
+| `dashboard.config-todo` | 配置待办面板 | 1 | 入基线 |
+| `dashboard.config-list` | 待配置项目的 `.queue-list` | 0–1 | 条件锚点：没有待配置项时给 `.hint` |
+| `dashboard.projects-empty` | 项目概况为空时的 `.empty` | 0–1 | 条件锚点：工作区没有项目才出现 |
+| `dashboard.empty` | 工作区都没选时的 `.empty` | 0 | 条件锚点：`stats === null` 才出现 |
 | `dashboard.invite-form` | 邀请成员表单面板 | 1 | 入基线 |
 | `nav.dashboard` … `nav.webhooks` | 侧栏导航项（8 项，当前页那项高亮） | 各 1 | 只在工作台入基线 |
 | `sidebar.account` | 侧栏底部的账号区（账号名、角色、邮箱、退出登录，MKACG-957 起） | 1 | 只在工作台入基线 |
 
 MKACG-964 按原型移植模块后，原来的 `dashboard.overview-heading`（「概览」二级标题）不再存在：原型里统计卡直接跟在页头后面，没有这个小标题。队列与配置两块也从 `<table>` 换成了 `.queue-list` + `.queue-item`。
+
+MKACG-983（界面规范 v2）后：页面标题进顶栏，`dashboard.create-release` 随之移到 `.topbar-actions` 里（锚点名字不变）；统计卡、面板、提示块换成原型的 `.stat` / `.panel` / `.tip`；构建队列为空时给 `dashboard.queue-empty`、项目概况为空时给 `dashboard.projects-empty`，原来的 `dashboard.empty` 只留给「一个工作区都没选」。
+
+工作区切换器一度挂在顶栏主操作区，但顶栏固定 56px（design.md 第四节），而它是「标签 + 下拉」竖排，主分辨率里控件就溢到顶栏外、375 上又把顶栏撑到 92–165px。原型顶栏里本来没有任何工作区控件（原型的工作区下拉在 `.filters` 里），所以改成内容区第一行的 `.filters` + `.select`（`dashboard.workspace-bar`），顶栏回到「标题 + 说明 + 一颗主操作」，三页在 1440 / 1280 / 375 都是 56px、`nowrap`、无横向溢出。
 
 `nav.*` 与 `sidebar.*` 每个受保护页面都有，完全相同。只留工作台一份：一次侧栏改动的 diff 不会分散到六个文件，侧栏坏了照样挡得住。
 
@@ -98,16 +105,17 @@ MKACG-964 按原型移植模块后，原来的 `dashboard.overview-heading`（�
 
 | 锚点 | 元素用途 | 实例 | 状态 |
 | --- | --- | --- | --- |
-| `releases.intro` | 页面说明段落 | 1 | 入基线 |
-| `releases.create-actions` | 页头的「从 CRP 导入」入口 | 1 | 入基线 |
-| `releases.status-tabs` | `.page-tabs` 状态页签（当前页签带 `.active`） | 1 | 入基线 |
-| `releases.filters` | `.filters` 筛选行（工作区 / 项目 / 搜索框 / 条数） | 1 | 入基线 |
+| `releases.create-actions` | 顶栏的「从 CRP 导入」入口 | 1 | 入基线 |
+| `releases.status-tabs` | `.tabs` 状态页签（当前页签 `aria-selected="true"`，数字在 `.tab-n` 里） | 1 | 入基线 |
+| `releases.filters` | `.filters` 筛选行（搜索 / 工作区 / 项目 / 条数 / 导出） | 1 | 入基线 |
 | `releases.count` | 筛选行右侧的条数统计 | 1 | 入基线 |
-| `releases.table` | `.card table-card` 表格卡片 | 1 | 入基线 |
-| `releases.row-status` | 行内状态 pill | 3 | 入基线（多实例） |
-| `releases.empty` | 空状态块（画在表格的 `colSpan` 行里） | 0 | 条件锚点：列表为空才出现，种子有 3 条记录 |
+| `releases.table` | 整块 `.panel`（页签 + 筛选 + 表格） | 1 | 入基线 |
+| `releases.row-status` | 行内状态点 `.dot`（色点 + 文字） | 3 | 入基线（多实例） |
+| `releases.empty` | 空状态块（画在表格下方的 `.table-scroll` 里） | 0 | 条件锚点：列表为空才出现，种子有 3 条记录 |
 
 MKACG-964 起，提测记录的页签从普通链接行换成原型的 `.page-tabs`，筛选从 `.filter-bar` 换成 `.filters` + `.field` + `.search-field`，表格外面套 `.card table-card` 与 `.table-footer`；「创建提测」移到页头的 `.page__actions` 里。
+
+MKACG-983（界面规范 v2）后：页签换成 `.tabs` + `.tab` + `.tab-n`，筛选条换成 `.search` + `.select` + `.result-n` + 导出（客户端组件 `app/(app)/releases/filters.tsx`），整页收进一个 `.panel`；行内状态从 pill 换成 `.dot`（色点 + 文字）。页面顶部那段说明段落按原型去掉，`releases.intro` 随之删除；「从 CRP 导入」从页头列表里的链接变成顶栏第二个按钮，锚点名字不变。
 
 提测详情 `/releases/<id>`
 
@@ -131,19 +139,20 @@ MKACG-970 起，提测详情按原型移植模块：概要从定义列表换成 
 
 | 锚点 | 元素用途 | 实例 | 状态 |
 | --- | --- | --- | --- |
-| `release-new.step-project` | 第一步标题 | 1 | 入基线 |
 | `release-new.manager-select` | 项目经理下拉框 | 1 | 入基线 |
 | `release-new.project-select` | 项目下拉框 | 1 | 入基线 |
-| `release-new.blockers` | 项目当前不能提测的阻断提示 | 0 | 条件锚点：有阻断才出现 |
-| `release-new.review-table-scroll` | 第二步逐包表格的滚动容器 | 0 | 条件锚点：要读到 Gerrit 数据才出现 |
-| `release-new.review-table` | 第二步逐包表格 | 0 | 条件锚点：同上 |
-| `release-new.review-blockers` | 提交被阻断提示 | 0 | 条件锚点：同上 |
+| `release-new.baseline-summary` | 5 格基线摘要（目标系统仓库 / CRP 基线 / 同步状态 / 固定软件 / 经理） | 1 | 入基线 |
+| `release-new.blockers` | 项目当前不能提测的阻断提示（`.risk`） | 0 | 条件锚点：有阻断才出现 |
+| `release-new.review-blockers` | 提交被阻断提示 | 0 | 条件锚点：要读到 Gerrit 数据才出现 |
 | `release-new.review-warnings` | 需人工确认的提示 | 0 | 条件锚点：同上 |
 | `release-new.review-errors` | 读不到仓库数据的提示 | 0 | 条件锚点：同上 |
-| `release-new.review-summary` | 本次提测汇总提示 | 0 | 条件锚点：同上 |
-| `release-new.review-actions` | 第二步上一步 / 下一步按钮行 | 0 | 条件锚点：同上 |
+| `release-new.confirm-card` | 第三步三组配置摘要 | 0 | 条件锚点：走到第三步才出现 |
+| `release-new.confirm-tip` | 第三步的确认提示块 | 0 | 条件锚点：同上 |
+| `release-new.created` | 提交成功后的结果卡片 | 0 | 条件锚点：提交成功才出现 |
 
-第二步的 7 个锚点需要先选好项目、填版本、再真的从 Gerrit 读到分支与提交。基线环境不接 Gerrit（那是外部系统，凭据与网络都不在门禁的控制范围内），所以这 7 个锚点不在基线里。它们的变化由代码审查看住；真要给它们上基线，得先给这一步准备一个可控的仓库数据源。
+第二步及以后的条件锚点需要先选好项目、填版本、再真的从 Gerrit 读到分支与提交。基线环境不接 Gerrit（那是外部系统，凭据与网络都不在门禁的控制范围内），所以这些锚点不在基线里。它们的变化由代码审查看住；真要给它们上基线，得先给这一步准备一个可控的仓库数据源。
+
+MKACG-983（界面规范 v2）后：第一步的标题从内容区的 `<h2>` 移进弹窗头部（`.modal-hd` + `.steps`），`release-new.step-project` 随之删除；新增 `release-new.baseline-summary` 锁住那 5 格；第二步的表格与汇总改成 `.wiz-table` / `.wiz-foot-note` / `.wiz-helper`，`review-table-scroll` / `review-table` / `review-summary` / `review-actions` 四个锚点删除（结构由 `tests/release-wizard.test.ts` 锁住），新增第三步的 `confirm-card` / `confirm-tip` 与结果页的 `created`。
 
 构建队列 `/queue`
 
@@ -180,9 +189,9 @@ MKACG-970 起，提测详情按原型移植模块：概要从定义列表换成 
 | 判据 | 判据细节 |
 | --- | --- |
 | 所有 `app/**/page.tsx` 经 `PageShell` 渲染 | 未使用者 0 个，失败时列出文件 |
-| 没有裸 `<table>` | 每个 `<table>` 开标签都要带 `className="data-table"`；横向滚动容器由 L2 的 `*.table-scroll` 锚点覆盖 |
+| 没有裸 `<table>` | 每个 `<table>` 开标签的 `className` 里都要有表模块类：界面规范 v1 的 `data-table` 或 v2 的 `grid`；横向滚动容器由 L2 的 `*.table-scroll` 锚点覆盖 |
 | 样式来源唯一 | `app/**/*.tsx` 与 `components/**/*.tsx` 里 `style={{` 命中 0 处 |
-| `app/globals.css` 规则数 | 不低于基线；规则数 = 去掉注释与字符串后 `{` 的个数（当前 160） |
+| `app/globals.css` 规则数 | 不低于基线；规则数 = 去掉注释与字符串后 `{` 的个数（当前 373，界面规范 v2 的整份原型样式） |
 | `app/globals.css` 设计变量 | `:root` 里每个变量的值与基线一致；变量被删也算失败，新增不算 |
 
 设计变量这一条是为了兜住「改了值但没有任何锚点落在上面」的情况：例如 `--radius-card` 只影响 `.card`，而 `.card` 只在登录、注册与导入页出现，六个覆盖页面里没有它 —— 光靠锚点看不出这类改动。
@@ -255,11 +264,12 @@ L2 只比「改没改」，不比「改得对不对」：把次要文字从 `#5d
 | 正文 | 4.5:1 | 12–14px 的常规字（1.4.3 AA） |
 | 非文本 | 3:1 | 控件边框这类「能点的东西的边」（1.4.11） |
 
-另外扫一遍全表的十六进制色值：出现表外颜色即失败。**装饰线（`--color-line`）与控件边框
-（`--color-control-border`）不得混用**，混了会在这里露出来。
+另外扫一遍全表的十六进制色值：出现表外颜色即失败。**结构线（`--line`）与控件边框
+（`--line-ctl`）不得混用**，混了会在这里露出来。
 
 配对表与色板都写在 `scripts/check-contrast.ts`；改配色要同时改那里、`app/globals.css` 与
-issue 正文的 token 表。CI 的 `checks` job 在 Lint 之后跑这一步。
+`design.md` 第五节那张 token 表（界面规范 v2 的 16 对断言与 42 个色值就是从那节抄下来的）。
+CI 的 `checks` job 在 Lint 之后跑这一步。
 
 
 ## 七、基线维护

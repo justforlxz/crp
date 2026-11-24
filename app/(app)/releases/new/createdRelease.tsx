@@ -1,52 +1,79 @@
 "use client";
 
 /**
- * 提交成功后的结果页：提测编号、Topic 版本号、轮次与逐包快照。
+ * 提交成功后的结果：提测版本、轮次与逐包快照。
  *
- * 内容全部来自接口返回体（`POST /api/releases` 的 201），这里不另算一遍：
- * 页面上显示的就是写进库里的那些值。
+ * 内容全部来自接口返回体（`POST /api/releases` 的 201），这里不另算一遍：页面上显示的就是
+ * 写进库里的那些值。容器用与向导同一套件（`.tip` 说明 + `.confirm-card` 事实 + `.grid` 表格），
+ * 不再另起一套结果页视觉。
  */
 
 import Link from "next/link";
 
+import { Icon } from "@/components/icons";
+// 只从纯函数模块引：`@/lib/releases` 的出口会连带把服务端模块（Prisma）拉进客户端包。
+import { releaseStatusLabel, releaseStatusTone } from "@/lib/releases/labels";
 import { shortSha, type SubmitResult } from "./wizardTypes";
 
 export function CreatedRelease({ result, notice }: { result: SubmitResult; notice: string }) {
   return (
     <>
-      <h2>提测已创建</h2>
-      <p className="alert alert--info" role="status">{notice}</p>
-      <dl>
-        <dt>提测 ID</dt>
-        <dd>
-          <code>{result.id}</code>
-        </dd>
-        <dt>Topic 版本号</dt>
-        <dd>{result.version}</dd>
-        <dt>轮次</dt>
-        <dd>{result.revision}</dd>
-        <dt>快照条数</dt>
-        <dd>{result.packageCount}</dd>
-        <dt>投递顺序（上游在前）</dt>
-        <dd>
-          <code>{result.order.join(" → ")}</code>
-        </dd>
-        <dt>状态</dt>
-        <dd>
-          <code>pending</code>（已创建、尚未投递；投递由 A12 负责）
-        </dd>
-      </dl>
+      <div className="tip" role="status">
+        <Icon name="check" />
+        <div>
+          <b>提测已创建</b>
+          {notice}
+        </div>
+      </div>
 
-      <h2>快照</h2>
+      <div className="confirm-card" data-style-anchor="release-new.created">
+        <div className="cfg-row">
+          <div>
+            <small>提测 ID</small>
+            <b className="col-mono">{result.id}</b>
+          </div>
+          <div>
+            <small>Topic 版本号</small>
+            <b className="num">{result.version}</b>
+          </div>
+        </div>
+        <div className="cfg-row">
+          <div>
+            <small>轮次</small>
+            <b className="num">第 {result.revision} 轮</b>
+          </div>
+          <div>
+            <small>快照条数</small>
+            <b className="num">{result.packageCount}</b>
+          </div>
+        </div>
+        <div className="cfg-row">
+          <div>
+            <small>投递顺序（上游在前）</small>
+            <b className="col-mono">{result.order.join(" → ")}</b>
+          </div>
+          <div>
+            <small>状态</small>
+            <b>
+              <span className={`dot ${releaseStatusTone("pending")}`}>
+                {releaseStatusLabel("pending")}
+              </span>
+            </b>
+          </div>
+        </div>
+      </div>
+
+      <div className="subhead">快照</div>
+
       <div className="table-scroll">
-        <table className="data-table">
+        <table className="grid cols-confirm">
           <thead>
             <tr>
               <th>软件包</th>
               <th>分支</th>
               <th>Commit</th>
-              <th>代码版本</th>
-              <th>仓库版本</th>
+              <th className="num">代码版本</th>
+              <th className="num">仓库版本</th>
               <th>提测版本</th>
               <th>对比上次</th>
             </tr>
@@ -54,27 +81,34 @@ export function CreatedRelease({ result, notice }: { result: SubmitResult; notic
           <tbody>
             {result.snapshots.map((snapshot) => (
               <tr key={snapshot.packageName}>
-                <td>{snapshot.packageName}</td>
                 <td>
-                  <code>{snapshot.branch}</code>
+                  <strong>{snapshot.packageName}</strong>
+                </td>
+                <td className="col-mono">{snapshot.branch}</td>
+                <td className="col-mono">{shortSha(snapshot.commitSha)}</td>
+                <td className="num col-mono">{snapshot.codeVersion}</td>
+                <td className="num col-mono">{snapshot.repoVersion ?? "—"}</td>
+                <td>
+                  <b className="num text-accent">{snapshot.releaseVersion}</b>
                 </td>
                 <td>
-                  <code>{shortSha(snapshot.commitSha)}</code>
+                  <span className={`dot ${snapshot.changed ? "is-warn" : "is-wait"}`}>
+                    {snapshot.changed ? "有更新" : "无变化"}
+                  </span>
                 </td>
-                <td>{snapshot.codeVersion}</td>
-                <td>{snapshot.repoVersion ?? "—"}</td>
-                <td>{snapshot.releaseVersion}</td>
-                <td>{snapshot.changed ? "有更新" : "无变化"}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      <p>
-        <Link href="/projects">返回项目列表</Link>
-        {"　"}
-        <Link href="/releases/new">再建一个提测</Link>
+      <p className="wiz-foot-note">
+        <Link className="btn" href="/releases">
+          回到提测记录
+        </Link>
+        <Link className="btn btn-primary" href="/releases/new">
+          再建一个提测
+        </Link>
       </p>
     </>
   );
