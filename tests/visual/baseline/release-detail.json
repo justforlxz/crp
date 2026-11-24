@@ -9,26 +9,26 @@
     "release-detail.summary": [
       {
         "style": {
-          "display": "grid",
+          "display": "block",
           "position": "static",
-          "margin": "0px 0px 16px",
-          "padding": "0px",
+          "margin": "0px",
+          "padding": "16px 24px",
           "fontSize": "14px",
           "fontWeight": "400",
           "lineHeight": "22.4px",
           "color": "rgb(32, 43, 60)",
-          "backgroundColor": "rgba(0, 0, 0, 0)",
-          "border": "0px none rgb(32, 43, 60)",
-          "borderRadius": "0px",
-          "boxShadow": "none",
+          "backgroundColor": "rgb(255, 255, 255)",
+          "border": "1px solid rgb(232, 237, 242)",
+          "borderRadius": "12px",
+          "boxShadow": "rgba(35, 50, 75, 0.024) 0px 2px 7px 0px",
           "width": "984px",
-          "height": "207.578px"
+          "height": "191.203px"
         },
         "box": {
           "x": 264,
-          "y": 141.48,
+          "y": 114.39,
           "width": 984,
-          "height": 207.58
+          "height": 191.2
         }
       }
     ],
@@ -47,40 +47,40 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "984px",
-          "height": "419.906px"
+          "width": "934px",
+          "height": "420.75px"
         },
         "box": {
-          "x": 264,
-          "y": 373.06,
-          "width": 984,
-          "height": 419.91
+          "x": 289,
+          "y": 362.59,
+          "width": 934,
+          "height": 420.75
         }
       }
     ],
-    "release-detail.update-entry": [
+    "release-detail.repo-records-table": [
       {
         "style": {
-          "display": "block",
+          "display": "table",
           "position": "static",
-          "margin": "24px 0px 8px",
+          "margin": "0px",
           "padding": "0px",
-          "fontSize": "14px",
-          "fontWeight": "600",
-          "lineHeight": "19.6px",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "lineHeight": "19.5px",
           "color": "rgb(32, 43, 60)",
-          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "backgroundColor": "rgb(255, 255, 255)",
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "984px",
-          "height": "19.5938px"
+          "width": "934px",
+          "height": "327.016px"
         },
         "box": {
-          "x": 264,
-          "y": 816.97,
-          "width": 984,
-          "height": 19.59
+          "x": 289,
+          "y": 890.72,
+          "width": 934,
+          "height": 327.02
         }
       }
     ],
@@ -89,23 +89,23 @@
         "style": {
           "display": "block",
           "position": "static",
-          "margin": "0px 0px 16px",
+          "margin": "0px",
           "padding": "0px",
           "fontSize": "14px",
           "fontWeight": "400",
           "lineHeight": "22.4px",
           "color": "rgb(32, 43, 60)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
-          "border": "1px solid rgb(232, 237, 242)",
-          "borderRadius": "8px",
+          "border": "0px none rgb(32, 43, 60)",
+          "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "984px",
+          "width": "562.406px",
           "height": "420px"
         },
         "box": {
-          "x": 264,
-          "y": 1184.52,
-          "width": 984,
+          "x": 289,
+          "y": 1598.97,
+          "width": 562.41,
           "height": 420
         }
       }
@@ -125,40 +125,66 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "982px",
-          "height": "577.672px"
+          "width": "896.062px",
+          "height": "736.516px"
         },
         "box": {
-          "x": 265,
-          "y": 1185.52,
-          "width": 982,
-          "height": 577.67
+          "x": 289,
+          "y": 1598.97,
+          "width": 896.06,
+          "height": 736.52
         }
       }
     ],
-    "release-detail.repo-records-table": [
+    "release-detail.update-entry": [
       {
         "style": {
-          "display": "table",
+          "display": "block",
           "position": "static",
           "margin": "0px",
-          "padding": "0px",
-          "fontSize": "13px",
+          "padding": "16px 24px",
+          "fontSize": "14px",
           "fontWeight": "400",
-          "lineHeight": "19.5px",
+          "lineHeight": "22.4px",
           "color": "rgb(32, 43, 60)",
           "backgroundColor": "rgb(255, 255, 255)",
-          "border": "0px none rgb(32, 43, 60)",
-          "borderRadius": "0px",
-          "boxShadow": "none",
-          "width": "982px",
-          "height": "327.016px"
+          "border": "1px solid rgb(232, 237, 242)",
+          "borderRadius": "12px",
+          "boxShadow": "rgba(35, 50, 75, 0.024) 0px 2px 7px 0px",
+          "width": "355.594px",
+          "height": "177.172px"
         },
         "box": {
-          "x": 265,
-          "y": 1657.11,
-          "width": 982,
-          "height": 327.02
+          "x": 892.41,
+          "y": 1374.45,
+          "width": 355.59,
+          "height": 177.17
+        }
+      }
+    ],
+    "release-detail.project-card": [
+      {
+        "style": {
+          "display": "block",
+          "position": "static",
+          "margin": "0px",
+          "padding": "16px",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "lineHeight": "22.4px",
+          "color": "rgb(32, 43, 60)",
+          "backgroundColor": "rgb(255, 255, 255)",
+          "border": "1px solid rgb(232, 237, 242)",
+          "borderRadius": "12px",
+          "boxShadow": "rgba(35, 50, 75, 0.024) 0px 2px 7px 0px",
+          "width": "355.594px",
+          "height": "294.688px"
+        },
+        "box": {
+          "x": 892.41,
+          "y": 1567.63,
+          "width": 355.59,
+          "height": 294.69
         }
       }
     ],
@@ -177,14 +203,66 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
+          "width": "305.594px",
+          "height": "337.328px"
+        },
+        "box": {
+          "x": 917.41,
+          "y": 1952.69,
+          "width": 305.59,
+          "height": 337.33
+        }
+      }
+    ],
+    "release-detail.timeline": [
+      {
+        "style": {
+          "display": "block",
+          "position": "static",
+          "margin": "0px",
+          "padding": "0px 0px 0px 4px",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "lineHeight": "22.4px",
+          "color": "rgb(32, 43, 60)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "border": "0px none rgb(32, 43, 60)",
+          "borderRadius": "0px",
+          "boxShadow": "none",
+          "width": "305.594px",
+          "height": "159.938px"
+        },
+        "box": {
+          "x": 917.41,
+          "y": 2402.41,
+          "width": 305.59,
+          "height": 159.94
+        }
+      }
+    ],
+    "release-detail.risk-box": [
+      {
+        "style": {
+          "display": "block",
+          "position": "static",
+          "margin": "16px 0px 0px",
+          "padding": "12px",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "lineHeight": "22.4px",
+          "color": "rgb(32, 43, 60)",
+          "backgroundColor": "rgb(255, 240, 240)",
+          "border": "1px solid rgb(176, 54, 61)",
+          "borderRadius": "8px",
+          "boxShadow": "none",
           "width": "984px",
-          "height": "180.391px"
+          "height": "71.5781px"
         },
         "box": {
           "x": 264,
-          "y": 2229.08,
+          "y": 2595.34,
           "width": 984,
-          "height": 180.39
+          "height": 71.58
         }
       }
     ],
@@ -208,7 +286,7 @@
         },
         "box": {
           "x": 264,
-          "y": 2457.47,
+          "y": 2714.92,
           "width": 984,
           "height": 127.17
         }
