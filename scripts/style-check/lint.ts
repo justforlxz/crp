@@ -180,7 +180,12 @@ export function readCssVariables(css: string): Record<string, string> {
 
 export type SourceHit = { line: number; text: string };
 
-/** 找出没带 `className="data-table"` 的 `<table>` 开标签。 */
+/**
+ * 找出没带表模块类名的 `<table>` 开标签。
+ *
+ * 认两个类名：`.data-table`（v1 的名字，还没迁完的页面在用）与 `table.grid`（`design.md`
+ * 第七节的表格模块，v2 页面都用它）。两个都认，界面重做期间新旧页面混着也判得对。
+ */
 export function findBareTables(source: string): SourceHit[] {
   const hits: SourceHit[] = [];
   const pattern = /<table\b([^>]*)>/gu;
@@ -189,8 +194,15 @@ export function findBareTables(source: string): SourceHit[] {
   while ((match = pattern.exec(source)) !== null) {
     const attributes = match[1] ?? "";
 
-    if (/className\s*=\s*"data-table"/u.test(attributes)) {
-      continue;
+    // 类名按 token 比对：`className="grid wide"` 也算带了表格模块，不能因为多了个类就判成裸表。
+    const className = /className\s*=\s*"([^"]*)"/u.exec(attributes);
+
+    if (className !== null) {
+      const tokens = (className[1] ?? "").split(/\s+/);
+
+      if (tokens.includes("data-table") || tokens.includes("grid")) {
+        continue;
+      }
     }
 
     hits.push({ line: lineOf(source, match.index), text: match[0] });

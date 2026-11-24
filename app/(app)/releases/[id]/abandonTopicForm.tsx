@@ -14,7 +14,8 @@
  * 点遮罩、点右上角 ×、按 Esc、点「取消」都收起确认框，行为与改版前一致。
  *
  * 只有「能不能放弃」由页面判定，这个组件不重复判断：页面在不能放弃时根本不会渲染它。
- * 按钮用红色描边（`.btn-danger-outline`），与日常动作区分；确认框的正文写清后果，不是红色实心块。
+ * 按钮用红色描边（`.btn-danger`，v2 样式表里唯一的危险动作样式），与日常动作区分；
+ * 确认框的正文写清后果，不是红色实心块。
  */
 
 import { useState } from "react";
@@ -46,7 +47,7 @@ export function AbandonTopicForm({
     return (
       <button
         type="button"
-        className="btn btn-danger-outline"
+        className="btn btn-danger"
         onClick={() => setConfirming(true)}
       >
         放弃提测主题
@@ -62,7 +63,7 @@ export function AbandonTopicForm({
       footer={
         <form action={action}>
           <input type="hidden" name="releaseId" value={releaseId} />
-          <button type="button" className="btn btn-secondary" onClick={() => setConfirming(false)}>
+          <button type="button" className="btn" onClick={() => setConfirming(false)}>
             取消
           </button>{" "}
           <button type="submit" className="btn btn-danger">
