@@ -1,51 +1,61 @@
 {
-  "note": "本文件是原型模块的可核对清单。模块名必须与 prototype.html 里的 class 完全一致。",
-  "global": [".modal", ".toast", ".section-title"],
+  "note": "原型模块的可核对清单。模块名必须与 prototype.html 里的 class 完全一致；实现里改结构、改名、合并模块都算缺失。清单变更流程见 design.md 第十三节。",
+  "global": [".modal", ".toast", ".dot", ".tip", ".chip"],
   "pages": {
+    "layout": {
+      "route": "全站外壳",
+      "sources": ["components/page-shell.tsx", "components/modal.tsx", "components/toast.tsx", "app/(app)/layout.tsx"],
+      "modules": [".shell", ".sidebar", ".brand", ".nav-group", ".nav-label", ".nav-item", ".nav-count", ".account", ".avatar", ".topbar", ".topbar-title", ".topbar-desc", ".topbar-actions", ".canvas", ".wrap"]
+    },
     "dashboard": {
       "route": "/dashboard",
       "sources": ["app/(app)/dashboard/"],
-      "modules": [".stats", ".stat", ".stat-ico", ".queue-list", ".queue-item", ".tip", ".empty", ".table-scroll"]
+      "modules": [".stats", ".stat", ".stat-main", ".stat-label", ".stat-value", ".stat-foot", ".stat-ico", ".queue-list", ".queue-item", ".qi-ico", ".queue-info", ".qi-meta", ".panel", ".panel-hd", ".panel-bd", ".table-scroll", ".grid", ".cell-sub", ".num", ".tip"]
     },
     "releases": {
       "route": "/releases",
       "sources": ["app/(app)/releases/page.tsx", "app/(app)/releases/"],
-      "modules": [".page-tabs", ".filters", ".search-field", ".table-scroll", ".empty"]
+      "modules": [".tabs", ".tab", ".tab-n", ".filters", ".search", ".select", ".result-n", ".table-scroll", ".grid", ".cell-sub", ".empty", ".empty-ico", ".empty-t", ".empty-d"]
     },
     "detail": {
       "route": "/releases/[id]",
       "sources": ["app/(app)/releases/[id]/"],
-      "modules": [".summary-strip", ".summary-cell", ".table-scroll", ".project-card", ".timeline", ".tl-item", ".risk-box", ".tip"]
+      "modules": [".summary-strip", ".summary-cell", ".table-scroll", ".grid", ".col-mono", ".project-card", ".pc-hd", ".pc-ico", ".pc-title", ".pc-name", ".pc-key", ".pc-body", ".pc-facts", ".pc-fact", ".detail-cols", ".timeline", ".tl-item", ".tl-dot", ".tl-t", ".tl-time", ".tl-d", ".risk", ".tip"]
     },
     "projects": {
       "route": "/projects",
-      "sources": ["app/(app)/projects/", "app/(app)/managers/"],
-      "modules": [".section-title", ".manager-grid", ".manager-card", ".filters", ".project-grid", ".project-card", ".project-software-chips", ".tip", ".table-scroll"]
-    },
-    "packages": {
-      "route": "/packages",
-      "sources": ["app/(app)/packages/"],
-      "modules": [".table-scroll", ".tip"]
-    },
-    "baselines": {
-      "route": "/baselines",
-      "sources": ["app/(app)/baselines/"],
-      "modules": [".table-scroll", ".tip"]
-    },
-    "queue": {
-      "route": "/queue",
-      "sources": ["app/(app)/queue/"],
-      "modules": [".stats", ".stat", ".stat-ico", ".dep-flow", ".dep-row", ".queue-list", ".queue-item", ".tip", ".table-scroll"]
-    },
-    "webhooks": {
-      "route": "/webhooks",
-      "sources": ["app/(app)/webhooks/"],
-      "modules": [".tip", ".table-scroll"]
+      "sources": ["app/(app)/projects/"],
+      "modules": [".sec-hd", ".manager-grid", ".manager-card", ".manager-name", ".manager-meta", ".manager-n", ".filters", ".search", ".project-grid", ".project-card", ".pc-hd", ".pc-ico", ".pc-title", ".pc-name", ".pc-key", ".pc-body", ".pc-facts", ".pc-fact", ".pc-chips", ".pc-ft", ".chip", ".empty", ".tip"]
     },
     "managers": {
       "route": "/managers",
       "sources": ["app/(app)/managers/"],
-      "modules": [".manager-grid", ".manager-card", ".table-scroll"]
+      "modules": [".manager-grid", ".manager-card", ".manager-name", ".manager-meta", ".manager-n", ".panel", ".panel-hd", ".panel-bd", ".table-scroll", ".grid"]
+    },
+    "packages": {
+      "route": "/packages",
+      "sources": ["app/(app)/packages/"],
+      "modules": [".panel", ".panel-hd", ".panel-bd", ".table-scroll", ".grid", ".col-mono", ".tip"]
+    },
+    "baselines": {
+      "route": "/baselines",
+      "sources": ["app/(app)/baselines/"],
+      "modules": [".panel", ".panel-hd", ".panel-bd", ".table-scroll", ".grid", ".cell-sub", ".num", ".tip"]
+    },
+    "queue": {
+      "route": "/queue",
+      "sources": ["app/(app)/queue/"],
+      "modules": [".stats", ".stat", ".stat-ico", ".dep-flow", ".dep-row", ".dep-n", ".dep-name", ".dep-note", ".queue-list", ".queue-item", ".qi-ico", ".queue-info", ".qi-name", ".qi-desc", ".qi-bar", ".qi-pct", ".qi-meta", ".panel", ".table-scroll", ".grid", ".col-mono", ".tip"]
+    },
+    "webhooks": {
+      "route": "/webhooks",
+      "sources": ["app/(app)/webhooks/"],
+      "modules": [".sec-hd", ".project-grid", ".project-card", ".pc-hd", ".pc-ico", ".pc-title", ".pc-name", ".pc-key", ".pc-body", ".pc-ft", ".panel", ".panel-hd", ".table-scroll", ".grid", ".col-mono", ".tip"]
+    },
+    "create-release": {
+      "route": "/releases/new",
+      "sources": ["app/(app)/releases/new/"],
+      "modules": [".steps", ".step", ".step-n", ".step-t", ".step-line", ".wiz-note", ".form-row2", ".baseline-summary", ".target-banner", ".update-overview", ".kpis", ".wiz-toolbar", ".toolbar-actions", ".wiz-table", ".select-sm", ".text-link", ".tag-actions", ".wiz-foot-note", ".wiz-helper", ".confirm-card", ".cfg-row", ".subhead", ".field", ".label", ".input", ".input-sm", ".textarea", ".modal", ".modal-hd", ".modal-bd", ".modal-ft"]
     }
   }
 }
