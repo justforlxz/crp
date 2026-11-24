@@ -6,6 +6,7 @@ import { PageShell } from "@/components/page-shell";
 import { getPackageDetail, listBaselineOptions, listPackages } from "@/lib/packages";
 
 import { ActionForm } from "../actionForm";
+import { resolveWorkspaceScope } from "../../workspaceScope";
 import {
   deletePackageAction,
   lookupBaselineVersionAction,
@@ -24,12 +25,37 @@ function formatTime(value: Date | null): string {
   return `${value.toISOString().replace("T", " ").slice(0, 19)} UTC`;
 }
 
+type PackageDetailPageProps = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ workspace?: string }>;
+};
+
+/**
+ * 软件包详情与依赖配置。
+ *
+ * 受保护页面，与 `(app)` 下其它页面同一道关口：未登录由 `resolveWorkspaceScope()` 跳
+ * `/login?next=/packages/<id>`，回跳地址带上这条包自己的路径，登录后直接落回这里。
+ * 软件包记录与依赖都是全局登记（`docs/DATA_MODEL.md` §4.8、§4.9），没有工作区维度可收窄。
+ */
 export default async function PackageDetailPage({
   params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+  searchParams,
+}: PackageDetailPageProps) {
   const { id } = await params;
+  const query = await searchParams;
+  const scope = await resolveWorkspaceScope(`/packages/${id}`, query.workspace);
+
+  if (scope.active === null) {
+    return (
+      <PageShell title="软件包详情">
+        <p>
+          这个账号还不属于任何工作区，先请平台管理员把账号加入工作区。当前登录：
+          {scope.account.displayName}
+        </p>
+      </PageShell>
+    );
+  }
+
   const detail = await getPackageDetail(id);
 
   if (!detail) {

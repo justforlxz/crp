@@ -12,6 +12,8 @@ import { Toast } from "@/components/toast";
 import { getLatestListRun, listBaselines, listSyncRuns } from "@/lib/baselines";
 import type { BaselineListItem } from "@/lib/baselines";
 
+import { resolveWorkspaceScope } from "../workspaceScope";
+
 import { refreshBaselinesAction } from "./actions";
 
 // 数据每小时都在被同步任务改，页面不做静态化。
@@ -55,11 +57,27 @@ function stateLabel(item: BaselineListItem): string {
 }
 
 type BaselinesPageProps = {
-  searchParams: Promise<{ notice?: string; error?: string }>;
+  searchParams: Promise<{ workspace?: string; notice?: string; error?: string }>;
 };
 
 export default async function BaselinesPage({ searchParams }: BaselinesPageProps) {
   const query = await searchParams;
+  // 与 `(app)` 下其它页面同一道关口：未登录由 `resolveWorkspaceScope()` 跳
+  // `/login?next=/baselines`。基线是 CRP 交付分支的平铺清单，表上没有工作区列
+  // （`docs/DATA_MODEL.md` §4.6），所以下面的查询没有工作区维度可收窄。
+  const scope = await resolveWorkspaceScope("/baselines", query.workspace);
+
+  if (scope.active === null) {
+    return (
+      <PageShell title="基线">
+        <p>
+          这个账号还不属于任何工作区，先请平台管理员把账号加入工作区。当前登录：
+          {scope.account.displayName}
+        </p>
+      </PageShell>
+    );
+  }
+
   const [baselines, runs, latestListRun] = await Promise.all([
     listBaselines(),
     listSyncRuns(),
