@@ -2,10 +2,36 @@ import Link from "next/link";
 
 import { createPackageAction } from "../actions";
 import { ActionForm } from "../actionForm";
+import { resolveWorkspaceScope } from "../../workspaceScope";
 
 import { PageShell } from "@/components/page-shell";
 
-export default function NewPackagePage() {
+/**
+ * 新建软件包表单。
+ *
+ * 受保护页面，与 `(app)` 下其它页面同一道关口：未登录由 `resolveWorkspaceScope()` 跳
+ * `/login?next=/packages/new`，登录用户照旧看到表单。软件包记录没有工作区归属
+ * （`docs/DATA_MODEL.md` §4.8），所以表单本身不需要按工作区取数。
+ */
+type NewPackagePageProps = {
+  searchParams: Promise<{ workspace?: string }>;
+};
+
+export default async function NewPackagePage({ searchParams }: NewPackagePageProps) {
+  const query = await searchParams;
+  const scope = await resolveWorkspaceScope("/packages/new", query.workspace);
+
+  if (scope.active === null) {
+    return (
+      <PageShell title="新建软件包">
+        <p>
+          这个账号还不属于任何工作区，先请平台管理员把账号加入工作区。当前登录：
+          {scope.account.displayName}
+        </p>
+      </PageShell>
+    );
+  }
+
   return (
     <PageShell title="新建软件包">
       <p>

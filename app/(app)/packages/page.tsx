@@ -1,7 +1,17 @@
+/**
+ * 软件包列表页：全平台共用的一份软件包登记。
+ *
+ * 受保护页面，走 `(app)` 下统一的那道关口：先 `resolveWorkspaceScope()`（未登录由它跳
+ * `/login?next=/packages`），再取数。软件包记录不属于任何工作区（`docs/DATA_MODEL.md` §4.8
+ * 写明「全局唯一登记」、表上没有工作区列），所以列表查询没有工作区维度可以收窄；
+ * 这里只是不再依赖「反正只有登录用户会来」这个隐含前提。
+ */
 import Link from "next/link";
 
 import { PageShell } from "@/components/page-shell";
 import { listPackages } from "@/lib/packages";
+
+import { resolveWorkspaceScope } from "../workspaceScope";
 
 // 数据每分钟都在被同步任务改，页面不做静态化。
 export const dynamic = "force-dynamic";
@@ -15,7 +25,25 @@ function formatTime(value: Date | null): string {
   return `${value.toISOString().replace("T", " ").slice(0, 19)} UTC`;
 }
 
-export default async function PackagesPage() {
+type PackagesPageProps = {
+  searchParams: Promise<{ workspace?: string }>;
+};
+
+export default async function PackagesPage({ searchParams }: PackagesPageProps) {
+  const query = await searchParams;
+  const scope = await resolveWorkspaceScope("/packages", query.workspace);
+
+  if (scope.active === null) {
+    return (
+      <PageShell title="软件包">
+        <p>
+          这个账号还不属于任何工作区，先请平台管理员把账号加入工作区。当前登录：
+          {scope.account.displayName}
+        </p>
+      </PageShell>
+    );
+  }
+
   const packages = await listPackages();
 
   return (
