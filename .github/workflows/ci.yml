@@ -161,3 +161,62 @@ jobs:
       # 默认模式：有缺失即退出码 1，阻断合并。
       - name: 比对模块清单
         run: pnpm check:modules
+
+  # 验收用例集（MKACG-985）：功能 + 边界 + 权限三组，一条命令跑完。
+  #
+  # **非阻断**（`continue-on-error: true`）。用例集描述的是 PR #53 的界面规范 v2，界面重做
+  # （MKACG-983 / MKACG-984）与本单并行：页面还没对齐时，涉及页面结构的用例本来就该是红的。
+  # 等页面转绿之后，由后续单去掉这一行改成阻断 —— 现在设成阻断只会让每个 PR 都红，然后被无视。
+  #
+  # 这里不起服务、也不给 BASE_URL：界面组不在这条命令里（它要浏览器与已部署实例，
+  # 见 `pnpm test:acceptance:ui`）。缺环境的用例在报告里是 skipped，不是 passed。
+  acceptance:
+    name: 验收用例（pnpm test:acceptance）
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: crp
+          POSTGRES_PASSWORD: crp
+          POSTGRES_DB: crp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U crp"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://crp:crp@localhost:5432/crp?schema=public
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        # 不指定 version：由 package.json 的 packageManager 决定，避免两处版本冲突
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
+        run: pnpm db:migrate
+
+      - name: Seed data
+        run: pnpm db:seed
+
+      # 断言失败时会打印「编号、预期、实际」，失败编号直接对着 test-cases.md 查。
+      - name: 跑验收用例
+        run: pnpm test:acceptance
