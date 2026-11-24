@@ -134,10 +134,10 @@ jobs:
   # 模块对照：拿 `.agents/spec/design/modules.json` 的清单，逐页比对实现里缺了哪些原型模块。
   # 判定只认 `className` 上下文里的字符串，口径见 `scripts/check-modules.ts`。
   #
-  # **暂不阻断**：此刻模块移植还没做完，默认模式必然退 1，会让 CI 常红。等模块移植完成后，
-  # 把下面这一步的 `--report` 去掉，缺失就会变成失败。
+  # **阻断**：MKACG-969/970/971/972 合并后 9 个页面与全局模块已齐备，这里去掉 `--report`
+  # 改成阻断模式。任何页面再丢一个原型模块，这一步直接失败。
   modules:
-    name: 模块对照（暂不阻断，模块移植完成后改为阻断）
+    name: 模块对照
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -158,6 +158,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # --report：只报告，退出码恒为 0（暂不阻断）。去掉它即为阻断模式。
-      - name: 比对模块清单（暂不阻断，模块移植完成后改为阻断）
-        run: pnpm check:modules --report
+      # 默认模式：有缺失即退出码 1，阻断合并。
+      - name: 比对模块清单
+        run: pnpm check:modules
