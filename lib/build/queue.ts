@@ -34,6 +34,8 @@ export type QueueTaskRow = {
   stage: string;
   /** 构建进度，例如「1/2 个架构完成」；还没开始构建时为空。 */
   progress: string | null;
+  /** 同上进度的百分比（0–100，已完成的架构占比）；没有作业时为空。页面画进度条用它。 */
+  progressPercent: number | null;
   /** 耗时（毫秒）：开始到现在，或开始到结束；还没开始时为空。 */
   durationMs: number | null;
   /** 还在等哪些上游包；不等依赖时为空数组。 */
@@ -274,6 +276,7 @@ export function buildQueueView(data: BuildQueueSnapshot): BuildQueueView {
         phase: stage.phase,
         stage: stage.name,
         progress: describeProgress(snapshot.buildTask?.jobs ?? null),
+        progressPercent: progressPercentOf(snapshot.buildTask?.jobs ?? null),
         durationMs: elapsedOf(snapshot.buildTask ?? null, data.generatedAt),
         waitingFor,
         reason: snapshot.buildTask?.statusReason ?? null,
@@ -492,6 +495,20 @@ function elapsedOf(build: BuildTiming | null, now: Date): number | null {
   return Math.max(0, end.getTime() - build.startedAt.getTime());
 }
 
+/** 作业完成情况：已完成的架构数 / 全部架构数；没有作业时为空。 */
+function jobProgress(
+  jobs: ReadonlyArray<{ status: string }> | null,
+): { done: number; total: number } | null {
+  if (jobs === null || jobs.length === 0) {
+    return null;
+  }
+
+  return {
+    done: jobs.filter((job) => DONE_BUILD_STATES.has(job.status)).length,
+    total: jobs.length,
+  };
+}
+
 /**
  * 构建进度：已完成的架构数 / 全部架构数。
  *
@@ -500,13 +517,23 @@ function elapsedOf(build: BuildTiming | null, now: Date): number | null {
 function describeProgress(
   jobs: ReadonlyArray<{ status: string }> | null,
 ): string | null {
-  if (jobs === null || jobs.length === 0) {
-    return null;
-  }
+  const progress = jobProgress(jobs);
 
-  const done = jobs.filter((job) => DONE_BUILD_STATES.has(job.status)).length;
+  return progress === null ? null : `${progress.done}/${progress.total} 个架构完成`;
+}
 
-  return `${done}/${jobs.length} 个架构完成`;
+/**
+ * 同一份进度的百分比（0–100，四舍五入到整数）。
+ *
+ * 页面要画进度条，但不能照抄原型里硬编码的 `68%` —— 用这里算出来的真实比例，
+ * 也就不用写内联 `style`。还没开始构建（没有作业）时为空，页面就不画进度条。
+ */
+function progressPercentOf(
+  jobs: ReadonlyArray<{ status: string }> | null,
+): number | null {
+  const progress = jobProgress(jobs);
+
+  return progress === null ? null : Math.round((progress.done / progress.total) * 100);
 }
 
 /**

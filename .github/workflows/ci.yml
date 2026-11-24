@@ -64,6 +64,12 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+      # 颜色对比度门禁：issue 正文那张表里的每一对「文字 on 底色」都写成断言，
+      # 任何一对低于 WCAG 2.1 的阈值即失败（正文 4.5:1、控件边框 3:1）。
+      # 纯读源码，不需要数据库与浏览器。
+      - name: Contrast
+        run: pnpm test:contrast
+
 
       - name: Typecheck
         run: pnpm typecheck

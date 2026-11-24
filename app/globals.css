@@ -1,32 +1,60 @@
 /**
- * 全站唯一的样式表（A19）。
+ * 全站唯一的样式表（A19，MKACG-964 重设）。
  *
  * 一律从这里出发：色板、间距、圆角、字号都收在下面的 CSS 变量里，页面只挂 class，
  * 不写内联 `style`、不引第二套机制。窄屏优先保证「页面本身不横滚」，宽表在自己的
  * `.table-scroll` 容器里滚。
+ *
+ * 视觉论点：内部运维控制台。深色侧栏压住画面，浅灰画布托住白卡片，信息靠留白与 1px 浅线
+ * 分层，不靠阴影堆叠。饱和度只给状态（成功 / 失败 / 警告 / 信息 / 中性），其余部分退到背景。
+ *
+ * 两条线分工不同，**不得混用**：
+ *
+ * - `--color-line`（#e8edf2）只画结构与分隔，是装饰；
+ * - `--color-control-border`（#868c95）画能点的东西的边（输入框、下拉、按钮），要满足
+ *   WCAG 2.1 的 1.4.11（非文本对比度 3:1）。
+ *
+ * 每个「文字 on 底色」配对都由 `scripts/check-contrast.ts` 断言，任何一对低于阈值 CI 就失败。
  */
 
 /* ---------- 设计变量 ---------- */
 
 :root {
-  --color-bg: #f5f6f8;
+  /* 面：画布 → 卡片 → 弱面，三级明度，只差一级。弱面给表头与行悬停。 */
+  --color-bg: #f5f7fa;
   --color-surface: #ffffff;
   --color-surface-muted: #fafbfc;
-  --color-border: #d0d3d9;
-  --color-border-strong: #b8bcc4;
-  --color-text: #1f2329;
-  --color-text-muted: #646a73;
-  --color-primary: #1664ff;
-  --color-primary-strong: #0d4fd0;
-  --color-primary-weak: #eef3ff;
-  --color-primary-border: #c5d8ff;
-  --color-danger: #b3261e;
-  --color-danger-strong: #8f1d17;
-  --color-danger-weak: #fdeceb;
-  --color-success: #1f7a3d;
-  --color-success-weak: #e9f6ee;
-  --color-warn: #8a5a00;
-  --color-warn-weak: #fdf3e1;
+
+  /* 线：装饰线与控件边框，分工见文件头。 */
+  --color-line: #e8edf2;
+  --color-control-border: #868c95;
+
+  /* 文字 */
+  --color-text: #202b3c;
+  --color-text-muted: #5d6875;
+  /* 压在实色底（主色、危险色、侧栏选中）上的字。色值只有一个白，角色与 --color-surface 不同。 */
+  --color-text-inverse: #ffffff;
+
+  /* 主色 */
+  --color-primary: #3269e8;
+  /* 主色浅底：信息 pill 的底色，也是表格选中行的底色。 */
+  --color-primary-weak: #edf3ff;
+
+  /* 侧栏：一天里最常看的一条竖边，压到最深。 */
+  --color-sidebar: #172338;
+  --color-sidebar-text: #aab7ca;
+  --color-sidebar-selected: #2d57a8;
+
+  /* 状态：文字与底色严格成对使用，表见 issue 正文。 */
+  --color-success: #0f6b4a;
+  --color-success-weak: #eaf8f1;
+  --color-danger: #b0363d;
+  --color-danger-weak: #fff0f0;
+  --color-warn: #8a5b12;
+  --color-warn-weak: #fff5e8;
+  --color-info: #2a5ac4;
+  --color-neutral: #4f5866;
+  --color-neutral-weak: #f1f3f6;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -36,25 +64,33 @@
   --space-6: 32px;
   --space-7: 48px;
 
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
+  /* 圆角按角色命名：卡片 12、控件 8、小标签 6、pill 全圆。 */
+  --radius-card: 12px;
+  --radius-control: 8px;
+  --radius-chip: 6px;
+  --radius-pill: 999px;
 
   --font-size-xs: 12px;
   --font-size-sm: 13px;
   --font-size-base: 14px;
   --font-size-lg: 16px;
-  --font-size-xl: 20px;
-  --font-size-2xl: 24px;
+  --font-size-xl: 22px;
+  /* 一句话说明与统计数字不在正文刻度上，各自单独一档（design.md 第六节）。 */
+  --font-size-hint: 12.5px;
+  --font-size-stat: 25px;
 
-  --line-height-tight: 1.35;
+  /* 行高：h1 单列 1.25，其余标题 1.4，正文 1.6，表格 1.5，表头 1.4。 */
+  --line-height-h1: 1.25;
+  --line-height-heading: 1.4;
   --line-height-base: 1.6;
+  /* 表格比正文紧一档：一屏能看到更多行，行与行仍靠 1px 浅线分开。 */
+  --line-height-table: 1.5;
 
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.12);
+  --shadow-card: 0 2px 7px rgba(35, 50, 75, 0.025);
   --shadow-raised: 0 6px 20px rgba(31, 35, 41, 0.08);
 
-  --sidebar-width: 208px;
-  --content-width: 1100px;
+  --sidebar-width: 232px;
+  --content-width: 1440px;
 
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
@@ -86,22 +122,26 @@ h2,
 h3,
 h4 {
   margin: 0 0 var(--space-2);
-  line-height: var(--line-height-tight);
+  line-height: var(--line-height-heading);
   font-weight: 600;
 }
 
 h1 {
-  font-size: var(--font-size-2xl);
+  font-size: var(--font-size-xl);
+  line-height: var(--line-height-h1);
+  font-weight: 650;
+  /* 22px 的中文标题按默认字距偏松，收 0.2px 才和正文的节奏对得上。 */
+  letter-spacing: -0.2px;
 }
 
 h2 {
   margin-top: var(--space-6);
-  font-size: var(--font-size-xl);
+  font-size: var(--font-size-lg);
 }
 
 h3 {
   margin-top: var(--space-5);
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-base);
 }
 
 h4 {
@@ -111,12 +151,12 @@ h4 {
 /*
  * 两级标题：组与节。
  *
- * 组级标题是默认的 `h2`（20px/600），节级标题用小一号的 16px/600 与更小的上边距。
+ * 组级标题是默认的 `h2`（16px/600），节级标题用小一号的 14px/600 与更小的上边距。
  * 提测详情把只读信息与更新入口标成节、终局操作「危险操作」留在组级，滚到底才看得出这一页分两层。
  */
 .section-title {
   margin-top: var(--space-5);
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-base);
 }
 
 p {
@@ -132,6 +172,7 @@ ol {
 li {
   margin-bottom: var(--space-1);
 }
+
 a {
   /*
    * 行内链接（面包屑、正文里的跳转）与按钮共用同一套 40px 命中区。
@@ -158,13 +199,21 @@ a:hover {
   padding-block: 0;
 }
 
+/*
+ * 标识符（版本号、提交号、Topic ID、包名）一律等宽 + `tabular-nums`：
+ * 等宽让同一列的字纵向对齐，tabular-nums 让数字宽度一致，扫一行时不会左右跳。
+ *
+ * 用 1px 装饰线画一个小标签，不铺底色：标识符经常整格包在链接里（提测记录的版本号），
+ * 铺了浅底就成了「主色字 on 浅底」—— 那一对只有 4.37:1，不到正文的 4.5:1。
+ * 描边不改变字下面的底色，白面上的主色字仍是 4.86:1。
+ */
 code {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: 0.92em;
   padding: 1px var(--space-1);
-  border-radius: var(--radius-sm);
-  background: rgba(31, 35, 41, 0.06);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-chip);
   overflow-wrap: anywhere;
 }
 
@@ -194,15 +243,15 @@ dd {
 
 hr {
   border: 0;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-line);
   margin: var(--space-5) 0;
 }
 
 fieldset {
   margin: 0 0 var(--space-4);
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
 }
 
 legend {
@@ -226,6 +275,9 @@ legend {
    *
    * 侧栏是一整屏高、跟着页面滚动的固定列：页面再长，账号区与退出登录也停在视口底部，
    * 不用滚到页尾去点。`overflow-y: auto` 让导航在很矮的视口里自己滚，不会顶到账号区。
+   *
+   * 深色底是整页的骨架：它把「导航」与「内容」分成两个平面，内容区就不用再靠边框或阴影
+   * 去和侧栏抢注意力。所以这里不画右边框 —— 明度差已经把两块分开了，再叠一条线是重复。
    */
   display: flex;
   flex-direction: column;
@@ -237,8 +289,8 @@ legend {
   flex: 0 0 var(--sidebar-width);
   width: var(--sidebar-width);
   padding: var(--space-4) var(--space-3);
-  background: var(--color-surface);
-  border-right: 1px solid var(--color-border);
+  color: var(--color-sidebar-text);
+  background: var(--color-sidebar);
 }
 
 .app-sidebar__brand {
@@ -246,7 +298,7 @@ legend {
   padding: 0 var(--space-2);
   font-size: var(--font-size-sm);
   font-weight: 600;
-  color: var(--color-text-muted);
+  color: var(--color-sidebar-text);
 }
 
 .app-nav__list {
@@ -265,19 +317,23 @@ legend {
   /* 密集桌面界面的命中区下限 40px：侧栏导航原来 38px，只补高度，字不放大。 */
   min-height: 40px;
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  color: var(--color-text);
+  border-radius: var(--radius-control);
+  color: var(--color-sidebar-text);
   font-size: var(--font-size-base);
 }
 
+/*
+ * 深色侧栏里没有比底色更深的同色可换，悬停改成把字提到最亮：一眼能看出指针停在哪，又不会
+ * 和下面「选中」的实色块混淆。
+ */
 .app-nav__link:hover {
-  background: var(--color-surface-muted);
+  color: var(--color-text-inverse);
   text-decoration: none;
 }
 
 .app-nav__link[aria-current="page"] {
-  background: var(--color-primary-weak);
-  color: var(--color-primary);
+  background: var(--color-sidebar-selected);
+  color: var(--color-text-inverse);
   font-weight: 600;
 }
 
@@ -289,11 +345,12 @@ legend {
  *
  * `margin-top: auto` 把这一块顶到底部；邮箱与账号名都可能很长，`overflow-wrap: anywhere`
  * 让它折行而不是把侧栏撑宽 —— 375 宽那种窄屏下，页面不能整页横滚。
+ *
+ * 不与导航画分隔线：深色底上任何一条浅线都会抢过选中态的注意力，靠留白断开就够。
  */
 .app-sidebar__account {
   margin-top: auto;
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-4);
 }
 
 .app-sidebar__account p {
@@ -306,7 +363,7 @@ legend {
 }
 
 .app-sidebar__account-meta {
-  color: var(--color-text-muted);
+  color: var(--color-sidebar-text);
   font-size: var(--font-size-sm);
 }
 
@@ -323,7 +380,11 @@ legend {
 .page {
   max-width: var(--content-width);
   margin: 0 auto;
-  padding: var(--space-6) var(--space-5) var(--space-7);
+  /*
+   * 页头与内容区共用一个容器：上 24（页头顶）、左右 32、下 48（内容区底）。
+   * 页头的下边距由 `.page__header` 的 margin-bottom 出，见 design.md 4.1。
+   */
+  padding: var(--space-5) var(--space-6) var(--space-7);
 }
 
 .page--auth {
@@ -356,8 +417,11 @@ legend {
 }
 
 .hint {
+  /* 一句话说明：比次要文字再小一档，行宽收到 78ch，长句不会横穿整屏。 */
+  max-width: 78ch;
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-hint);
+  line-height: var(--line-height-base);
 }
 
 .list {
@@ -376,22 +440,29 @@ legend {
 
 /* ---------- 卡片与统计 ---------- */
 
+/*
+ * 卡片是内容的基本单位：白面、1px 装饰线、12px 圆角、几乎看不见的投影。
+ * 投影只用来把卡片从画布上抬起一点点，结构分层靠的是那条 1px 线 —— 用阴影代替边框
+ * 会让密集表格页显脏，也正是这次要改掉的东西。
+ */
 .card {
-  padding: var(--space-5);
+  /* 内边距 16/24（design.md 第七节）：上下紧、左右松，密集页里一行卡片不会显得臃肿。 */
+  padding: var(--space-4) var(--space-5);
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
 }
 
 .card--wide {
-  max-width: 760px;
+  max-width: 800px;
   margin: 0 auto;
 }
 
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  /* 统计卡固定 4 列（design.md 4.3）：两处用它的页面都是 4 张卡，auto-fit 会在窄档位留下空格。 */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-3);
   margin: 0 0 var(--space-4);
 }
@@ -399,15 +470,395 @@ legend {
 .stat-card {
   padding: var(--space-4);
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
 }
 
 .stat-card strong {
+  /* 统计数字：25px/720、行高 1、字距收 0.7px（原型 `.stat .value`）。 */
   display: block;
   margin-bottom: var(--space-1);
-  font-size: var(--font-size-2xl);
-  line-height: var(--line-height-tight);
+  font-size: var(--font-size-stat);
+  font-weight: 720;
+  line-height: 1;
+  letter-spacing: -0.7px;
+}
+
+/* ---------- 原型模块（MKACG-964 移植） ---------- */
+
+/*
+ * 这一节的 class 名与 DOM 嵌套直接来自 `.agents/spec/design/prototype.html`：
+ * 模块名不改、模块不合、卡片不降级成表格。只把颜色换成本单定稿的 token，
+ * 字号与间距仍按 `design.md` 第四、六、十节（原型里 10–11px 的字低于 12px 下限）。
+ *
+ * 迁移是分页做的：这一轮只有工作台与提测记录两页用上这些模块，其余页面还在用
+ * `.stat-card` / `.data-table` 那一套，等 PL 拆完再一起换。
+ */
+
+/* 网格：`.stats` 是统计卡的 4 列网格，`.two-col` 是「主栏 + 侧栏」。 */
+.grid {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.two-col {
+  grid-template-columns: minmax(0, 1.55fr) minmax(330px, 0.9fr);
+  align-items: start;
+}
+
+.section-gap {
+  margin-top: var(--space-4);
+}
+
+/* 统计卡：左边「标签 / 数字 / 说明」，右边一个 `.stat-ico` 图标块。 */
+.stat {
+  padding: var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.stat > div:first-child {
+  min-width: 0;
+}
+
+.stat .label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-2);
+}
+
+.stat .value {
+  font-size: var(--font-size-stat);
+  font-weight: 720;
+  line-height: 1;
+  letter-spacing: -0.7px;
+}
+
+/* `.hint` 在统计卡里是第三行说明，作用域限定在 `.stat`，不碰全局 `.hint`。 */
+.stat .hint {
+  max-width: none;
+  margin-top: var(--space-2);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-base);
+  color: var(--color-text-muted);
+}
+
+
+.stat-ico {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-card);
+  display: grid;
+  place-items: center;
+  font-size: var(--font-size-lg);
+  flex: 0 0 auto;
+}
+
+.si-blue {
+  background: var(--color-primary-weak);
+  color: var(--color-info);
+}
+
+.si-orange {
+  background: var(--color-warn-weak);
+  color: var(--color-warn);
+}
+
+.si-green {
+  background: var(--color-success-weak);
+  color: var(--color-success);
+}
+
+
+/* 面板：`.card` + `.panel` 是内容分组的容器，标题行是 `.panel-head`。 */
+.panel {
+  padding: var(--space-4) var(--space-5);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.panel-head h3 {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.panel-head .sub {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.text-link {
+  border: 0;
+  background: none;
+  padding: var(--space-1);
+  color: var(--color-primary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.text-link:hover {
+  text-decoration: underline;
+}
+
+/* 表格容器：`.table-card` 收边，`.table-footer` 是底部条。 */
+.table-wrap {
+  overflow: auto;
+}
+
+.table-card {
+  overflow: hidden;
+  padding: 0;
+}
+
+.table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-line);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+/* 单元格里的两行结构：主值 + 次说明。 */
+.primary-cell {
+  color: var(--color-text);
+  font-weight: 620;
+}
+
+.secondary {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+
+/* 队列条目：图标 + 主体（进度）+ 右侧状态。 */
+.queue-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.queue-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.queue-item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.queue-icon {
+  width: var(--space-6);
+  height: var(--space-6);
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-control);
+  background: var(--color-neutral-weak);
+  color: var(--color-text-muted);
+  flex: 0 0 auto;
+}
+
+.queue-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.queue-info b {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--color-text);
+}
+
+.queue-info small {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.queue-meta {
+  flex: 0 0 auto;
+  text-align: right;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.queue-meta b {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/*
+ * 进度条用原生 `<progress>`：宽度由 `value`/`max` 表达，不需要内联 `style`（样式契约禁止），
+ * 也不需要照抄原型里硬编码的 68%。轨道用中性浅底，条用主色。
+ */
+.progress {
+  display: block;
+  width: 100%;
+  height: 5px;
+  margin-top: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-neutral-weak);
+  appearance: none;
+}
+
+.progress::-webkit-progress-bar {
+  border-radius: var(--radius-pill);
+  background: var(--color-neutral-weak);
+}
+
+.progress::-webkit-progress-value {
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+}
+
+.progress::-moz-progress-bar {
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+}
+
+
+/* 提示块：图标 + 标题 + 正文。 */
+.tip {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+  background: var(--color-primary-weak);
+}
+
+.tip-icon {
+  flex: 0 0 auto;
+  color: var(--color-info);
+}
+
+.tip b {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text);
+}
+
+.tip p {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-base);
+  color: var(--color-text-muted);
+}
+
+/* 小标签：中性色，用于「N 个项目」「N 个待配置」这类计数。 */
+.tag {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: var(--radius-chip);
+  background: var(--color-neutral-weak);
+  color: var(--color-neutral);
+  font-size: var(--font-size-xs);
+}
+
+/* 状态页签：一条下划线，当前页签用主色字 + 主色线。 */
+.page-tabs {
+  display: flex;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-4);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.page-tabs button,
+.page-tabs a {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  padding: 0 1px var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.page-tabs .active {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  font-weight: 650;
+}
+
+/* 筛选行：下拉 + 搜索框 + 右侧条数。 */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.field {
+  height: 40px;
+  min-width: 130px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+}
+
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 40px;
+  min-width: 210px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.search-field input {
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  font-size: var(--font-size-sm);
+}
+
+.filter-spacer {
+  flex: 1;
+}
+
+.small-note {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
 }
 
 /* ---------- 数据表 ---------- */
@@ -417,6 +868,21 @@ legend {
   max-width: 100%;
   margin-bottom: var(--space-4);
   overflow-x: auto;
+  /* 1px 装饰线 + 8px 圆角把表格收成一块（design.md 第七节）：宽表在容器里滚，容器自己有边。 */
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+}
+
+/*
+ * 嵌在卡片里时不再画第二道边：卡片自己已经收边了。
+ *
+ * `.table-scroll` 单独用时按 design.md 第七节带 1px 装饰线与 8px 圆角；放进 `.card`（面板或
+ * `.table-card`）时由卡片收边，容器只负责横向滚动 —— 原型的表格就是贴在卡片边上的。
+ */
+.card .table-scroll {
+  margin-bottom: 0;
+  border: 0;
+  border-radius: 0;
 }
 
 /*
@@ -431,11 +897,16 @@ legend {
   overflow-y: auto;
 }
 
+/*
+ * 表格比正文紧一档：13px / 1.5。行与行靠 1px 装饰线分开，不铺斑马纹 ——
+ * 表头的弱面、悬停的弱面已经是两层状态，再加一层斑马纹，行的悬停就看不出来了。
+ */
 .data-table {
   width: 100%;
   border-collapse: collapse;
   background: var(--color-surface);
   font-size: var(--font-size-sm);
+  line-height: var(--line-height-table);
 }
 
 .data-table th,
@@ -443,7 +914,7 @@ legend {
   padding: var(--space-2) var(--space-3);
   text-align: left;
   vertical-align: top;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-line);
   overflow-wrap: anywhere;
 }
 
@@ -454,20 +925,24 @@ legend {
   z-index: 2;
   font-weight: 600;
   font-size: var(--font-size-xs);
+  line-height: var(--line-height-heading);
   color: var(--color-text-muted);
   text-transform: none;
   background: var(--color-surface-muted);
-  border-bottom: 2px solid var(--color-border-strong);
+  border-bottom: 1px solid var(--color-line);
   white-space: nowrap;
 }
 
-.data-table tbody tr:nth-child(even) {
+/* 行悬停：浅一级。表格没有行选中功能，所以也没有选中态 —— 见 PR 说明。 */
+.data-table tbody tr:hover {
   background: var(--color-surface-muted);
 }
 
-.data-table tbody tr:hover {
-  background: var(--color-primary-weak);
+/* 最后一行不再画线：容器的 1px 边已经收住了表格，再画一条会成双线。 */
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
 }
+
 
 .data-table td form {
   display: flex;
@@ -501,8 +976,8 @@ textarea {
   font-size: var(--font-size-base);
   color: var(--color-text);
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius-control);
 }
 
 input[type="checkbox"],
@@ -545,42 +1020,36 @@ textarea:disabled {
   color: var(--color-text-muted);
 }
 
-.form-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  align-items: center;
-  margin-bottom: var(--space-3);
-}
-
-.form-row > .input {
-  flex: 1 1 160px;
-}
 
 /* ---------- 按钮 ---------- */
 
+/*
+ * 默认按钮是描边款：白面 + 控件边框 + 主色字。主按钮与危险按钮才铺实色，
+ * 一屏里实色块的数量就那么几个，视线自然落到主操作上。
+ */
 button,
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-1);
-  padding: var(--space-2) var(--space-4);
+  /* 内边距 0/16（design.md 第七节）：高度全交给 40px 命中区，横向留白由左右内边距给。 */
+  padding: 0 var(--space-4);
   /* 命中区下限 40px：按 dense desktop 的口径，只补高度，字号不动。 */
   min-height: 40px;
   font-family: inherit;
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-xs);
   line-height: 1.2;
   color: var(--color-primary);
-  background: var(--color-primary-weak);
-  border: 1px solid var(--color-primary-border);
-  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius-control);
   cursor: pointer;
 }
 
 button:hover:not(:disabled),
 .btn:hover {
-  background: var(--color-primary-border);
+  background: var(--color-surface-muted);
   text-decoration: none;
 }
 
@@ -595,48 +1064,57 @@ button:disabled {
   cursor: not-allowed;
 }
 
-.btn-primary {
-  color: var(--color-surface);
+/*
+ * 实色按钮的悬停：色板里没有更深一档的主色与危险色，硬调一个表外颜色就破了「只用这些颜色」
+ * 的约定。所以实色按钮的悬停不变色，反馈交给上面那条 `:active` 的缩量。
+ */
+.btn-primary,
+.btn.primary,
+.btn-primary:hover:not(:disabled),
+.btn.primary:hover:not(:disabled) {
+  color: var(--color-text-inverse);
   background: var(--color-primary);
   border-color: var(--color-primary);
 }
 
-.btn-primary:hover:not(:disabled) {
-  background: var(--color-primary-strong);
-  border-color: var(--color-primary-strong);
-}
-
 .btn-secondary {
   color: var(--color-primary);
-  background: var(--color-primary-weak);
-  border-color: var(--color-primary-border);
+  background: var(--color-surface);
+  border-color: var(--color-control-border);
 }
 
-.btn-danger {
-  color: var(--color-surface);
+/*
+ * `.btn primary` / `.btn sm` / `.btn danger` / `.btn danger-fill` 是原型里的写法，
+ * `.btn-primary` / `.btn-sm` / `.btn-danger` / `.btn-danger-outline` 是其余页面还在用的写法：
+ * 同一套声明挂两套选择器，其余页面按页迁移完再删旧的。
+ */
+.btn-danger,
+.btn.danger-fill,
+.btn-danger:hover:not(:disabled),
+.btn.danger-fill:hover:not(:disabled) {
+  color: var(--color-text-inverse);
   background: var(--color-danger);
   border-color: var(--color-danger);
 }
 
-.btn-danger:hover:not(:disabled) {
-  background: var(--color-danger-strong);
-  border-color: var(--color-danger-strong);
-}
-
 /* 危险但不在主流程上的动作（MKACG-950 的「放弃提测主题」）：红色描边，不抢主按钮的视线。 */
-.btn-danger-outline {
+.btn-danger-outline,
+.btn.danger {
   color: var(--color-danger);
   background: var(--color-surface);
   border-color: var(--color-danger);
 }
 
-.btn-danger-outline:hover:not(:disabled) {
+.btn-danger-outline:hover:not(:disabled),
+.btn.danger:hover:not(:disabled) {
   background: var(--color-danger-weak);
 }
 
-.btn-sm {
+.btn-sm,
+.btn.sm {
+  /* 小号只收内边距，字号不再往下掉：12px 是 design.md 第十节的下限。 */
   padding: var(--space-1) var(--space-2);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
 }
 
 /* 链接当按钮用时（例如「新建软件包」入口）：去掉下划线，对齐按钮外观。 */
@@ -652,40 +1130,60 @@ a.btn:hover {
 
 /* ---------- 徽标 ---------- */
 
-.badge {
-  display: inline-block;
-  padding: 1px var(--space-2);
-  font-size: var(--font-size-xs);
+/*
+ * pill：文字色与底色严格成对，见 `scripts/check-contrast.ts` 的断言表。
+ * 圆点用 `currentColor`，所以五组配色的圆点自动跟着文字色走，不用各写一条。
+ *
+ * `.pill` / `.p-*` 是原型里的名字，`.badge` / `.badge--*` 是其余页面还在用的名字：
+ * 同一套声明挂两套选择器，等其余页面按页迁移完，删掉 `.badge*` 那一套。
+ */
+.badge,
+.pill,
+.p-gray {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
   line-height: 1.5;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 999px;
-  color: var(--color-text-muted);
-  background: var(--color-surface-muted);
+  border-radius: var(--radius-pill);
+  color: var(--color-neutral);
+  background: var(--color-neutral-weak);
   white-space: nowrap;
 }
 
-.badge--success {
+.badge::before,
+.pill::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.badge--success,
+.p-green {
   color: var(--color-success);
   background: var(--color-success-weak);
-  border-color: var(--color-success);
 }
 
-.badge--danger {
+.badge--danger,
+.p-red {
   color: var(--color-danger);
   background: var(--color-danger-weak);
-  border-color: var(--color-danger);
 }
 
-.badge--warn {
+.badge--warn,
+.p-orange {
   color: var(--color-warn);
   background: var(--color-warn-weak);
-  border-color: var(--color-warn);
 }
 
-.badge--info {
-  color: var(--color-primary);
+.badge--info,
+.p-blue {
+  color: var(--color-info);
   background: var(--color-primary-weak);
-  border-color: var(--color-primary-border);
 }
 
 /* ---------- 提示与空状态 ---------- */
@@ -693,8 +1191,8 @@ a.btn:hover {
 .alert {
   margin: 0 0 var(--space-3);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
   background: var(--color-surface-muted);
   font-size: var(--font-size-sm);
 }
@@ -712,9 +1210,9 @@ a.btn:hover {
 }
 
 .alert--info {
-  color: var(--color-text);
+  color: var(--color-info);
   background: var(--color-primary-weak);
-  border-color: var(--color-primary-border);
+  border-color: var(--color-info);
 }
 
 .alert > p:last-child,
@@ -723,13 +1221,18 @@ a.btn:hover {
 }
 
 .empty {
+  /*
+   * 空状态：1px 虚线 + 12px 圆角 + 弱面底（design.md 第七节）。
+   * 这里的虚线用控件边框色 #868c95 —— 空状态不是「装饰线」，它要让人看见「这里本该有内容」，
+   * 1.18:1 的装饰线在这个位置会消失。
+   */
   padding: var(--space-4);
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
   text-align: center;
   background: var(--color-surface-muted);
-  border: 1px dashed var(--color-border-strong);
-  border-radius: var(--radius-md);
+  border: 1px dashed var(--color-control-border);
+  border-radius: var(--radius-card);
 }
 
 .filter-bar {
@@ -740,9 +1243,9 @@ a.btn:hover {
   margin-bottom: var(--space-4);
   padding: var(--space-2);
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  /* 同心圆角：外层 = 内层控件圆角 + 自己的内边距（4 + 8），内外才不打架。 */
-  border-radius: calc(var(--radius-sm) + var(--space-2));
+  border: 1px solid var(--color-line);
+  /* 同心圆角：外层 = 内层控件圆角 + 自己的内边距（8 + 8），内外才不打架。 */
+  border-radius: calc(var(--radius-control) + var(--space-2));
 }
 
 .filter-bar label {
@@ -770,14 +1273,49 @@ a.btn:hover {
   margin-top: 0;
 }
 
-/* ---------- 窄屏 ---------- */
+/* ---------- 响应式 ---------- */
 
-@media (max-width: 767px) {
+/*
+ * 三档（design.md 4.3）：
+ *
+ *   > 1100px   完整布局，统计卡 4 列；
+ *   760–1100   侧栏保持，统计卡 2 列，页头与内容区内边距降到 16；
+ *   ≤ 760      侧栏变横向导航条，账号区隐藏，统计卡 1 列，页头竖排。
+ *
+ * 硬约束：任何一档都不能整页横滚，宽表在自己的 `.table-scroll` 里滚。
+ */
+@media (max-width: 1100px) {
+  .page {
+    padding: var(--space-4);
+  }
+
+  /*
+   * 原型 `@media(max-width:1050px)` 的两条：统计卡 4 列 → 2 列，`.two-col` 折成一列。
+   * `.two-col` 的第二列有 330px 的最小宽度，不折的话第一列会被压到 0 宽（375 下实测 50px），
+   * 而 `minmax(0, …)` 只会收缩不会溢出，整页横滚检查看不出来 —— 必须显式接管。
+   */
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .two-col {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
   .app-layout {
     flex-direction: column;
   }
 
-  /* 窄屏侧栏回到页面顶部的一条横条：不吸顶、不占一整屏，跟内容一起滚。 */
+  /*
+   * 窄屏侧栏回到页面顶部的一条横条：不吸顶、不占一整屏，跟内容一起滚。
+   * 底色仍是深色 —— 骨架不该在换宽度时换一套逻辑，也不与内容区画分隔线（明度差已经够了）。
+   */
   .app-sidebar {
     position: static;
     align-self: stretch;
@@ -786,8 +1324,6 @@ a.btn:hover {
     flex: 0 0 auto;
     width: 100%;
     padding: var(--space-2) var(--space-3);
-    border-right: 0;
-    border-bottom: 1px solid var(--color-border);
   }
 
   .app-sidebar__brand {
@@ -812,41 +1348,21 @@ a.btn:hover {
   }
 
   /*
-   * 窄屏侧栏是一条横向导航条，账号区跟着排成一行：放得下就一行，放不下自动折行，
-   * 不会盖住导航项。退出登录始终在这一行里，不靠悬停也不靠展开。
+   * 账号区在这一档隐藏（design.md 4.3）：窄屏只保证「能看」，导航条上再塞账号名、角色、
+   * 邮箱与退出登录会把导航挤成两行。桌面档位里它照常固定在侧栏底部。
    */
   .app-sidebar__account {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-1) var(--space-3);
-    margin-top: 0;
-    padding-top: var(--space-2);
+    display: none;
   }
 
-  .app-sidebar__logout {
-    margin-top: 0;
-  }
-
-  .page {
-    padding: var(--space-4) var(--space-3) var(--space-6);
+  /* 页头竖排：标题与主操作各占一行，窄屏下不抢同一行的宽度。 */
+  .page__header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .page--auth {
     padding-top: var(--space-5);
-  }
-
-  h1 {
-    font-size: var(--font-size-xl);
-  }
-
-  h2 {
-    font-size: var(--font-size-lg);
-  }
-
-  /* 窄屏下 h2 已经缩到 16px，节级标题再降一档，两级仍然分得开。 */
-  .section-title {
-    font-size: var(--font-size-base);
   }
 
   dl {
@@ -858,7 +1374,13 @@ a.btn:hover {
     margin-top: var(--space-2);
   }
 
-  .stat-grid {
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  /*
+   * 统计卡在这一档仍是 2 列。原型 `@media(max-width:720px)` 写的是 `.stats{1fr 1fr}`，
+   * 而 design.md 4.3 原写「1 列」；两处不一致时按 design.md 开头的「以 prototype.html 为准，
+   * 并把本文件补齐」取原型，`design.md` 4.3 已同步改成 2 列。
+   */
+  .stat-grid,
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

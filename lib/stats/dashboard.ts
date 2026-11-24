@@ -55,6 +55,8 @@ export type DashboardCards = {
 export type RecentReleaseRow = {
   id: string;
   version: string;
+  /** 状态码，页面按它选 pill 的配色档位。 */
+  status: string;
   /** 状态中文名，与提测记录列表同一套说法。 */
   statusLabel: string;
   /** 来源中文名：平台创建 / 从 CRP 导入。 */
@@ -76,6 +78,8 @@ export type QueueSummaryRow = {
   stage: string;
   /** 构建进度，例如「1/2 个架构完成」；还没开始构建时为空。 */
   progress: string | null;
+  /** 同上进度的百分比（0–100）；没有作业时为空。页面画进度条用它。 */
+  progressPercent: number | null;
   /** 耗时（毫秒），页面用 `formatDuration` 显示。 */
   durationMs: number | null;
 };
@@ -89,6 +93,8 @@ export type ProjectOverviewRow = {
   weekReleaseCount: number;
   /** 最近一次提测的版本；从没提测过时为空。 */
   latestVersion: string | null;
+  /** 最近一次提测的状态码；从没提测过时为空。页面按它选 pill 的配色档位。 */
+  latestStatus: string | null;
   /** 最近一次提测的状态中文名；从没提测过时为空。 */
   latestStatusLabel: string | null;
   latestAt: Date | null;
@@ -248,6 +254,7 @@ export async function loadDashboard(
     recentReleases: recentReleases.map((release) => ({
       id: release.id,
       version: release.version,
+      status: release.status,
       statusLabel: releaseStatusLabel(release.status),
       sourceLabel: releaseSourceLabel(release.source),
       projectName: release.project.name,
@@ -264,6 +271,7 @@ export async function loadDashboard(
           packageName: task.packageName,
           stage: task.stage,
           progress: task.progress,
+          progressPercent: task.progressPercent,
           durationMs: task.durationMs,
         })),
       )
@@ -277,6 +285,7 @@ export async function loadDashboard(
         name: project.name,
         weekReleaseCount: weekCountByProject.get(project.id) ?? 0,
         latestVersion: latest?.version ?? null,
+        latestStatus: latest?.status ?? null,
         latestStatusLabel: latest === null ? null : releaseStatusLabel(latest.status),
         latestAt: latest?.at ?? null,
       };
