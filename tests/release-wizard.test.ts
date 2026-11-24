@@ -17,6 +17,11 @@ import { createElement, Fragment, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import test from "node:test";
 
+import {
+  AppRouterContext,
+  type AppRouterInstance,
+} from "next/dist/shared/lib/app-router-context.shared-runtime";
+
 import { CreatedRelease } from "../app/(app)/releases/new/createdRelease";
 import { StepConfirm, type ConfirmRow } from "../app/(app)/releases/new/stepConfirm";
 import { StepProject } from "../app/(app)/releases/new/stepProject";
@@ -27,9 +32,29 @@ import type { ReleaseProjectChoice } from "../lib/releases";
 
 const SHA = "63d0d62ac7afc3f0b4c5d6e7f8091a2b3c4d5e6f";
 
+/**
+ * 外壳的 `.modal` 关闭按钮要 `useRouter`（MKACG-972）；服务端渲染时给它一个不动的路由器
+ * 就能渲染出来。三个步骤组件本身不碰路由器，多包一层不影响它们的断言。
+ */
+const ROUTER: AppRouterInstance = {
+  back() {},
+  forward() {},
+  refresh() {},
+  push() {},
+  replace() {},
+  prefetch() {},
+  bfcacheId: "test",
+};
+
 /** 把一段子元素渲染成静态 HTML，断言都对着渲染结果做，不对着 React 元素内部结构做。 */
 function htmlOf(node: ReactNode): string {
-  return renderToStaticMarkup(createElement(Fragment, null, node));
+  return renderToStaticMarkup(
+    createElement(
+      AppRouterContext.Provider,
+      { value: ROUTER },
+      createElement(Fragment, null, node),
+    ),
+  );
 }
 
 function project(overrides: Partial<ReleaseProjectChoice> = {}): ReleaseProjectChoice {

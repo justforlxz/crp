@@ -10,11 +10,16 @@
  * 为什么用客户端组件而不是直接放表单：二次确认要一次点击才展开，这需要一点状态；
  * 这里是页面里唯一需要状态的地方，不引入别的机制。
  *
+ * 确认框用原型的 `.modal` 结构（MKACG-972）：外层 + 头部 + 主体 + 底部操作区。
+ * 点遮罩、点右上角 ×、按 Esc、点「取消」都收起确认框，行为与改版前一致。
+ *
  * 只有「能不能放弃」由页面判定，这个组件不重复判断：页面在不能放弃时根本不会渲染它。
- * 按钮用红色描边（`.btn-danger-outline`），与日常动作区分；确认框用警示底色，不是红色实心块。
+ * 按钮用红色描边（`.btn-danger-outline`），与日常动作区分；确认框的正文写清后果，不是红色实心块。
  */
 
 import { useState } from "react";
+
+import { Modal } from "@/components/modal";
 
 export function AbandonTopicForm({
   releaseId,
@@ -50,10 +55,23 @@ export function AbandonTopicForm({
   }
 
   return (
-    <div className="alert alert--warn" role="alert">
-      <p>
-        确认放弃 Topic <code>{topicId}</code>「{topicName}」？
-      </p>
+    <Modal
+      className="modal"
+      title={`确认放弃 Topic ${topicId}`}
+      onClose={() => setConfirming(false)}
+      footer={
+        <form action={action}>
+          <input type="hidden" name="releaseId" value={releaseId} />
+          <button type="button" className="btn btn-secondary" onClick={() => setConfirming(false)}>
+            取消
+          </button>{" "}
+          <button type="submit" className="btn btn-danger">
+            确认放弃提测主题
+          </button>
+        </form>
+      }
+    >
+      <p>「{topicName}」放弃后不可撤销，影响范围如下：</p>
       <ul>
         <li>Topic ID：<code>{topicId}</code></li>
         <li>主题名：{topicName}</li>
@@ -62,17 +80,6 @@ export function AbandonTopicForm({
         <li>不可撤销。</li>
         <li>本操作不删除 CRP 上的 Release，只把主题标记为已放弃。</li>
       </ul>
-      <form action={action}>
-        <input type="hidden" name="releaseId" value={releaseId} />
-        <button type="submit" className="btn btn-danger">
-          确认放弃提测主题
-        </button>
-      </form>
-      <p>
-        <button type="button" className="btn btn-secondary" onClick={() => setConfirming(false)}>
-          取消
-        </button>
-      </p>
-    </div>
+    </Modal>
   );
 }

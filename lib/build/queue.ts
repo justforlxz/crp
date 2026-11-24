@@ -9,6 +9,7 @@
  */
 
 import { prisma } from "../db";
+import { sortByDependencies } from "../packages/dependencyGraph";
 import {
   listPollEvents,
   loadLatestDispatchFailures,
@@ -64,6 +65,15 @@ export type QueueReleaseView = {
   workProgressSyncedAt: Date | null;
   /** 依赖拓扑：`from` 是本提测内的上游包，`to` 是下游包。 */
   edges: Array<{ from: string; to: string }>;
+  /**
+   * 依赖拓扑顺序：上游在前，页面按它铺 `.dep-flow` 的序号。
+   *
+   * 与投递层同一个排序实现（`sortByDependencies`），所以页面上的先后就是实际投递的先后，
+   * 不是另算一套。
+   */
+  order: string[];
+  /** 依赖环（首尾同名）；没有环为 `null`。有环时 `order` 的尾部不是可投递顺序。 */
+  cycle: string[] | null;
   tasks: QueueTaskRow[];
 };
 
@@ -288,6 +298,13 @@ export function buildQueueView(data: BuildQueueSnapshot): BuildQueueView {
       } satisfies QueueTaskRow;
     });
 
+    // 依赖顺序与投递层共用同一个排序：`sortByDependencies` 的边是「下游 → 上游」，
+    // 而队列页的 `edges` 是「上游 → 下游」，所以这里翻一次。
+    const { order, cycle } = sortByDependencies(
+      release.snapshots.map((snapshot) => snapshot.packageName),
+      edges.map((edge) => ({ from: edge.to, to: edge.from })),
+    );
+
     return {
       releaseId: release.id,
       version: release.version,
@@ -298,6 +315,8 @@ export function buildQueueView(data: BuildQueueSnapshot): BuildQueueView {
       workProgressLabel: release.crpWorkProgressLabel,
       workProgressSyncedAt: release.crpWorkProgressSyncedAt,
       edges,
+      order,
+      cycle,
       tasks,
     } satisfies QueueReleaseView;
   });

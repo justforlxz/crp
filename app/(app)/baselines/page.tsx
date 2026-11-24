@@ -8,6 +8,7 @@
  * `IsCheck` 原样展示，不据此过滤分支。
  */
 import { PageShell } from "@/components/page-shell";
+import { Toast } from "@/components/toast";
 import { getLatestListRun, listBaselines, listSyncRuns } from "@/lib/baselines";
 import type { BaselineListItem } from "@/lib/baselines";
 
@@ -72,16 +73,15 @@ export default async function BaselinesPage({ searchParams }: BaselinesPageProps
         挑选时参考描述与 <code>IsCheck</code>；本平台不按分支名推导类型，也不过滤分支。
       </p>
 
-      {query.error === undefined ? null : (
-        <p className="alert alert--error" role="alert">
-          操作失败：{query.error}
-        </p>
-      )}
-      {query.notice === undefined ? null : (
-        <p className="alert alert--info" role="status">
-          {query.notice}
-        </p>
-      )}
+      <Toast
+        className="toast alert alert--error"
+        role="alert"
+        message={query.error === undefined ? null : `操作失败：${query.error}`}
+      />
+      <Toast
+        className="toast alert alert--info"
+        message={query.notice === undefined ? null : query.notice}
+      />
 
       <h2>分支列表同步</h2>
       {latestListRun === null ? (
@@ -155,6 +155,20 @@ export default async function BaselinesPage({ searchParams }: BaselinesPageProps
           </table>
         </div>
       )}
+
+      <div className="tip">
+        <div className="tip-icon" aria-hidden="true">
+          ⓘ
+        </div>
+        <div>
+          <b>基线只用来被项目选中</b>
+          <p>
+            基线就是 CRP 的一条交付分支，项目从这份清单里挑一个作为目标基线，提测时自动带上，不再单独选择。
+            <code>IsCheck=1</code> 表示这条分支已停止维护，仍可选但不建议；「投递架构」为空说明还没同步成功，
+            这时提测投递会被拒绝 —— 它不会退回任何默认架构。同步失败时保留上一次成功的数据，失败原因记在下面的同步记录里。
+          </p>
+        </div>
+      </div>
 
       <h2>同步记录（最近 20 条）</h2>
       {runs.length === 0 ? (

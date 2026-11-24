@@ -1332,6 +1332,17 @@ test("AC1 取数与组装拆开后，队列视图逐字段不变，四项组成�
       [pkgName("c"), "等待依赖", null, null],
     ],
   );
+
+  // MKACG-972 AC2：进度条的比例取自「已完成架构 / 全部架构」，2 个架构成功 1 个就是 50%；
+  // 还没开始构建的包没有作业，比例为空，页面就不画进度条（不写 0%）。
+  assert.deepEqual(
+    release.tasks.map((task) => task.progressPercent),
+    [50, null, null],
+  );
+
+  // MKACG-972 AC3：`.dep-flow` 的序号来自依赖拓扑序，上游在前，与投递层同一个排序实现。
+  assert.deepEqual(release.order, [pkgName("a"), pkgName("b"), pkgName("c")]);
+  assert.equal(release.cycle, null);
   assert.equal(oneShot.events[0]?.releaseVersion, "a14-split");
   assert.equal(oneShot.events[0]?.condition, "周期到期");
   assert.equal(oneShot.generatedAt.getTime(), now.getTime());

@@ -20,7 +20,11 @@
  */
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+
+import { Modal } from "@/components/modal";
+import { Toast } from "@/components/toast";
 
 import { validateReleaseTag } from "@/lib/integrations/crp/tag";
 import type { PackageRefresh, ReleaseBlocker, ReleaseProjectChoice } from "@/lib/releases";
@@ -64,6 +68,7 @@ function tagErrorOf(selection: Selection): string | null {
 }
 
 export function ReleaseWizard({ projects }: { projects: ReleaseProjectChoice[] }) {
+  const router = useRouter();
   const [step, setStep] = useState<Step>(1);
   const [managerId, setManagerId] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -334,17 +339,24 @@ export function ReleaseWizard({ projects }: { projects: ReleaseProjectChoice[] }
   }
 
   return (
-    <>
-      <p>
-        三步：选项目 → 检查仓库更新 → 确认提交。提交后每个软件包的分支、Commit 与三个版本号
-        会固化成快照，之后改项目配置也不会改变这次提测的记录。
-      </p>
-      <p>
-        <Link href="/projects">返回项目列表</Link>
-      </p>
-
-      {error === null ? null : <p className="alert alert--error" role="alert">操作失败：{error}</p>}
-      {notice === null ? null : <p className="alert alert--info" role="status">{notice}</p>}
+    <Modal
+      className="modal wide"
+      title="创建提测"
+      onClose={() => router.push("/releases")}
+      footer={
+        <p className="small-note">
+          三步：选项目 → 检查仓库更新 → 确认提交。提交后每个软件包的分支、Commit 与三个版本号
+          会固化成快照，之后改项目配置也不会改变这次提测的记录。
+          <Link href="/projects">返回项目列表</Link>
+        </p>
+      }
+    >
+      <Toast
+        className="toast alert alert--error"
+        role="alert"
+        message={error === null ? null : `操作失败：${error}`}
+      />
+      <Toast className="toast alert alert--info" message={notice} />
 
       <StepProject
         active={step === 1}
@@ -403,6 +415,6 @@ export function ReleaseWizard({ projects }: { projects: ReleaseProjectChoice[] }
           onSubmit={() => void submit()}
         />
       ) : null}
-    </>
+    </Modal>
   );
 }

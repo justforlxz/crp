@@ -73,6 +73,20 @@ export default async function PackagesPage() {
           </table>
         </div>
       )}
+
+      <div className="tip">
+        <div className="tip-icon" aria-hidden="true">
+          ⓘ
+        </div>
+        <div>
+          <b>依赖只在这里维护一次</b>
+          <p>
+            软件包的仓库路径、默认分支与上游依赖都记在软件包记录上，项目只按清单引用，不重复配置。
+            上游依赖决定提测时的投递先后：上游没构建成功，下游会一直等；依赖成环保存会被拒绝。
+            列表里的「被依赖」「引用项目」两列是反查结果，改依赖前先看它们，避免动到别人在用的包。
+          </p>
+        </div>
+      </div>
     </PageShell>
   );
 }

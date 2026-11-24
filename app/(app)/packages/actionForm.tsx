@@ -5,10 +5,16 @@
  *
  * 唯一的客户端组件：表单本身还是普通的 HTML 表单，这里只负责把服务端动作返回的
  * 错误贴回页面上，并在提交期间禁用按钮。依赖成环的拒绝信息就是靠它显示出来的。
+ *
+ * 反馈走原型的全局 `.toast`（MKACG-972）：成功与失败都用轻提示，数秒后自己消失，
+ * 不再把一行常驻的 `.alert` 塞在表单里。视觉沿用 `.alert` 的配色，`.toast` 只表达
+ * 「这条会消失」。
  */
 
 import { useActionState } from "react";
 import type { ReactNode } from "react";
+
+import { Toast } from "@/components/toast";
 
 import type { ActionState } from "./actionState";
 
@@ -34,8 +40,12 @@ export function ActionForm({
   return (
     <form action={formAction}>
       {children}
-      {state?.error ? <p className="alert alert--error" role="alert">{state.error}</p> : null}
-      {state?.message ? <p className="alert alert--info" role="status">{state.message}</p> : null}
+      <Toast
+        className="toast alert alert--error"
+        role="alert"
+        message={state?.error ?? null}
+      />
+      <Toast className="toast alert alert--info" message={state?.message ?? null} />
       <button
         type="submit"
         className={variant === "danger" ? "btn btn-danger" : "btn btn-primary"}

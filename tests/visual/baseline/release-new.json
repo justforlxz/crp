@@ -21,13 +21,13 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "984px",
+          "width": "934px",
           "height": "22.3906px"
         },
         "box": {
-          "x": 264,
-          "y": 175.17,
-          "width": 984,
+          "x": 289,
+          "y": 175.39,
+          "width": 934,
           "height": 22.39
         }
       }
@@ -47,13 +47,13 @@
           "border": "1px solid rgb(134, 140, 149)",
           "borderRadius": "8px",
           "boxShadow": "none",
-          "width": "984px",
+          "width": "934px",
           "height": "40px"
         },
         "box": {
-          "x": 264,
-          "y": 234.36,
-          "width": 984,
+          "x": 289,
+          "y": 234.58,
+          "width": 934,
           "height": 40
         }
       }
@@ -73,13 +73,13 @@
           "border": "1px solid rgb(134, 140, 149)",
           "borderRadius": "8px",
           "boxShadow": "none",
-          "width": "984px",
+          "width": "934px",
           "height": "40px"
         },
         "box": {
-          "x": 264,
-          "y": 311.16,
-          "width": 984,
+          "x": 289,
+          "y": 311.38,
+          "width": 934,
           "height": 40
         }
       }
