@@ -1273,6 +1273,444 @@ a.btn:hover {
   margin-top: 0;
 }
 
+/* ---------- 原型模块（MKACG-969 移植） ---------- */
+
+/*
+ * 这一节补的是 `.agents/spec/design/modules.json` 里还缺的 14 个原型模块（design.md 第七节）：
+ * `.manager-grid` `.manager-card` `.project-grid` `.project-card` `.project-software-chips`
+ * `.dep-flow` `.dep-row` `.summary-strip` `.summary-cell` `.timeline` `.tl-item` `.risk-box`
+ * `.modal` `.toast`。模块名与 DOM 嵌套逐字来自 `prototype.html`，不改名、不合并、不降级。
+ *
+ * 与 MKACG-964 那一节同一套做法，三处按 design.md 统一：颜色换成本单定稿 token（原型里
+ * 不达标的灰与 pill 色见 design.md 5.3）、字号抬到 12px 下限（原型里 9–11px 的字低于
+ * 第十节的底线）、间距收进 4.2 的七档刻度。原型里的 `animation` / `transition` 不搬：
+ * 第九节只保留按下反馈与焦点环，不做动效。
+ *
+ * 顺序照第七节：布局容器 → 卡片 → 队列 → 提示 → 时间线 → 弹层。
+ */
+
+/* 网格：经理卡 4 列、项目卡 2 列。 */
+.manager-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-3) 0 var(--space-1);
+}
+
+.project-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* 概要条：提测详情页顶部 4 格，格与格之间一条竖线。 */
+.summary-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  padding: var(--space-4) 0;
+  margin-bottom: var(--space-4);
+}
+
+.summary-cell {
+  padding: 0 var(--space-4);
+  border-right: 1px solid var(--color-line);
+}
+
+.summary-cell:first-child {
+  padding-left: 2px;
+}
+
+.summary-cell:last-child {
+  border-right: 0;
+}
+
+.summary-cell small {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.summary-cell b {
+  font-size: var(--font-size-xs);
+  color: var(--color-text);
+}
+
+/* 项目经理卡：头像 + 姓名/工作区 + 项目数。 */
+.manager-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.manager-avatar {
+  width: var(--space-6);
+  height: var(--space-6);
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-card);
+  background: var(--color-primary-weak);
+  color: var(--color-info);
+  font-weight: 700;
+}
+
+.manager-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  flex: 1;
+}
+
+.manager-card-main b {
+  font-size: var(--font-size-sm);
+}
+
+.manager-card-main small {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* 项目卡：类型图标 + 名称 → 经理/工作区 → 三项 meta → 软件清单 chips。 */
+.project-card {
+  padding: var(--space-4);
+}
+
+.project-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.project-icon {
+  width: var(--space-6);
+  height: var(--space-6);
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-control);
+  background: var(--color-primary-weak);
+  color: var(--color-info);
+  font-weight: 700;
+}
+
+.project-card-top > div:nth-child(2) {
+  flex: 1;
+}
+
+.project-card h3 {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.project-card p {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.project-card .manager {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.project-meta {
+  display: flex;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-line);
+}
+
+.project-meta span {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.project-meta b {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text);
+}
+
+.project-actions {
+  display: flex;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+/* 软件清单 chips：顺序号 + 包名 + 依赖数，`.more-chip` 是「还有 N 个」。 */
+.project-software-summary {
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+}
+
+.project-software-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.project-software-summary-head b {
+  font-size: var(--font-size-xs);
+  color: var(--color-text);
+}
+
+.project-software-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.project-software-chips span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-chip);
+  font-size: var(--font-size-xs);
+  color: var(--color-text);
+}
+
+.project-software-chips i {
+  font-style: normal;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.project-software-chips span small {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.project-software-chips .more-chip {
+  background: var(--color-primary-weak);
+  color: var(--color-info);
+}
+
+/*
+ * 依赖拓扑：序号节点 + 软件名/上游说明 + 状态。
+ * 行与行之间的竖线要靠 27px 节点的圆心定位，13/33/14 三个像素值跟着节点走，不收进间距刻度。
+ */
+.dep-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.dep-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  position: relative;
+  padding: var(--space-2) 0;
+}
+
+.dep-row:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 33px;
+  width: 1px;
+  height: 14px;
+  background: var(--color-line);
+}
+
+.dep-num {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-control);
+  background: var(--color-primary-weak);
+  color: var(--color-info);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.dep-num.done {
+  background: var(--color-success-weak);
+  color: var(--color-success);
+}
+
+.dep-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.dep-info b {
+  display: block;
+  font-size: var(--font-size-xs);
+}
+
+.dep-info small {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.dep-state {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* 风险标记框：提测详情里「这一版带风险」的提示。 */
+.risk-box {
+  padding: var(--space-3);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-control);
+  background: var(--color-danger-weak);
+}
+
+.risk-box b {
+  font-size: var(--font-size-xs);
+  color: var(--color-danger);
+}
+
+.risk-box p {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-base);
+  color: var(--color-text-muted);
+}
+
+/* 版本关系时间线：圆点 + 内容，圆点之间一条竖线。竖线的 5/12 跟着 11px 圆点走。 */
+.timeline {
+  padding-left: var(--space-1);
+}
+
+.tl-item {
+  display: flex;
+  gap: var(--space-2);
+  position: relative;
+  padding-bottom: var(--space-4);
+}
+
+.tl-item:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 12px;
+  bottom: 0;
+  width: 1px;
+  background: var(--color-line);
+}
+
+.tl-dot {
+  width: 11px;
+  height: 11px;
+  margin-top: 2px;
+  border: 2px solid var(--color-surface);
+  border-radius: var(--radius-pill);
+  background: var(--color-neutral-weak);
+  box-shadow: 0 0 0 1px var(--color-neutral-weak);
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.tl-dot.blue {
+  background: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.tl-dot.green {
+  background: var(--color-success);
+  box-shadow: 0 0 0 1px var(--color-success);
+}
+
+.tl-content {
+  flex: 1;
+}
+
+.tl-content b {
+  display: block;
+  font-size: var(--font-size-xs);
+}
+
+.tl-content small {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/*
+ * 弹窗：头、体、脚，`.wide` 是 1120px 的宽版（原型里后面那条声明覆盖了前面的 800px）。
+ * 遮罩层 `.modal-backdrop` 不搬：它的半透明底色不在 design.md 5.1 的色板里，等有页面
+ * 真正用弹窗时再和色板一起定。
+ */
+.modal {
+  width: min(640px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-raised);
+}
+
+.modal.wide {
+  width: min(1120px, 100%);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.modal-head h3 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+.close {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xl);
+}
+
+.modal-body {
+  padding: var(--space-5);
+}
+
+.modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--color-line);
+}
+
+/* 轻提示：右下角一条深色小条，带 `.show` 时可见。 */
+.toast {
+  position: fixed;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  z-index: 50;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-sidebar);
+  color: var(--color-text-inverse);
+  font-size: var(--font-size-xs);
+  box-shadow: var(--shadow-card);
+  opacity: 0;
+  transform: translateY(var(--space-2));
+  pointer-events: none;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 /* ---------- 响应式 ---------- */
 
 /*
@@ -1303,6 +1741,11 @@ a.btn:hover {
   }
 
   .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* 经理卡在这一档 4 列 → 2 列（原型 `@media(max-width:1100px)`）。 */
+  .manager-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1382,5 +1825,18 @@ a.btn:hover {
   .stat-grid,
   .stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /*
+   * 概要条在这一档 4 格 → 2 格，第 2 格不再画竖线（原型 `@media(max-width:720px)`）。
+   * 4 格各带 16px 内边距，375 下装不下 `eagle-1072` 这种等宽串，会顶出整页横滚。
+   */
+  .summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+
+  .summary-cell:nth-child(2) {
+    border-right: 0;
   }
 }
