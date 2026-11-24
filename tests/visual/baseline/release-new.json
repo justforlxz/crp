@@ -21,13 +21,13 @@
           "border": "0px none rgb(32, 43, 60)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "934px",
+          "width": "886px",
           "height": "22.3906px"
         },
         "box": {
-          "x": 289,
-          "y": 175.39,
-          "width": 934,
+          "x": 313,
+          "y": 248.39,
+          "width": 886,
           "height": 22.39
         }
       }
@@ -47,13 +47,13 @@
           "border": "1px solid rgb(134, 140, 149)",
           "borderRadius": "8px",
           "boxShadow": "none",
-          "width": "934px",
+          "width": "886px",
           "height": "40px"
         },
         "box": {
-          "x": 289,
-          "y": 234.58,
-          "width": 934,
+          "x": 313,
+          "y": 307.58,
+          "width": 886,
           "height": 40
         }
       }
@@ -73,13 +73,13 @@
           "border": "1px solid rgb(134, 140, 149)",
           "borderRadius": "8px",
           "boxShadow": "none",
-          "width": "934px",
+          "width": "886px",
           "height": "40px"
         },
         "box": {
-          "x": 289,
-          "y": 311.38,
-          "width": 934,
+          "x": 313,
+          "y": 384.38,
+          "width": 886,
           "height": 40
         }
       }

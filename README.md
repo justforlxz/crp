@@ -274,7 +274,7 @@ lib/releases/abandon.ts(209,9): error TS2322: Type '"abandon_topic"' is not assi
 
 **`style`**（样式门禁）：跑在 `mcr.microsoft.com/playwright:v1.65.1-noble` 里 —— 与基线生成用的是同一个镜像，浏览器和字体都随镜像固定，不需要另外下载或缓存；步骤是 `pnpm install` → `pnpm db:migrate` → `pnpm db:seed` → `pnpm test:style`。样式改坏时这个 job 失败、PR 标红；`--update` 在 CI 里被脚本拒绝。
 
-**`模块对照`**（模块清单比对）：`pnpm install` → `pnpm check:modules --report`。**暂不阻断** —— 模块移植还没做完，默认模式必然退 1，现在就让 job 失败会让 CI 常红；`--report` 只报告、退出码恒为 0，日志里仍有完整清单。模块移植完成后去掉 `--report`，缺失才变成失败。
+**`模块对照`**（模块清单比对）：`pnpm install` → `pnpm check:modules`。**阻断** —— 模块移植已经收口（MKACG-969/970/971/972 合并后 9 个页面与全局模块齐备），有缺失即退出码 1，PR 直接标红。要临时只看报告，本地加 `--report`：它输出完全相同的清单，但退出码恒为 0。
 
 - `checks` 的 Node 用 `22.x`，与 `package.json` 的 `engines.node` 同一条版本线；pnpm 的版本由 `package.json` 的 `packageManager` 决定（当前 `pnpm@9.15.9`），由 `pnpm/action-setup` 安装，不在 workflow 里重复写版本。
 - `style` job 在容器里跑，Node 来自镜像，pnpm 由 job 按 `package.json` 的 `packageManager` 装上（版本只有这一个来源）；容器用 `--network` 默认桥接，靠 service 名 `postgres` 连库。
@@ -313,11 +313,11 @@ scripts/style-check/container.sh --update   # 重写基线，只能人显式发�
 
 ```bash
 pnpm check:modules            # 有缺失：逐页列出来，退出码 1（用来阻断）
-pnpm check:modules --report   # 输出完全相同，但退出码恒为 0（CI 现在用这一档）
+pnpm check:modules --report   # 输出完全相同，但退出码恒为 0（临时观察用，CI 不用这一档）
 pnpm check:modules --help     # 这条差别也写在帮助里
 ```
 
-两种模式的唯一区别是退出码，报告内容一个字不差；`--report` 用来在模块还没移植完时先观察。
+两种模式的唯一区别是退出码，报告内容一个字不差。`--report` 留给本地临时观察用；CI 用的是默认模式，缺失即阻断。
 
 判定口径只有一条：**只认 `className` 上下文里的字符串**。
 
@@ -391,7 +391,7 @@ components/          跨页面复用的服务端组件：build-status.tsx（提�
 lib/projects/        项目经理与项目：输入校验、清单排序、读写与业务规则
 lib/releases/        创建提测：阻断条件、快照组装、输入校验与写库（Gerrit 读取见 gerrit.ts）
 scripts/             接真实外部系统的验证脚本，不经 CI 执行
-scripts/check-modules.ts  模块对照：按 modules.json 逐页比对实现的 className（CI 里以 --report 跑）
+scripts/check-modules.ts  模块对照：按 modules.json 逐页比对实现的 className（CI 里以默认模式跑，缺失即阻断）
 scripts/style-check/ 样式门禁：L1 静态检查、L2/L3 取样与比对、`--update`、门禁镜像入口
 .agents/spec/design/   原型（prototype.html）、设计规范与模块清单（modules.json）
 prisma/              schema、migrations、seed
