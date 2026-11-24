@@ -152,9 +152,9 @@ MKACG-970 起，提测详情按原型移植模块：概要从定义列表换成 
 | `queue.intro` | 页面说明段落 | 1 | 入基线 |
 | `queue.workspace-switcher` | 工作区切换行 | 1 | 入基线 |
 | `queue.stats` | 概览四张统计卡 | 1 | 入基线 |
-| `queue.refresh` | 「立即轮询」按钮所在表单 | 1 | 入基线 |
-| `queue.topo` | 「依赖拓扑」标题 | 1 | 入基线 |
-| `queue.task-table` | 任务列表数据表 | 1 | 入基线（取样工作区 `system-apps`） |
+| `queue.refresh` | 页头的「立即轮询」按钮所在表单 | 1 | 入基线 |
+| `queue.topo` | 「当前任务依赖拓扑」整块面板（`.card panel`，内含 `.dep-flow`） | 1 | 入基线 |
+| `queue.task-list` | 队列任务列表容器（`.queue-list`，内含 `.queue-item`） | 1 | 入基线（取样工作区 `system-apps`） |
 | `queue.event-table` | 调度事件流水数据表 | 0 | 条件锚点：有调度记录才出现，种子没有 |
 
 软件包 `/packages`

@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { PageShell } from "@/components/page-shell";
+import { Toast } from "@/components/toast";
 import { listWebhookEndpoints } from "@/lib/webhook/endpoints";
 import { isWebhookEventType, WEBHOOK_EVENT_LABELS, WEBHOOK_EVENT_TYPES } from "@/lib/webhook/events";
 import { listRecentDeliveries } from "@/lib/webhook/service";
@@ -79,16 +80,15 @@ export default async function WebhooksPage({ searchParams }: WebhooksPageProps) 
         ))}
       </p>
 
-      {query.error === undefined ? null : (
-        <p className="alert alert--error" role="alert">
-          操作失败：{query.error}
-        </p>
-      )}
-      {query.notice === undefined ? null : (
-        <p className="alert alert--info" role="status">
-          {query.notice}
-        </p>
-      )}
+      <Toast
+        className="toast alert alert--error"
+        role="alert"
+        message={query.error === undefined ? null : `操作失败：${query.error}`}
+      />
+      <Toast
+        className="toast alert alert--info"
+        message={query.notice === undefined ? null : query.notice}
+      />
 
       <h2>新建端点</h2>
       <form action={createEndpointAction}>
@@ -200,6 +200,19 @@ export default async function WebhooksPage({ searchParams }: WebhooksPageProps) 
         </div>
       )}
 
+      <div className="tip">
+        <div className="tip-icon" aria-hidden="true">
+          ✦
+        </div>
+        <div>
+          <b>事件订阅与签名校验</b>
+          <p>
+            端点只收到它订阅的事件类型：停用的端点一条都不投，改完订阅要保存后下一条事件才生效。
+            「发送测试事件」只验证连通性，不改变端点状态。接收方要按 <code>docs/WEBHOOK.md</code> 的算法
+            用签名密钥复算一遍请求头，再决定是否采信；密钥保存后页面与日志都不再回显，忘了只能换一把新的重配。
+          </p>
+        </div>
+      </div>
       <h2>投递日志（最近 20 条）</h2>
       {deliveries.length === 0 ? (
         <p className="empty">还没有投递记录。</p>
