@@ -12,6 +12,7 @@ import { NextResponse } from "next/server";
 
 import { requireRole } from "@/lib/auth/server";
 import { errorJson } from "@/lib/auth/http";
+import { credentialErrorResponse } from "@/lib/credentials/http";
 import {
   createRelease,
   findReleaseProjectRef,
@@ -95,6 +96,14 @@ export async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error) {
+    // 没配 Gerrit 账号时 `createRelease` 在读代码版本那一步就会抛出来，不会写任何库；
+    // 这里给出「去我的账号配置」而不是一个 500（CRED-6）。
+    const credentialResponse = credentialErrorResponse(error);
+
+    if (credentialResponse !== null) {
+      return credentialResponse;
+    }
+
     if (error instanceof ReleaseError) {
       return errorJson(error.status, releaseErrorCode(error), error.message);
     }

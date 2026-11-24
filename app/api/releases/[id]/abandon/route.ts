@@ -19,6 +19,7 @@
 import { NextResponse } from "next/server";
 
 import { errorJson } from "@/lib/auth/http";
+import { credentialErrorResponse } from "@/lib/credentials/http";
 import { requireRole } from "@/lib/auth/server";
 import { findReleaseScope } from "@/lib/build";
 import { CrpError } from "@/lib/integrations/crp";
@@ -101,8 +102,16 @@ export async function POST(
   }
 
   try {
-    return NextResponse.json(abandonedJson(await abandonReleaseTopic(id, auth.accountId)));
+    return NextResponse.json(
+      abandonedJson(await abandonReleaseTopic(id, auth.accountId, { actorUserId: auth.accountId })),
+    );
   } catch (error) {
+    const credentialResponse = credentialErrorResponse(error);
+
+    if (credentialResponse !== null) {
+      return credentialResponse;
+    }
+
     if (error instanceof ReleaseError) {
       return releaseErrorResponse(error);
     }

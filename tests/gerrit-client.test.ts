@@ -1,6 +1,9 @@
+import "dotenv/config";
+
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { CredentialMissingError } from "../lib/credentials";
 import {
   createGerritClient,
   encodeGitilesRef,
@@ -240,7 +243,7 @@ test("凭据被拒（302 跳登录页）时判定为认证错误，且错误信�
     (error: unknown) => {
       assert.ok(error instanceof GerritAuthError);
       assert.ok(!error.message.includes(config.httpPassword));
-      assert.match(error.message, /GERRIT_HTTP_PASSWORD/);
+      assert.match(error.message, /我的账号/);
       return true;
     },
   );
@@ -267,30 +270,15 @@ test("响应不是 JSON 时抛出 GerritError，不把原文当数据返回", as
   await assert.rejects(() => client.listBranches("deepin-kde/kwin"), GerritError);
 });
 
-test("缺少 Gerrit 凭据时明确指出缺失的变量名", () => {
-  assert.throws(
-    () => readGerritConfig({}),
+test("按人读配置：这个人没配 Gerrit 凭据时抛 CredentialMissingError，消息指向配置页", async () => {
+  await assert.rejects(
+    () => readGerritConfig("00000000-0000-4000-8000-000000000986"),
     (error: unknown) => {
-      assert.ok(error instanceof GerritError);
-      assert.match(error.message, /GERRIT_USERNAME/);
-      assert.match(error.message, /GERRIT_HTTP_PASSWORD/);
+      assert.ok(error instanceof CredentialMissingError);
+      assert.equal(error.kind, "gerrit");
+      assert.match(error.message, /我的账号/);
+      assert.match(error.message, /\/settings\/credentials/);
       return true;
-    },
-  );
-});
-
-test("配置齐全时去掉地址结尾斜杠，默认超时 30 秒", () => {
-  assert.deepEqual(
-    readGerritConfig({
-      GERRIT_BASE_URL: "https://gerrit.uniontech.com///",
-      GERRIT_USERNAME: " demo ",
-      GERRIT_HTTP_PASSWORD: " secret ",
-    }),
-    {
-      baseUrl: "https://gerrit.uniontech.com",
-      username: "demo",
-      httpPassword: "secret",
-      timeoutMs: 30_000,
     },
   );
 });

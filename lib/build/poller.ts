@@ -80,6 +80,11 @@ export type BuildPollOptions = {
   trigger: BuildPollTrigger;
   /** 注入用，测试替换网络实现。 */
   network?: BuildNetwork;
+  /**
+   * 这次轮询以谁的身份调 CRP。前台手动刷新传当前登录用户；定时任务不传，
+   * 按每条提测的创建者（`.agents/spec/product/credentials.md` 第六节）。
+   */
+  actorUserId?: string;
   /** 单轮最多轮询多少条提测，防止一次拉太多把请求拖过超时。 */
   limit?: number;
 };
@@ -212,7 +217,10 @@ async function syncWorkProgress(
     };
   }
 
-  const { clients } = resolveClients(release.id, { network: options.network });
+  const { clients } = await resolveClients(release.id, {
+    network: options.network,
+    actorUserId: options.actorUserId,
+  });
 
   try {
     const workflow = await clients.crp.getTopicWorkflow(topicId);
@@ -347,7 +355,10 @@ async function pollOne(
   let pollRateLimited = false;
 
   try {
-    polled = await pollReleaseBuilds(release.id, { network: options.network });
+    polled = await pollReleaseBuilds(release.id, {
+      network: options.network,
+      actorUserId: options.actorUserId,
+    });
   } catch (error) {
     pollError = errorSummary(error);
     pollRateLimited = error instanceof CrpRateLimitedError;

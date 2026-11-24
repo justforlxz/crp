@@ -10,7 +10,7 @@
  *   node --remote-debugging-port=9222 &   # 任意 Chrome / Chromium
  *   CHROME_CDP_WS=ws://127.0.0.1:9222/devtools/browser/<id> \
  *   CRP_BASE_URL=http://127.0.0.1:3000 \
- *   CRP_EMAIL=you@example.com CRP_PASSWORD=... \
+ *   VERIFY_EMAIL=you@example.com VERIFY_PASSWORD=... \
  *   pnpm tsx scripts/verify-page-layout.ts --screenshots ~/.cache/crp/page-layout
  *
  * 判定：每页 `document.scrollingElement.scrollWidth <= clientWidth`，有一页不满足就退出码 1。
@@ -25,8 +25,10 @@ import { join } from "node:path";
 
 const BASE_URL = (process.env.CRP_BASE_URL ?? "http://127.0.0.1:3000").replace(/\/$/, "");
 const CDP_WS = process.env.CHROME_CDP_WS ?? "";
-const EMAIL = process.env.CRP_EMAIL ?? "";
-const PASSWORD = process.env.CRP_PASSWORD ?? "";
+// 这两个是**平台登录**用的账号，不是 CRP 凭据：脚本要先用平台账号登录才能量受保护页面。
+// 名字里不带 CRP 前缀，避免被误当成 CRP 账号（凭据按人存放之后它们早已不是）。
+const EMAIL = process.env.VERIFY_EMAIL ?? "";
+const PASSWORD = process.env.VERIFY_PASSWORD ?? "";
 
 /** 三档宽度：手机、平板竖屏、桌面。 */
 const WIDTHS: ReadonlyArray<number> = [375, 768, 1280];
@@ -322,7 +324,7 @@ async function login(): Promise<{
   });
 
   if (!response.ok) {
-    throw new Error(`登录失败（HTTP ${response.status}），检查 CRP_EMAIL / CRP_PASSWORD`);
+    throw new Error(`登录失败（HTTP ${response.status}），检查 VERIFY_EMAIL / VERIFY_PASSWORD`);
   }
 
   const raw = response.headers.getSetCookie();
@@ -349,7 +351,7 @@ async function main(): Promise<void> {
   }
 
   if (EMAIL === "" || PASSWORD === "") {
-    throw new Error("缺少 CRP_EMAIL / CRP_PASSWORD");
+    throw new Error("缺少 VERIFY_EMAIL / VERIFY_PASSWORD");
   }
 
   const shotsArg = process.argv.findIndex((item) => item === "--screenshots");

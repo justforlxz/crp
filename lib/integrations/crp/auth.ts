@@ -1,15 +1,14 @@
 /**
- * CRP 登录用的密码加密、JWT 有效期判断与 token 缓存。
+ * CRP 登录用的密码加密与 JWT 有效期判断。token 缓存在 `tokenCache.ts`。
  *
  * CRP 的登录只认「RSA 加密后 base64」的密码。加密用的是 CRP 自己发布在前端代码里的
- * 公钥（对所有人可见，不是凭据），所以这里直接内联；账号与密码本身只从环境变量读。
+ * 公钥（对所有人可见，不是凭据），所以这里直接内联；账号与密码本身按人从数据库凭据里取
+ * （见 `lib/credentials`），不再从环境变量读。
  *
  * 真实的登录请求与响应见同目录 FINDINGS.md。
  */
 
 import { constants, publicEncrypt } from "node:crypto";
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
 
 /** CRP 前端使用的 RSA 公钥，1024 位，PKCS#1 v1.5 填充。 */
 export const CRP_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
@@ -22,7 +21,6 @@ fe9YvvT0lqy2BtBpaQIDAQAB
 /** 提前这么多秒就把 token 当作过期，避免请求正好卡在过期瞬间。 */
 const EXPIRY_BUFFER_SECONDS = 60;
 
-const TOKEN_FILE_MODE = 0o600;
 
 /**
  * 用 CRP 公钥加密密码并 base64 编码。
@@ -63,26 +61,3 @@ export function isJwtExpired(token: string, nowMs: number = Date.now()): boolean
   return nowMs / 1000 > exp - EXPIRY_BUFFER_SECONDS;
 }
 
-/** 读磁盘上的 token 缓存；文件不存在、为空或已过期都返回 null。 */
-export function readCachedToken(path: string, nowMs: number = Date.now()): string | null {
-  let token: string;
-  try {
-    token = readFileSync(path, "utf8").trim();
-  } catch {
-    return null;
-  }
-
-  if (!token || isJwtExpired(token, nowMs)) {
-    return null;
-  }
-
-  return token;
-}
-
-/** 把 token 写进缓存文件，权限 0600。目录不存在时先建出来。 */
-export function writeCachedToken(path: string, token: string): void {
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  writeFileSync(path, token, { mode: TOKEN_FILE_MODE });
-  // 文件已存在时 writeFileSync 的 mode 不生效，所以再明确设一次。
-  chmodSync(path, TOKEN_FILE_MODE);
-}

@@ -1244,3 +1244,69 @@ curl -fsS -X POST -b cookie.txt -H "content-type: application/json" \
 ```bash
 curl -fsS -b cookie.txt -OJ "http://localhost:3000/api/releases/01a1ee26-…/export"
 ```
+
+## GET / POST / DELETE /api/settings/credentials
+
+「我的账号」页（`/settings/credentials`）的接口：读写**当前登录用户自己**的 CRP 与 Gerrit 凭据。
+契约见 [`.agents/spec/product/credentials.md`](../.agents/spec/product/credentials.md) 第八节。
+
+### 鉴权
+
+用户会话（Cookie），登录即可。账号从会话取，请求体里给不了别人的 ID —— 凭据属于个人，
+不存在「管理别人的凭据」。
+
+### 请求体（POST）
+
+```json
+{ "kind": "crp", "username": "alice", "secret": "……" }
+```
+
+- `kind`：`crp` 或 `gerrit`，其余值 400。
+- `username` / `secret` 不能为空。
+- **保存前会用这组凭据真实登录一次**：CRP 走 `POST /login`，Gerrit 走 `GET /a/projects/`。
+  验证不通过返回 422 与原因，库里不留新记录；已有凭据的人验证失败时只把原因记进
+  `last_error`，不动原来的账号名与密文。
+
+### 返回体
+
+```json
+{
+  "kind": "crp",
+  "label": "CRP 账号",
+  "configured": true,
+  "username": "alice",
+  "verifiedAt": "2026-11-24T08:30:00.000Z",
+  "lastError": null
+}
+```
+
+**响应里永远没有密码、密文、初始向量与认证标签。** 查询时就不读这些列，不是靠上层过滤。
+
+`GET` 返回 `{ "credentials": [ ... ] }`，顺序固定为 CRP、Gerrit 两项，未配置的项
+`configured: false`、其余字段为 `null`。`DELETE ?kind=crp` 删掉这一类凭据，返回
+`{ "kind": "crp", "configured": false }`；本来就没有也算成功。
+
+### 状态码
+
+| 状态码 | `error.code` | 什么情况 |
+| --- | --- | --- |
+| `200` / `201` | — | 读取 / 保存成功 |
+| `400` | `invalid_json` / `invalid_payload` | 请求体不是 JSON / 字段不合法 |
+| `401` | `unauthenticated` | 未登录 |
+| `409` | `credential_missing` | 这个账号还没配这一类凭据（消息里带配置页地址） |
+| `409` | `credential_decrypt_failed` | 库里有密文但解不开（主密钥换了或密文被改过），需要本人重配 |
+| `422` | `credential_verify_failed` | 真实登录验证没通过，`message` 是失败原因 |
+| `503` | `credential_key_missing` | 服务端没配 `CREDENTIAL_ENCRYPTION_KEY` |
+
+### 示例
+
+```bash
+curl -fsS -b cookie.txt http://localhost:3000/api/settings/credentials
+
+curl -fsS -X POST -b cookie.txt -H 'Content-Type: application/json' \
+  -d '{"kind":"crp","username":"alice","secret":"……"}' \
+  http://localhost:3000/api/settings/credentials
+
+curl -fsS -X DELETE -b cookie.txt \
+  'http://localhost:3000/api/settings/credentials?kind=gerrit'
+```

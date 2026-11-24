@@ -11,6 +11,10 @@
  * 单条提测推进失败不中断整轮：CRP 偶尔超时是常态，一条失败不该让别的提测跟着停下。
  * 失败原因留在本轮返回体里，下一轮定时器还会再试同一条。
  *
+ * **用谁的凭据**：作业没有登录会话，按每条提测的创建者（`release.created_by_id`）调 CRP
+ * （`.agents/spec/product/credentials.md` 第六节）。创建者没配凭据时这一条被跳过、
+ * 记 `action: "skipped"` 与原因，其余提测照常推进 —— 既不静默成功，也不阻塞别人。
+ *
  * 单轮只推进固定条数，挑活按「最久没被推进的优先」（`release.last_advanced_at` 从旧到新，
  * 为空的最先）：活跃提测多于上限时各条轮流轮到。**不要改回按创建时间取最早的 N 条** ——
  * 那样后创建的提测永远排在后面、永远轮不到（A14 功能检测在 61 条活跃提测下实测复现过）。
@@ -24,6 +28,7 @@ import {
   type AdvanceResult,
   type BuildOptions,
 } from "../build";
+import { CredentialMissingError } from "../credentials/errors";
 import { prisma } from "../db";
 
 /** 定时入口的 token 环境变量名。与同步任务、软件包接口各用一个，互不通用。 */
@@ -35,8 +40,11 @@ export type BuildDispatchTrigger = "manual" | "schedule";
 export type BuildDispatchItem = {
   releaseId: string;
   version: string;
-  /** `error` 表示这条推进抛了错，原因见 `error`。 */
-  action: AdvanceResult["action"] | "error";
+  /**
+   * `error` 表示这条推进抛了错，原因见 `error`；
+   * `skipped` 表示创建者没配 CRP 凭据，这一条被跳过（原因同样在 `error` 里）。
+   */
+  action: AdvanceResult["action"] | "error" | "skipped";
   /** 推进之后的提测状态；出错时是推进之前的状态。 */
   status: string;
   /** 本轮投递的包名。 */
@@ -56,6 +64,13 @@ export type BuildDispatchSummary = {
   dispatched: number;
   /** 本轮推进出错的条数。 */
   failed: number;
+  /**
+   * 因为创建者没配 CRP 凭据而跳过的条数。
+   *
+   * 单独一档而不是混进 `failed`：这不是系统故障，是「这个人还没配置」，
+   * 处理方式完全不同（去「我的账号」配置一次即可）。
+   */
+  skipped: number;
   items: BuildDispatchItem[];
 };
 
@@ -105,6 +120,7 @@ export async function runBuildDispatch(
     createdTopics: 0,
     dispatched: 0,
     failed: 0,
+    skipped: 0,
     items: [],
   };
 
@@ -130,16 +146,21 @@ export async function runBuildDispatch(
         error: null,
       });
     } catch (error) {
-      summary.failed += 1;
-
       const message = errorSummary(error);
+      const skipped = error instanceof CredentialMissingError;
 
-      console.error(`[build-dispatch] 提测 ${release.id} 推进失败：${message}`);
+      if (skipped) {
+        summary.skipped += 1;
+        console.warn(`[build-dispatch] 提测 ${release.id} 跳过：${message}`);
+      } else {
+        summary.failed += 1;
+        console.error(`[build-dispatch] 提测 ${release.id} 推进失败：${message}`);
+      }
 
       summary.items.push({
         releaseId: release.id,
         version: release.version,
-        action: "error",
+        action: skipped ? "skipped" : "error",
         status: release.status,
         packageName: null,
         blocked: [],
@@ -177,7 +198,7 @@ export async function runBuildDispatch(
   console.info(
     `[build-dispatch] 触发=${options.trigger} 提测=${summary.releaseCount} 条` +
       ` 新建 Topic=${summary.createdTopics} 投递=${summary.dispatched}` +
-      ` 失败=${summary.failed}`,
+      ` 失败=${summary.failed} 跳过=${summary.skipped}`,
   );
 
   return summary;

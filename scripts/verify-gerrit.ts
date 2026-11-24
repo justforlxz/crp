@@ -2,23 +2,24 @@
  * Gerrit 与 gitiles 客户端的真实连通验证。
  *
  * 用真实仓库跑一遍本节点的四个能力：列分支、列提交、读单条提交、读并解析 changelog，
- * 再对不存在的仓库确认错误可读。凭据只从环境变量来，脚本不打印任何凭据内容。
+ * 再对不存在的仓库确认错误可读。凭据按人存在库里，脚本不打印任何凭据内容。
  *
- * 运行方式（凭据由环境注入，不要写进仓库）：
+ * 运行方式（`--user` 指定用谁配置的凭据）：
  *
- *   GERRIT_USERNAME=... GERRIT_HTTP_PASSWORD=... pnpm tsx scripts/verify-gerrit.ts
+ *   pnpm tsx scripts/verify-gerrit.ts --user you@example.com
  *
- * 也可以写在 `.env`（已被 gitignore 忽略）里，脚本会用 dotenv 读。
+ * 也可以设 `CREDENTIAL_USER_EMAIL=you@example.com`。
  */
 
 import "dotenv/config";
 
 import {
-  createGerritClient,
+  createGerritClientForUser,
   GerritError,
   GerritNotFoundError,
-  readGerritConfig,
 } from "../lib/integrations/gerrit";
+
+import { requireScriptUserId } from "./credentialUser";
 
 /** issue 里已确认可用的两个仓库与分支，正好构成 kwin 依赖 wayland 的链条。 */
 const TARGETS = [
@@ -58,7 +59,7 @@ function firstLine(message: string): string {
 }
 
 async function main(): Promise<void> {
-  const client = createGerritClient(readGerritConfig());
+  const client = await createGerritClientForUser(await requireScriptUserId());
 
   // 1. 列分支：AC1
   for (const target of [AC1_TARGET, ...TARGETS]) {

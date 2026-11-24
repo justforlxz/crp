@@ -22,6 +22,7 @@
 import { NextResponse } from "next/server";
 
 import { errorJson } from "@/lib/auth/http";
+import { credentialErrorResponse } from "@/lib/credentials/http";
 import { CrpError } from "@/lib/integrations/crp";
 import { requireRole } from "@/lib/auth/server";
 import {
@@ -51,7 +52,7 @@ async function authorize(
   releaseId: string,
   role: typeof WRITE_ROLE | "reader",
 ): Promise<
-  | { ok: true }
+  | { ok: true; accountId: string }
   | { ok: false; response: NextResponse }
 > {
   const scope = await findReleaseScope(releaseId);
@@ -66,7 +67,7 @@ async function authorize(
     return { ok: false, response: guard.response };
   }
 
-  return { ok: true };
+  return { ok: true, accountId: guard.auth.account.id };
 }
 
 /** `BuildError` 翻成接口错误；其余异常交给调用方记日志并回 500。 */
@@ -190,11 +191,14 @@ export async function POST(
 
   try {
     if (action === "dispatch") {
-      return NextResponse.json({ action: "dispatch", ...advanceJson(await advanceRelease(id)) });
+      // 前台接口以当前登录用户的身份调 CRP（契约第六节）。
+      const advanced = await advanceRelease(id, { actorUserId: auth.accountId });
+
+      return NextResponse.json({ action: "dispatch", ...advanceJson(advanced) });
     }
 
     if (action === "retry") {
-      const result: RetryResult = await retryFailedTasks(id);
+      const result: RetryResult = await retryFailedTasks(id, { actorUserId: auth.accountId });
 
       return NextResponse.json({
         action: "retry",
@@ -209,7 +213,7 @@ export async function POST(
       // 必须 await：直接 `return` 这个 promise 时 try 已经正常结束，`cancelReleaseResponse`
       // 抛出的非 ReleaseError（并发取消时的 BuildError、写库失败等）会绕过下面那一整段映射，
       // 接口回框架的 500，`releaseErrorResponse` 与文档承诺的状态码都到不了调用方。
-      return await cancelReleaseResponse(id);
+      return await cancelReleaseResponse(id, { actorUserId: auth.accountId });
     }
 
     return errorJson(
@@ -218,6 +222,12 @@ export async function POST(
       `未知的操作：${action}。可选 dispatch、retry、cancel。`,
     );
   } catch (error) {
+    const credentialResponse = credentialErrorResponse(error);
+
+    if (credentialResponse !== null) {
+      return credentialResponse;
+    }
+
     if (error instanceof BuildError) {
       return buildErrorResponse(error);
     }

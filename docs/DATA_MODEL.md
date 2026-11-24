@@ -25,6 +25,7 @@
 ```
 workspace 1-n membership n-1 app_user
 app_user 1-n session（登录会话；active_workspace_id 不做外键，见 4.4）
+app_user 1-n user_credential（每人每种外部系统一份凭据，MKACG-986）
 workspace 1-n project_manager（project_manager.user_id 可空，指向 app_user）
 project_manager 1-n project
 project 1-1 baseline（外键 project.baseline_id，单选）
@@ -56,6 +57,7 @@ PRD 里的 `Release 1-1 CrpTopic` 在本版没有独立表，Topic 的字段并�
 | `SyncRunStatus`（`sync_run_status`） | `running`、`success`、`failed` | 同步结果 |
 | `SyncRunTrigger`（`sync_run_trigger`） | `manual`、`schedule` | 手动刷新或定时任务 |
 | `ReleaseUpdateAction`（`release_update_action`） | `append`、`replace`、`abandon_topic` | 提测增量更新的动作：`append` = 补包，`replace` = 换包（含连带重投的下游），`abandon_topic` = 放弃整个主题（MKACG-950 追加，不删 Release） |
+| `CredentialKind`（`credential_kind`） | `crp`、`gerrit` | 凭据属于哪一套外部系统（MKACG-986）。一个成员每种系统只能有一份 |
 
 ## 四、表定义
 
@@ -120,6 +122,31 @@ PRD 里的 `Release 1-1 CrpTopic` 在本版没有独立表，Topic 的字段并�
 - 外键：`user_id → app_user.id`，CASCADE（账号删除时会话一起删，且只有这一处允许 CASCADE）。
 - `active_workspace_id` **不建外键**：工作区归属的权威来源是 `membership`，越权读取由应用层判定成 404；会话里只是一个「上次选的工作区」标记，工作区被删时残留的值只会让下一次读取找不到成员关系，不影响安全。
 - 令牌有效期 7 天，每次读取会话时滑动续期（最多每小时写一次库）。
+
+### 4.4.1 user_credential（成员凭据，MKACG-986 追加）
+
+每个成员自己的 CRP 与 Gerrit 账号。改造前全平台共用一个环境变量账号，CRP 侧看到的提交人
+永远是同一个人，审计链断掉；那个人的密码一改，全平台提测一起挂。
+
+| 字段（列名） | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | text | PK | UUID v7 |
+| `userId`（`user_id`） | text | NOT NULL | 凭据属于谁 |
+| `kind` | `credential_kind` | NOT NULL | 哪一套系统 |
+| `username` | text | NOT NULL | 账号名，明文存，用于页面展示 |
+| `secretCiphertext`（`secret_ciphertext`） | text | NOT NULL | 密码密文（AES-256-GCM，base64） |
+| `secretIv`（`secret_iv`） | text | NOT NULL | 初始向量（base64） |
+| `secretTag`（`secret_tag`） | text | NOT NULL | 认证标签（base64） |
+| `keyVersion`（`key_version`） | integer | NOT NULL | 主密钥版本，用于轮换 |
+| `verifiedAt`（`verified_at`） | timestamptz | NULL | 最后一次真实验证成功的时间 |
+| `lastError`（`last_error`） | text | NULL | 最后一次验证失败的原因；成功保存时清空 |
+| `createdAt` / `updatedAt` | timestamptz | NOT NULL | |
+
+- 索引：`(user_id, kind)` 唯一（一个人每种系统只能有一份）。
+- 外键：`user_id → app_user.id`，CASCADE（账号删除时凭据一起删）。
+- **明文永不入库、永不出接口**：AAD 绑定 `user_id + kind`，把 A 的密文挪到 B 的名下解密会失败。
+  主密钥来自环境变量 `CREDENTIAL_ENCRYPTION_KEY`（32 字节 base64），缺失时凭据相关操作直接报错，
+  不降级、不回退到环境变量账号。
 
 ### 4.5 project_manager（项目经理）
 
@@ -613,6 +640,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | 子表.列 | 父表 | 可空 | onDelete | 理由 |
 | --- | --- | --- | --- | --- |
 | `session.user_id` | `app_user.id` | 否 | CASCADE | 会话只是登录凭证，账号没了就失去意义 |
+| `user_credential.user_id` | `app_user.id` | 否 | CASCADE | 凭据属于账号本身，账号删除后没有任何留存价值 |
 | `membership.workspace_id` | `workspace.id` | 否 | RESTRICT | 工作区不物理删除 |
 | `membership.user_id` | `app_user.id` | 否 | RESTRICT | 账号不物理删除，成员关系要留 |
 | `project_manager.workspace_id` | `workspace.id` | 否 | RESTRICT | 同上 |
@@ -667,6 +695,7 @@ CRP `/branches` 返回的一条交付分支。平铺清单，不分类，不做�
 | `webhook_endpoint` | 2 | 一个启用、一个停用 |
 | `webhook_delivery` | 3 | 成功、失败重试三次、待投递各一条 |
 | `sync_run` | 4 | 三次成功、一次失败 |
+| `user_credential` | 0 | 凭据是运行时数据，由成员在「我的账号」里配置，种子不写 |
 
 每条提测的状态、它下面各轮快照的状态、仓库记录与构建任务三处必须一致：提测整体成功的，快照、仓库记录、构建任务与作业都是 `success`；快照停在 `pending` 的，就是还没投递，也没有仓库记录与构建任务。
 

@@ -309,8 +309,12 @@ GET /api/topics/29158/workflow/info
 
 ## 十、复现方式
 
+> **MKACG-986 起凭据改由「我的账号」页按人配置**，`CRP_USERNAME` / `CRP_PASSWORD` 已从代码与
+> `.env.example` 移除，本节保留的是当时的复现记录。现在跑同一条命令改成
+> `pnpm tsx scripts/verify-crp.ts --user <平台账号邮箱>`，脚本会用这个人配置的凭据登录。
+
 ```bash
-# 凭据从环境变量注入，不要写进仓库
+# 凭据从环境变量注入，不要写进仓库（改造前的做法，见上面的说明）
 export CRP_USERNAME=<ldap 账号>
 export CRP_PASSWORD=<ldap 密码>
 

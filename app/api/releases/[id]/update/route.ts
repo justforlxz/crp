@@ -20,6 +20,7 @@
 import { NextResponse } from "next/server";
 
 import { errorJson } from "@/lib/auth/http";
+import { credentialErrorResponse } from "@/lib/credentials/http";
 import { requireRole } from "@/lib/auth/server";
 import { findReleaseScope } from "@/lib/build";
 import { CrpError } from "@/lib/integrations/crp";
@@ -82,8 +83,14 @@ export async function GET(
   }
 
   try {
-    return NextResponse.json(await loadReleaseUpdateView(id));
+    return NextResponse.json(await loadReleaseUpdateView(id, { actorUserId: auth.accountId }));
   } catch (error) {
+    const credentialResponse = credentialErrorResponse(error);
+
+    if (credentialResponse !== null) {
+      return credentialResponse;
+    }
+
     if (error instanceof ReleaseError) {
       return releaseErrorResponse(error);
     }
@@ -133,11 +140,14 @@ export async function POST(
     if (dryRun) {
       return NextResponse.json({
         action: "preview",
-        plan: await previewReleaseUpdate(id, parsed.value),
+        plan: await previewReleaseUpdate(id, parsed.value, { actorUserId: auth.accountId }),
       });
     }
 
-    const result = await applyReleaseUpdate(id, parsed.value, { operatorId: auth.accountId });
+    const result = await applyReleaseUpdate(id, parsed.value, {
+      operatorId: auth.accountId,
+      actorUserId: auth.accountId,
+    });
 
     return NextResponse.json({
       action: "update",

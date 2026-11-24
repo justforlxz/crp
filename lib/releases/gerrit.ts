@@ -8,9 +8,9 @@
  */
 
 import {
-  createGerritClient,
+  createGerritClientForCurrentUser,
+  createGerritClientForUser,
   GerritNotFoundError,
-  readGerritConfig,
   type GerritClient,
   type GerritCommit,
 } from "../integrations/gerrit";
@@ -58,17 +58,27 @@ function toOption(commit: GerritCommit): GerritCommitOption {
 }
 
 /**
- * 用给定（或按环境变量新建）的客户端做读取。
+ * 用给定（或按人新建）的客户端做读取。
  *
  * 客户端在第一次真正请求时才建：页面渲染阶段不需要 Gerrit 凭据，只有点了「从 Gerrit 刷新」
- * 或提交提测时才读。凭据缺失会在那时抛 `GerritError`，由调用方翻成可读提示。
+ * 或提交提测时才读。所以凭据缺失是在第一次读写时才暴露，由调用方翻成可读提示 ——
+ * 页面不会因为「还没配 Gerrit 账号」就连打开都失败。
+ *
+ * 不传 `userId` 时按**当前登录用户**建（前台页面与接口的默认做法）；后台作业与脚本
+ * 显式传人，不依赖请求上下文。
  */
-export function createGerritReader(client?: GerritClient): GerritReader {
+export function createGerritReader(
+  client?: GerritClient,
+  userId?: string,
+): GerritReader {
   let cached: GerritClient | null = client ?? null;
 
-  function resolve(): GerritClient {
+  async function resolve(): Promise<GerritClient> {
     if (cached === null) {
-      cached = createGerritClient(readGerritConfig());
+      cached =
+        userId === undefined
+          ? await createGerritClientForCurrentUser()
+          : await createGerritClientForUser(userId);
     }
 
     return cached;
@@ -76,30 +86,30 @@ export function createGerritReader(client?: GerritClient): GerritReader {
 
   return {
     async listBranches(repoPath) {
-      const branches = await resolve().listBranches(repoPath);
+      const branches = await (await resolve()).listBranches(repoPath);
 
       return branches.map((branch) => branch.branch).sort((left, right) => left.localeCompare(right));
     },
 
     async listCommits(repoPath, branch, limit) {
-      const commits = await resolve().listCommits(repoPath, branch, limit);
+      const commits = await (await resolve()).listCommits(repoPath, branch, limit);
 
       return commits.map(toOption);
     },
 
     async readCodeVersion(repoPath, commitSha) {
-      const { entry } = await resolve().readChangelog(repoPath, commitSha);
+      const { entry } = await (await resolve()).readChangelog(repoPath, commitSha);
 
       return entry.version;
     },
 
-    listProjects() {
-      return resolve().listProjects();
+    async listProjects() {
+      return (await resolve()).listProjects();
     },
 
     async resolveTagCommit(repoPath, tag) {
       try {
-        const commit = await resolve().resolveTag(repoPath, tag);
+        const commit = await (await resolve()).resolveTag(repoPath, tag);
 
         return commit.sha;
       } catch (error) {

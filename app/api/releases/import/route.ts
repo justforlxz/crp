@@ -21,9 +21,10 @@ import { NextResponse } from "next/server";
 
 import { errorJson } from "@/lib/auth/http";
 import { requireRole } from "@/lib/auth/server";
+import { credentialErrorResponse } from "@/lib/credentials/http";
 import { prisma } from "@/lib/db";
 import {
-  createCrpClientFromEnv,
+  createCrpClientForCurrentUser,
   CrpError,
   topicOwnedBy,
   TOPIC_SEARCH_LIMIT,
@@ -150,8 +151,15 @@ export async function GET(request: Request) {
   let crp;
 
   try {
-    crp = createCrpClientFromEnv(process.env);
+    // 当前登录用户的凭据。没配就直接给出配置页地址，一个 CRP 请求都不发（CRED-6）。
+    crp = await createCrpClientForCurrentUser();
   } catch (error) {
+    const credentialResponse = credentialErrorResponse(error);
+
+    if (credentialResponse !== null) {
+      return credentialResponse;
+    }
+
     return crpFailure(error, "建立 CRP 客户端");
   }
 
@@ -303,10 +311,17 @@ export async function POST(request: Request) {
       const preview = await previewReleaseImport({
         projectId: input.projectId,
         topicId: input.topicId,
+        actorUserId: guard.auth.account.id,
       });
 
       return NextResponse.json(preview);
     } catch (error) {
+      const credentialResponse = credentialErrorResponse(error);
+
+      if (credentialResponse !== null) {
+        return credentialResponse;
+      }
+
       if (error instanceof ReleaseError) {
         return errorJson(error.status, releaseErrorCode(error.status), error.message);
       }
@@ -321,6 +336,7 @@ export async function POST(request: Request) {
       projectId: input.projectId,
       topicId: input.topicId,
       createdById: guard.auth.account.id,
+      actorUserId: guard.auth.account.id,
       addPackagesToProject: input.addPackagesToProject,
     });
 
@@ -355,6 +371,12 @@ export async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error) {
+    const credentialResponse = credentialErrorResponse(error);
+
+    if (credentialResponse !== null) {
+      return credentialResponse;
+    }
+
     if (error instanceof ReleaseImportConflict) {
       return NextResponse.json(
         {

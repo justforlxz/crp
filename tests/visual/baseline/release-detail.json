@@ -204,13 +204,13 @@
           "borderRadius": "0px",
           "boxShadow": "none",
           "width": "305.594px",
-          "height": "337.328px"
+          "height": "314.938px"
         },
         "box": {
           "x": 917.41,
           "y": 1952.69,
           "width": 305.59,
-          "height": 337.33
+          "height": 314.94
         }
       }
     ],
@@ -230,13 +230,13 @@
           "borderRadius": "0px",
           "boxShadow": "none",
           "width": "305.594px",
-          "height": "159.938px"
+          "height": "137.547px"
         },
         "box": {
           "x": 917.41,
-          "y": 2402.41,
+          "y": 2380.02,
           "width": 305.59,
-          "height": 159.94
+          "height": 137.55
         }
       }
     ],
@@ -260,7 +260,7 @@
         },
         "box": {
           "x": 264,
-          "y": 2595.34,
+          "y": 2550.56,
           "width": 984,
           "height": 71.58
         }
@@ -286,7 +286,7 @@
         },
         "box": {
           "x": 264,
-          "y": 2714.92,
+          "y": 2670.14,
           "width": 984,
           "height": 127.17
         }

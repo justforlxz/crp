@@ -145,7 +145,7 @@ function clientOf(state: FakeCrp): ReturnType<typeof createCrpClient> {
   return createCrpClient({
     baseUrl: CRP_BASE,
     token: "test-token",
-    tokenPath: null,
+    tokenKey: null,
     fetchImpl: crpFetchOf(state),
     sleepImpl: async () => {},
   });

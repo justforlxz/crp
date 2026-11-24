@@ -13,6 +13,8 @@ export {
 
 export {
   createGerritClient,
+  createGerritClientForCurrentUser,
+  createGerritClientForUser,
   encodeGitilesRef,
   isCommitSha,
   GerritAuthError,
