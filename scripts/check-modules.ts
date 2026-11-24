@@ -1,6 +1,6 @@
 /**
- * 模块对照（MKACG-966）：拿 `.agents/spec/design/modules.json` 的清单，逐页检查实现里还缺哪些
- * 原型模块，把「逐页数 class」变成一条命令。
+ * 模块对照（MKACG-966 / MKACG-969）：拿 `.agents/spec/design/modules.json` 的清单，逐页检查实现里
+ * 还缺哪些原型模块，把「逐页数 class」变成一条命令。
  *
  * 用法：
  *
@@ -8,12 +8,16 @@
  *   pnpm check:modules --report   # 只报告，退出码恒为 0（CI 暂用这一档）
  *   pnpm check:modules --help     # 打印上面两行的差别
  *
- * 判定口径只有一条：**只认 `className` 上下文里的字符串**。
+ * 两处判定，缺一即算缺失：
  *
- * `className="a b"`、`className={`a ${x}`}`、`className={ok ? "a" : "b"}`、`clsx("a", ...)`
- * 里的 class 都算；注释、变量名、`id="a"` / `data-x="a"` 这类别的属性、正文文字都不算。
- * 全文搜字符串会把 `listHref(filters)` 里的 `filters` 当成 `.filters` 模块已具备，检查立刻
- * 失去意义，所以这里先剥注释，再只从 `className` 右侧取值。
+ * 1. **页面用法**：只认 `className` 上下文里的字符串。`className="a b"`、`className={`a ${x}`}`、
+ *    `className={ok ? "a" : "b"}`、`clsx("a", ...)` 里的 class 都算；注释、变量名、
+ *    `id="a"` / `data-x="a"` 这类别的属性、正文文字都不算。全文搜字符串会把
+ *    `listHref(filters)` 里的 `filters` 当成 `.filters` 模块已具备，检查立刻失去意义，
+ *    所以这里先剥注释，再只从 `className` 右侧取值。
+ * 2. **样式表**（MKACG-969）：清单里的每个模块都要在 `app/globals.css` 里有类选择器规则。
+ *    同样不是全文搜 —— 只读规则头（`{` 之前的那段），声明块、注释、`@media` 的条件文本都不算，
+ *    否则 `content: ".tip"` 这种声明就能让缺失的模块「已具备」。
  *
  * 模块名一律来自 `modules.json`，脚本里不写第二份清单。
  */
@@ -54,14 +58,20 @@ export type ModuleReport = {
   pages: PageReport[];
   globalMissing: string[];
   globalPresent: string[];
+  /** 样式表里没有类选择器规则的模块（按 `modules.json` 的顺序）。 */
+  styleMissing: string[];
+  stylePresent: string[];
   /** 缺模块的页数。 */
   pagesWithMissing: number;
-  /** 页面模块缺失总数（不含全局）。 */
+  /** 页面模块缺失总数（不含全局与样式表）。 */
   pageMissingTotal: number;
 };
 
 const SCAN_ROOT = process.cwd();
 const SPEC_FILE = ".agents/spec/design/modules.json";
+
+/** 全站唯一的样式表；模块的类选择器规则必须写在这里。 */
+const STYLE_FILE = "app/globals.css";
 
 /** 只扫 TSX：服务端组件与表单都在 `.tsx` 里，`.ts` 里没有 JSX 属性可认。 */
 const SOURCE_SUFFIX = ".tsx";
@@ -362,6 +372,178 @@ export function classTokensOfSource(source: string): Set<string> {
   return tokens;
 }
 
+/**
+ * 把 CSS 的 `/* … *\/` 换成等长空白，保留换行，其余原样留下。
+ *
+ * 只处理块注释：CSS 没有行注释，`url(https://…)` 里的 `//` 不是注释，套用 JS 那套规则会把
+ * 后面的代码一起吃掉。
+ */
+export function stripCssComments(css: string): string {
+  let output = "";
+  let cursor = 0;
+
+  while (cursor < css.length) {
+    if (css[cursor] === "/" && css[cursor + 1] === "*") {
+      const end = css.indexOf("*/", cursor + 2);
+      const stop = end === -1 ? css.length : end + 2;
+      output += css.slice(cursor, stop).replace(/[^\n]/g, " ");
+      cursor = stop;
+      continue;
+    }
+
+    output += css[cursor];
+    cursor += 1;
+  }
+
+  return output;
+}
+
+/**
+ * 从 `{` 出发找到与它配对的 `}` 之后的下标。
+ *
+ * 字符串整体跳过：`content: "}"` 里的花括号不算嵌套层级，否则块会提前收尾。
+ */
+function skipBlock(code: string, index: number): number {
+  let depth = 0;
+  let cursor = index;
+
+  while (cursor < code.length) {
+    const char = code[cursor] as string;
+
+    if (char === '"' || char === "'") {
+      cursor = skipString(code, cursor);
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+      cursor += 1;
+      continue;
+    }
+
+    if (char === "}") {
+      depth -= 1;
+      cursor += 1;
+
+      if (depth === 0) {
+        return cursor;
+      }
+
+      continue;
+    }
+
+    cursor += 1;
+  }
+
+  return code.length;
+}
+
+/**
+ * 块级 at-rule：里面的内容是规则，要进去看选择器。
+ *
+ * 其余 at-rule（`@font-face`、`@keyframes`、`@property`）里的「规则头」不是选择器，
+ * 例如 `from` / `50%` 这种关键帧名字，进去取会凭空多出类名。
+ */
+const NESTED_AT_RULE = /^@(?:media|supports|layer|container|document|scope)\b/iu;
+
+/**
+ * 收集样式表里所有规则的选择器文本。
+ *
+ * 只认「规则头」：从上一个 `}` 或 `;` 之后到 `{` 之前的那段文本。声明块整体跳过，所以
+ * `content: ".tip"`、`background: url(.tip)` 这类写在声明里的点号不会被当成类选择器；
+ * `@media` 里的规则递归进去。注释由调用方先剥掉。
+ */
+function collectSelectors(code: string): string[] {
+  const selectors: string[] = [];
+  let cursor = 0;
+
+  while (cursor < code.length) {
+    const start = cursor;
+
+    while (cursor < code.length) {
+      const char = code[cursor] as string;
+
+      if (char === '"' || char === "'") {
+        cursor = skipString(code, cursor);
+        continue;
+      }
+
+      if (char === "{" || char === ";" || char === "}") {
+        break;
+      }
+
+      cursor += 1;
+    }
+
+    if (cursor >= code.length) {
+      break;
+    }
+
+    const prelude = code.slice(start, cursor).trim();
+    const char = code[cursor] as string;
+
+    if (char === ";" || char === "}") {
+      // `@import …;` 与块收尾后的残留都不是选择器。
+      cursor += 1;
+      continue;
+    }
+
+    const end = skipBlock(code, cursor);
+
+    if (prelude.startsWith("@")) {
+      if (NESTED_AT_RULE.test(prelude)) {
+        selectors.push(...collectSelectors(code.slice(cursor + 1, end - 1)));
+      }
+    } else if (prelude !== "") {
+      selectors.push(prelude);
+    }
+
+    cursor = end;
+  }
+
+  return selectors;
+}
+
+/** 选择器里的类名：`.foo` 取 `foo`，`.foo-bar` 取 `foo-bar`。 */
+const CLASS_IN_SELECTOR = /\.(-?[A-Za-z_][\w-]*)/gu;
+
+/**
+ * 取出样式表里所有「规则选择器」上下文里的类名（不带点）。
+ *
+ * 组合选择器与伪类按同一份文本取：`.card .project-card:hover` 同时给出 `card` 与 `project-card`，
+ * 只要有一条规则给这个类写了声明就算有。声明块、注释、`@media` 的条件文本都不参与。
+ */
+export function classSelectorsOfCss(css: string): Set<string> {
+  const tokens = new Set<string>();
+
+  for (const selector of collectSelectors(stripCssComments(css))) {
+    for (const match of selector.matchAll(CLASS_IN_SELECTOR)) {
+      const name = match[1];
+
+      if (name !== undefined) {
+        tokens.add(name);
+      }
+    }
+  }
+
+  return tokens;
+}
+
+/** 清单里出现过的全部模块：全局在前，页面里的按声明顺序接上，重复的只留第一次。 */
+export function allModules(spec: ModuleSpec): string[] {
+  const modules = [...spec.global];
+
+  for (const page of Object.values(spec.pages)) {
+    for (const expected of page.modules) {
+      if (!modules.includes(expected)) {
+        modules.push(expected);
+      }
+    }
+  }
+
+  return modules;
+}
+
 /** 递归列出目录下的 `.tsx` 文件，跳过测试文件。 */
 function walkTsx(directory: string): string[] {
   const found: string[] = [];
@@ -434,10 +616,14 @@ function bareName(module: string): string {
  * 比对清单与源码：某一页该有的模块，在它自己的 `sources` 里有就记为已具备，没有就记为缺失。
  *
  * 全局模块按所有页面扫描到的 class 合起来判定 —— 它们本来就跨页面复用。
+ *
+ * 再比一遍样式表：清单里的每个模块都要在 `styles`（`app/globals.css` 的全文）里有类选择器规则。
+ * 这一项与页面无关 —— 样式补齐不代表页面用上了，两处缺口分开报。
  */
 export function compareModules(
   spec: ModuleSpec,
   sources: Record<string, SourceFile[]>,
+  styles: string,
 ): ModuleReport {
   const pages: PageReport[] = [];
   const allTokens = new Set<string>();
@@ -477,10 +663,24 @@ export function compareModules(
     }
   }
 
+  const styleTokens = classSelectorsOfCss(styles);
+  const styleMissing: string[] = [];
+  const stylePresent: string[] = [];
+
+  for (const expected of allModules(spec)) {
+    if (styleTokens.has(bareName(expected))) {
+      stylePresent.push(expected);
+    } else {
+      styleMissing.push(expected);
+    }
+  }
+
   return {
     pages,
     globalMissing,
     globalPresent,
+    styleMissing,
+    stylePresent,
     pagesWithMissing: pages.filter((page) => page.missing.length > 0).length,
     pageMissingTotal: pages.reduce((sum, page) => sum + page.missing.length, 0),
   };
@@ -504,15 +704,21 @@ export function formatReport(report: ModuleReport): string {
 
   lines.push(`全局模块缺失：${formatModules(report.globalMissing)}`);
   lines.push(`全局模块已具备：${formatModules(report.globalPresent)}`);
+  lines.push(`样式表缺失：${formatModules(report.styleMissing)}`);
+  lines.push(`样式表已具备：${formatModules(report.stylePresent)}`);
   lines.push("");
 
-  if (report.pageMissingTotal === 0 && report.globalMissing.length === 0) {
-    lines.push(`结论：${report.pages.length} 个页面全部齐备，全局模块齐备`);
+  const missingTotal =
+    report.pageMissingTotal + report.globalMissing.length + report.styleMissing.length;
+
+  if (missingTotal === 0) {
+    lines.push(`结论：${report.pages.length} 个页面全部齐备，全局模块齐备，样式表齐备`);
   } else {
     lines.push(
       `结论：${report.pages.length} 个页面里 ${report.pagesWithMissing} 个有缺失，` +
-        `共缺 ${report.pageMissingTotal + report.globalMissing.length} 个模块` +
-        `（页面 ${report.pageMissingTotal} 个 + 全局 ${report.globalMissing.length} 个）`,
+        `共缺 ${missingTotal} 个模块` +
+        `（页面 ${report.pageMissingTotal} 个 + 全局 ${report.globalMissing.length} 个` +
+        ` + 样式表 ${report.styleMissing.length} 个）`,
     );
   }
 
@@ -525,7 +731,9 @@ export function exitCodeFor(report: ModuleReport, reportOnly: boolean): number {
     return 0;
   }
 
-  return report.pageMissingTotal + report.globalMissing.length > 0 ? 1 : 0;
+  return report.pageMissingTotal + report.globalMissing.length + report.styleMissing.length > 0
+    ? 1
+    : 0;
 }
 
 function help(): string {
@@ -534,6 +742,7 @@ function help(): string {
     "",
     "拿 .agents/spec/design/modules.json 的清单，逐页比对实现里还缺哪些原型模块。",
     "只认 className 上下文里的字符串（含三元、模板、clsx），不做全文匹配。",
+    "再比对 app/globals.css：清单里的每个模块都要有类选择器规则，声明块与注释里的同名文字不算。",
     "",
     "  （默认）        有缺失时列出明细并以退出码 1 结束，用来阻断",
     "  --report        输出完全相同的报告，但退出码恒为 0，用来在 CI 里先观察",
@@ -572,7 +781,11 @@ export function run(root: string, argv: string[]): number {
     }));
   }
 
-  const report = compareModules(spec, sources);
+  const report = compareModules(
+    spec,
+    sources,
+    readFileSync(resolve(root, STYLE_FILE), "utf8"),
+  );
   console.log(formatReport(report));
 
   return exitCodeFor(report, reportOnly);
