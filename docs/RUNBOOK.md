@@ -13,7 +13,7 @@
 它**不**做的事（不要指望它）：
 
 - 不做 CRP 的转测 / 转发布工作流，只在提测详情页展示 CRP 的 `WorkProgress`；
-- 没有常驻调度进程、没有队列，所有定时推进靠外部定时器打 HTTP 接口（见第五节）；
+- 没有队列；定时推进由常驻的 `worker` 进程自己维护，不依赖宿主机的 cron（见第五节）；
 - 不删除 CRP 的 Topic（CRP 没有这个接口），只能「放弃」（见第十一节）。
 
 页面共 8 个：工作台、项目、项目经理、软件包、基线、提测记录、构建队列、Webhook。
@@ -271,55 +271,86 @@ curl -fsS -X POST http://127.0.0.1:3000/api/packages \
 ---
 
 ## 五、定时任务
+平台自己维护定时任务，不依赖宿主机的 cron 或 systemd timer。另起一个常驻进程 `worker`：按固定频率
+在进程内直接调用三个作业函数（不走 HTTP），与 web 用同一份代码、同一个镜像，只是启动命令不同。
 
-平台没有常驻调度进程。三个接口必须由外部定时器驱动，否则提测会停在「待建 Topic / 投递中 / 构建中」不动。
-
-| 接口 | 建议频率 | 作用 |
+| 作业 | 频率 | 作用 |
 | --- | --- | --- |
-| `POST /api/jobs/baseline-sync` | 每小时 | 刷新 CRP 交付分支清单，并刷新被项目选中且缓存过期（1 小时）的基线软件包版本 |
-| `POST /api/jobs/build-dispatch` | 每 2 分钟 | 把在跑的提测往前推一步：建 Topic、投下一个该投的包。单轮最多 20 条，按 `last_advanced_at` 从旧到新轮流 |
-| `POST /api/jobs/build-poll` | 每 5 分钟 | 回写 Shuttle 构建结果与 CRP 工作流进度，记调度事件流水。单轮最多 50 条，按 `last_polled_at` 轮流 |
+| `baseline-sync` | 每小时 | 刷新 CRP 交付分支清单，并刷新被项目选中且缓存过期（1 小时）的基线软件包版本 |
+| `build-dispatch` | 每 2 分钟 | 把在跑的提测往前推一步：建 Topic、投下一个该投的包。单轮最多 20 条，按 `last_advanced_at` 从旧到新轮流 |
+| `build-poll` | 每 5 分钟 | 回写 Shuttle 构建结果与 CRP 工作流进度，记调度事件流水。单轮最多 50 条，按 `last_polled_at` 轮流 |
 
-crontab 写法（把变量写进 `/etc/crp/cron.env`，权限 0600，由 cron 先 source）：
+### 5.1 启动
 
-```cron
-0  * * * *   . /etc/crp/cron.env && curl -fsS -X POST -H "Authorization: Bearer $SYNC_JOB_TOKEN"          http://127.0.0.1:3000/api/jobs/baseline-sync
-*/2 * * * *  . /etc/crp/cron.env && curl -fsS -X POST -H "Authorization: Bearer $BUILD_DISPATCH_JOB_TOKEN" http://127.0.0.1:3000/api/jobs/build-dispatch
-*/5 * * * *  . /etc/crp/cron.env && curl -fsS -X POST -H "Authorization: Bearer $BUILD_POLL_JOB_TOKEN"     http://127.0.0.1:3000/api/jobs/build-poll
-```
-
-systemd timer 等价写法（三个各一份 `crp-dispatch.service` + `.timer`）：
-
-```ini
-# /etc/systemd/system/crp-dispatch.service
-[Unit]
-Description=CRP 提测平台：推进投递
-
-[Service]
-Type=oneshot
-EnvironmentFile=/etc/crp/cron.env
-ExecStart=/usr/bin/curl -fsS -X POST -H "Authorization: Bearer ${BUILD_DISPATCH_JOB_TOKEN}" http://127.0.0.1:3000/api/jobs/build-dispatch
-```
-
-```ini
-# /etc/systemd/system/crp-dispatch.timer
-[Unit]
-Description=每 2 分钟推进一次投递
-
-[Timer]
-OnBootSec=1min
-OnUnitActiveSec=2min
-
-[Install]
-WantedBy=timers.target
-```
+镜像里留两个启动命令，分别起两个进程（或两个容器），不要塞进同一个容器：
 
 ```bash
-systemctl daemon-reload
-systemctl enable --now crp-dispatch.timer crp-poll.timer crp-sync.timer
+# web：页面与接口
+pnpm start
+
+# worker：常驻定时任务，不监听端口
+pnpm worker
 ```
 
-**判断定时任务活着没有**：看 `build_poll_event` 表有没有新行，或看提测的 `last_advanced_at` / `last_polled_at` 是不是在往前走。
+两份进程必须连同一个库（同一个 `DATABASE_URL`）、配同一套 CRP / Shuttle / Gerrit 凭据 —— 作业调的是
+页面手动触发时调的那几个函数，没有第二份逻辑。worker 不需要额外的端口或卷，也不读写 `.next/`。
+
+worker 用 `tsx` 直接跑 TypeScript（与仓库里其它脚本一致），所以镜像里要装 devDependencies。
+
+### 5.2 集群安全
+
+以后要跑多副本，调度从第一天就是集群安全的：
+
+- 每轮执行前用 Postgres 咨询锁抢占：`pg_try_advisory_lock(<作业固定键>)`，三个作业各用一个固定的键。
+- 抢不到就跳过这一轮，日志写「被其他实例占用」，不排队、不重试。
+- 锁在一条**专用的数据库连接**上持有到作业结束，连接一关锁就自动释放。不用 Prisma 的连接池：
+  池里的连接是共享的，锁会跟着连接漂走。
+- 锁键写在 `lib/jobs/scheduler.ts` 的 `JOB_SPECS` 里。改键等于换一把锁：滚动升级期间新旧副本会
+  各抢各的锁、同时跑同一个作业，所以不要随手改。
+
+### 5.3 日志与失败
+
+每轮一行，启动与退出各一行，都写 stdout：
+
+```text
+[worker] 启动 pid=1234 baseline-sync=每 1 小时（锁键 7310001） build-dispatch=每 2 分钟（锁键 7310002） build-poll=每 5 分钟（锁键 7310003）
+[worker] 作业=build-dispatch 开始=2026-11-25T02:10:00.000Z 耗时=812ms 结果=成功
+[worker] 作业=build-poll 开始=2026-11-25T02:12:00.000Z 耗时=4ms 结果=跳过 原因=被其他实例占用
+[worker] 作业=build-poll 开始=2026-11-25T02:15:00.000Z 耗时=6ms 结果=失败 原因=Error: …
+[worker] 退出 pid=1234 信号=SIGTERM
+```
+
+字段固定：作业名、开始时间、耗时、结果（成功 / 跳过 / 失败）、原因（跳过与失败才有）。单轮失败只影响
+这一轮，worker 不退出，下一轮照常跑。
+
+另外两类不带轮次字段的行也会出现，都不代表进程有问题：
+
+| 日志 | 含义 | 要不要处理 |
+| --- | --- | --- |
+| `[worker] 锁连接出错：…` | 持有锁期间连接被对端断开（Postgres 重启、主备切换、`pg_terminate_backend`、云主机回收空闲连接） | 不用。这一轮按失败收尾，下一轮重开一条连接 |
+| `[worker] 关闭锁连接失败：…` | 本轮作业已经跑完，收尾关连接时出错 | 不用。会话断开后 Postgres 自己释放锁，下一轮重连不会卡住 |
+
+**判断 worker 活着没有**：看有没有新的「每轮」日志；也可以看 `build_poll_event` 表有没有新行，
+或提测的 `last_advanced_at` / `last_polled_at` 是不是在往前走。
+
+停掉 worker（`SIGTERM` 或 `SIGINT`）之后三个作业都不再执行，web 不受影响；反过来停掉 web，
+worker 照常推进提测。
+
+### 5.4 手动触发与排障
+
+三个 HTTP 接口保留下来，只给手动触发与排障用；worker 不依赖它们，删掉也不影响调度。
+
+| 接口 | 鉴权 |
+| --- | --- |
+| `POST /api/jobs/baseline-sync` | `Authorization: Bearer $SYNC_JOB_TOKEN` |
+| `POST /api/jobs/build-dispatch` | `Authorization: Bearer $BUILD_DISPATCH_JOB_TOKEN` |
+| `POST /api/jobs/build-poll` | `Authorization: Bearer $BUILD_POLL_JOB_TOKEN` |
+
+```bash
+curl -fsS -X POST -H "Authorization: Bearer $SYNC_JOB_TOKEN" http://127.0.0.1:3000/api/jobs/baseline-sync
+```
+
+三个 token 只影响这三个接口：不配置时接口一律返回 401。
 
 ---
 
@@ -725,7 +756,7 @@ select name, arches, synced_at from baseline where name = 'eagle-1071';
 - [ ] `pnpm typecheck`、`pnpm lint`、`pnpm test` 全部退出码 0
 - [ ] `scripts/style-check/container.sh` 退出码 0，六个覆盖页面与基线一致
 - [ ] `POST /api/jobs/baseline-sync` 返回 200，`list.itemCount > 0`
-- [ ] 三个定时入口都能被 cron 触发（`build_poll_event` 有新行）
+- [ ] web 与 worker 两个启动命令都写进部署（`pnpm start` + `pnpm worker`），worker 的每轮日志在持续产出（`build_poll_event` 有新行）
 - [ ] 不带 token 调三个定时入口都返回 401
 - [ ] 正确凭据下能建 Topic 并投递一个 Release（真实 CRP）
 - [ ] 错误 CRP 密码下，轮询与投递返回可读错误且不改业务状态

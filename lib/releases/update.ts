@@ -177,7 +177,7 @@ export type ReleaseUpdateResult = {
    * 推进失败的原因。
    *
    * 更新本身已经提交，投递没开始不算更新失败：提测状态已经回到「投递中」，
-   * 外部定时器会继续推进它，所以这里只如实报告，不把整次更新判成失败。
+   * worker 会继续推进它，所以这里只如实报告，不把整次更新判成失败。
    */
   advanceError: string | null;
 };
@@ -940,7 +940,7 @@ async function transactionTimeoutFor(releaseId: string): Promise<number> {
  * 要在事务退出（行锁释放）之后按 `compensateAbandoned()` 补偿，否则提测会显示成功而 CRP 缺包。
  *
  * 第 5 步在事务外：`advanceRelease` 自己会调 CRP 并写库，塞进同一个事务会和自己抢同一把锁。
- * 它失败不算更新失败：更新已经提交，提测状态是「投递中」，外部定时器会接着推。
+ * 它失败不算更新失败：更新已经提交，提测状态是「投递中」，worker 会接着推。
  */
 export async function applyReleaseUpdate(
   releaseId: string,

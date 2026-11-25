@@ -1,9 +1,10 @@
 /**
  * 构建投递的定时入口。
  *
- * 本仓库没有常驻调度进程，也不引入队列：由外部定时器（cron 或 systemd timer）每隔几分钟
- * POST 一次这个地址，把在跑的提测各往前推一步。用户手动触发走
- * `POST /api/releases/{id}/dispatch`，两条入口调的是同一个 `advanceRelease()`。
+ * 调度由常驻的 `pnpm worker` 进程自己维护：`build-dispatch` 作业每 2 分钟在进程内直接调用
+ * `runBuildDispatch()`，把在跑的提测各往前推一步，不经过这个接口。这个接口留给手动触发
+ * 与排障。用户手动触发走 `POST /api/releases/{id}/dispatch`，两条入口调的是同一个
+ * `advanceRelease()`。
  *
  * 鉴权用独立 token：`Authorization: Bearer <BUILD_DISPATCH_JOB_TOKEN>`，与用户会话无关；
  * 服务端没配置这个变量时一律返回 401，不会退化成「谁都能触发」。

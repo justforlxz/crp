@@ -90,6 +90,7 @@ lib/releases/abandon.ts(209,9): error TS2322: Type '"abandon_topic"' is not assi
 | --- | --- |
 | `pnpm dev` | 启动开发服务器 |
 | `pnpm build` / `pnpm start` | 生产构建 / 启动生产服务 |
+| `pnpm worker` | 常驻调度进程：按固定频率跑基线同步、投递推进、构建轮询三条作业（每小时 / 每 2 分钟 / 每 5 分钟）。与 web 同镜像、不同启动命令；不监听端口，停机后三条作业一起停，见 [docs/RUNBOOK.md](docs/RUNBOOK.md) 第五节 |
 | `pnpm lint` | ESLint 检查 |
 | `pnpm typecheck` | TypeScript 类型检查（`tsc --noEmit`） |
 | `pnpm test` | 单元测试（Node 内置测试运行器，经 tsx 执行 TypeScript）。分两组跑：会读到全库在跑提测的三个文件（`baseline-sync`、`build-dispatch`、`build-poll`，它们调用的定时任务是跨工作区挑活的）一次只跑一个；其余文件 4 个并行，靠各自的数据区间隔开（工作区前缀、假 CRP 的 Topic / Release ID 区间起点，两段重叠会让唯一约束凭空失败）。新增用例时：碰全库的函数只能加进第一组，其余用例只管自己的数据 |
@@ -141,19 +142,12 @@ lib/releases/abandon.ts(209,9): error TS2322: Type '"abandon_topic"' is not assi
 
 **手动刷新**：`/baselines` 页面的「立即同步」按钮，需要登录；强制重拉被项目选中基线的版本，不看缓存是否过期。
 
-**定时刷新**：外部定时器每小时 POST 一次接口，本仓库不引入队列或常驻调度进程。
+**定时刷新**：由 `pnpm worker` 里的 `baseline-sync` 作业每小时调一次，不引入队列，也不需要宿主机配 cron。
+手动补跑用同一个接口（鉴权见 [docs/RUNBOOK.md](docs/RUNBOOK.md) 第五节）：
 
 ```bash
-# cron
-0 * * * * curl -fsS -X POST -H "Authorization: Bearer $SYNC_JOB_TOKEN" \
+curl -fsS -X POST -H "Authorization: Bearer $SYNC_JOB_TOKEN" \
   http://localhost:3000/api/jobs/baseline-sync
-
-# systemd timer（/etc/systemd/system/baseline-sync.service + .timer）
-# [Service]
-# ExecStart=/usr/bin/curl -fsS -X POST -H "Authorization: Bearer <token>" \
-#   http://localhost:3000/api/jobs/baseline-sync
-# [Timer]
-# OnCalendar=hourly
 ```
 
 **失败时的行为**：同步失败只写本次 `sync_run`（状态、结束时间、错误摘要），`baseline` 与
@@ -174,12 +168,11 @@ lib/releases/abandon.ts(209,9): error TS2322: Type '"abandon_topic"' is not assi
 | 4 | 否则投递**一个**上游已全部成功的包（串行，不并发投递依赖链） |
 | 5 | 全部成功 → `success`；有成功也有失败 → `partial_failure`；一个都没成功 → `failed` |
 
-**定时推进**：外部定时器每隔几分钟 POST 一次接口，把在跑的提测各往前推一步。
-本仓库不引入队列，也不依赖进程内定时器。
+**定时推进**：由 `pnpm worker` 里的 `build-dispatch` 作业每 2 分钟把在跑的提测各往前推一步，不引入队列。
+手动补跑用同一个接口：
 
 ```bash
-# cron：每 2 分钟推一次
-*/2 * * * * curl -fsS -X POST -H "Authorization: Bearer $BUILD_DISPATCH_JOB_TOKEN" \
+curl -fsS -X POST -H "Authorization: Bearer $BUILD_DISPATCH_JOB_TOKEN" \
   http://localhost:3000/api/jobs/build-dispatch
 ```
 
@@ -203,13 +196,12 @@ lib/releases/abandon.ts(209,9): error TS2322: Type '"abandon_topic"' is not assi
 | 调度事件流水 | `recordPollEvent()`、`listPollEvents(workspaceId)` |
 | 提测详情页的只读区块组件 | `components/build-status.tsx` 的 `BuildStatusBlock` |
 
-**定时轮询**：外部定时器每隔几分钟 POST 一次接口。已完结的提测（`success`、`partial_failure`、
-`failed`、`abandoned`）自动不再轮询，一条请求都不发。单轮最多处理 50 条，挑活按
+**定时轮询**：由 `pnpm worker` 里的 `build-poll` 作业每 5 分钟轮询一次。已完结的提测（`success`、
+`partial_failure`、`failed`、`abandoned`）自动不再轮询，一条请求都不发。单轮最多处理 50 条，挑活按
 `release.lastPolledAt` 从旧到新（为空的最先），活跃提测更多时各条轮流轮到，最新投递的下一轮就会被轮到。
 
 ```bash
-# cron：每 5 分钟轮询一次
-*/5 * * * * curl -fsS -X POST -H "Authorization: Bearer $BUILD_POLL_JOB_TOKEN" \
+curl -fsS -X POST -H "Authorization: Bearer $BUILD_POLL_JOB_TOKEN" \
   http://localhost:3000/api/jobs/build-poll
 ```
 

@@ -158,9 +158,9 @@ curl -i -X POST http://localhost:3000/api/packages \
 
 ## POST /api/jobs/baseline-sync
 
-基线同步的定时入口。本仓库没有常驻调度进程，也没有队列或额外的调度服务：外部定时器
-（cron 或 systemd timer）每小时 POST 一次这个地址即可。页面上的「立即同步」按钮调的是
-同一段同步逻辑（`runBaselineSync()`），不是第二份实现。
+基线同步的定时入口。调度由常驻的 `pnpm worker` 进程自己维护（`baseline-sync` 作业每小时跑一次），
+本仓库没有队列，也不需要宿主机配 cron 或 systemd timer。页面上的「立即同步」按钮调的是
+同一段同步逻辑（`runBaselineSync()`），不是第二份实现；这个接口留给手动触发与排障。
 
 ### 鉴权
 
@@ -214,8 +214,7 @@ Authorization: Bearer <SYNC_JOB_TOKEN>
 ### 示例
 
 ```bash
-# 每小时跑一次（crontab 写法）
-0 * * * * curl -fsS -X POST -H "Authorization: Bearer $SYNC_JOB_TOKEN" \
+# 手动补跑一次（每小时的调度由 pnpm worker 负责）
   http://localhost:3000/api/jobs/baseline-sync
 ```
 
@@ -487,7 +486,7 @@ Release ID」就是 `packages`。A13 的提测详情页合入后，这些字段�
   5 分钟（抢占有效期）后的下一次推进会把它退回待投递，先问 CRP 是不是已经收下这个包：
   收下了就补写记录（不再发第二条），没收到才重新投递。
 
-后续步骤由外部定时器调 `POST /api/jobs/build-dispatch` 推进。
+后续步骤由 worker 的 `build-dispatch` 作业推进（手动补跑用 `POST /api/jobs/build-dispatch`）。
 
 ### 返回体
 
@@ -551,7 +550,8 @@ CRP 没有删除 Topic 的接口，所以「取消」只能是删 Release + 放�
 
 ## POST /api/jobs/build-dispatch
 
-投递的定时入口。本仓库没有常驻调度进程，也没有队列：外部定时器每隔几分钟 POST 一次，把在跑的
+投递的定时入口。调度由常驻的 `pnpm worker` 进程自己维护（`build-dispatch` 作业每 2 分钟跑一次），
+本仓库没有队列。这个接口留给手动触发与排障，把在跑的
 提测（`pending`、`dispatching`、`building`）各往前推一步。
 
 ### 鉴权
@@ -606,14 +606,14 @@ Authorization: Bearer <BUILD_DISPATCH_JOB_TOKEN>
 ### 示例
 
 ```bash
-# 每 2 分钟推一次（crontab 写法）
-*/2 * * * * curl -fsS -X POST -H "Authorization: Bearer $BUILD_DISPATCH_JOB_TOKEN" \
+# 手动补跑一次（每 2 分钟的调度由 pnpm worker 负责）
   http://localhost:3000/api/jobs/build-dispatch
 ```
 
 ## POST /api/jobs/build-poll
 
-构建状态轮询的定时入口。本仓库没有常驻调度进程，也没有队列：外部定时器每隔几分钟 POST 一次，
+构建状态轮询的定时入口。调度由常驻的 `pnpm worker` 进程自己维护（`build-poll` 作业每 5 分钟跑一次），
+本仓库没有队列。这个接口留给手动触发与排障，
 把在跑的提测（`pending`、`dispatching`、`building`）各轮询一遍 —— 回写 Shuttle 的构建结果与
 CRP 的工作流进度（`release.crpWorkProgress`），并把这一轮做的事记进调度事件流水。
 
@@ -687,8 +687,7 @@ Authorization: Bearer <BUILD_POLL_JOB_TOKEN>
 ### 示例
 
 ```bash
-# 每 5 分钟轮询一次（crontab 写法）
-*/5 * * * * curl -fsS -X POST -H "Authorization: Bearer $BUILD_POLL_JOB_TOKEN" \
+# 手动补跑一次（每 5 分钟的调度由 pnpm worker 负责）
   http://localhost:3000/api/jobs/build-poll
 ```
 
@@ -816,7 +815,7 @@ Authorization: Bearer <BUILD_POLL_JOB_TOKEN>
    `dispatching`，由定时器按原快照参数重投，缺的产物会被补回来（不会留下「显示成功、CRP 缺包」）；
 5. 一个事务里写新轮、把旧轮标 `superseded` 并指向新轮（不物理删除）、提测轮次加一、
    状态回到 `dispatching`、写一行留痕；
-6. 事务提交后调 `advanceRelease` 推进一次，剩下的由外部定时器接着推。
+6. 事务提交后调 `advanceRelease` 推进一次，剩下的由 worker 接着推。
 
 补包不会重投无关的已成功包：只有 `append` 里新加的包与 `replace` 的那条链会重新投递。
 
@@ -863,7 +862,7 @@ Authorization: Bearer <BUILD_POLL_JOB_TOKEN>
 ```
 
 `advanceError` 不为空表示更新**已经提交**、但紧接着的那次推进没成功（例如 CRP 临时连不上）：
-提测状态已经回到 `dispatching`，外部定时器会继续推进，重试整次更新反而会重复换包。
+提测状态已经回到 `dispatching`，worker 会继续推进，重试整次更新反而会重复换包。
 
 ### 状态码
 

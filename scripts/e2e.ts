@@ -837,7 +837,7 @@ async function sampleQueue(cookie: string, version: string): Promise<boolean> {
 /**
  * 推进到终局。
  *
- * 投递与轮询各走各的定时入口，和生产的 cron 完全一样。每次推进后读一次投递详情，
+ * 投递与轮询各走各的定时入口，和生产里 worker 调的是同两个函数。每次推进后读一次投递详情，
  * 既作为日志，也用来断言「先 wayland、后 kwin」。
  */
 async function driveToFinal(

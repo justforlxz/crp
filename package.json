@@ -10,6 +10,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "worker": "tsx scripts/worker.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test --test-concurrency=1 tests/baseline-sync.test.ts tests/build-dispatch.test.ts tests/build-poll.test.ts && tsx --test --test-concurrency=4 $(ls tests/*.test.ts | grep -vE '/(baseline-sync|build-dispatch|build-poll)\\.test\\.ts$')",
