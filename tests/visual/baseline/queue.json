@@ -32,7 +32,7 @@
         }
       }
     ],
-    "queue.intro": [
+    "queue.workspace-switcher": [
       {
         "style": {
           "display": "block",
@@ -48,39 +48,13 @@
           "borderRadius": "0px",
           "boxShadow": "none",
           "width": "1000px",
-          "height": "37.1875px"
+          "height": "18.5938px"
         },
         "box": {
           "x": 248,
           "y": 92,
           "width": 1000,
-          "height": 37.19
-        }
-      }
-    ],
-    "queue.workspace-switcher": [
-      {
-        "style": {
-          "display": "block",
-          "position": "static",
-          "margin": "13px 0px",
-          "padding": "0px",
-          "fontSize": "13px",
-          "fontWeight": "400",
-          "lineHeight": "20.15px",
-          "color": "rgb(16, 24, 40)",
-          "backgroundColor": "rgba(0, 0, 0, 0)",
-          "border": "0px none rgb(16, 24, 40)",
-          "borderRadius": "0px",
-          "boxShadow": "none",
-          "width": "1000px",
-          "height": "20.1406px"
-        },
-        "box": {
-          "x": 248,
-          "y": 142.19,
-          "width": 1000,
-          "height": 20.14
+          "height": 18.59
         }
       }
     ],
@@ -100,13 +74,13 @@
           "borderRadius": "0px",
           "boxShadow": "none",
           "width": "1000px",
-          "height": "97.3281px"
+          "height": "112.188px"
         },
         "box": {
           "x": 248,
-          "y": 175.33,
+          "y": 122.59,
           "width": 1000,
-          "height": 97.33
+          "height": 112.19
         }
       }
     ],
@@ -115,7 +89,7 @@
         "style": {
           "display": "block",
           "position": "static",
-          "margin": "0px",
+          "margin": "20px 0px 0px",
           "padding": "0px",
           "fontSize": "13px",
           "fontWeight": "400",
@@ -126,13 +100,13 @@
           "borderRadius": "12px",
           "boxShadow": "rgba(16, 24, 40, 0.04) 0px 1px 2px 0px",
           "width": "1000px",
-          "height": "452.516px"
+          "height": "299.234px"
         },
         "box": {
           "x": 248,
-          "y": 272.66,
+          "y": 254.78,
           "width": 1000,
-          "height": 452.52
+          "height": 299.23
         }
       }
     ],
@@ -152,13 +126,13 @@
           "borderRadius": "0px",
           "boxShadow": "none",
           "width": "998px",
-          "height": "89.2812px"
+          "height": "176.094px"
         },
         "box": {
           "x": 249,
-          "y": 820.42,
+          "y": 623.02,
           "width": 998,
-          "height": 89.28
+          "height": 176.09
         }
       }
     ]
