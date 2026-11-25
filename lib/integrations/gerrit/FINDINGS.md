@@ -21,8 +21,9 @@ $ curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' \
 ### 认证用 HTTP Basic
 
 用户名 + Gerrit 网页 Settings → HTTP Credentials 生成的密码，放在
-`Authorization: Basic base64(用户名:密码)` 里。凭据从
-`GERRIT_USERNAME` / `GERRIT_HTTP_PASSWORD` 两个环境变量读取。
+`Authorization: Basic base64(用户名:密码)` 里。凭据按人存在数据库里
+（`user_credential`，MKACG-986 起在「我的账号」页配置），不再有
+`GERRIT_USERNAME` / `GERRIT_HTTP_PASSWORD` 环境变量。
 
 ### `/a/` 前缀不能省
 

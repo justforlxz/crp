@@ -112,7 +112,7 @@ function client(fetchImpl: typeof fetch) {
   return createCrpClient({
     baseUrl: BASE,
     token: "test-token",
-    tokenPath: null,
+    tokenKey: null,
     fetchImpl,
     retries: 0,
   });

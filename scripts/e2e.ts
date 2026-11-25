@@ -34,6 +34,7 @@ import { createGerritReader } from "../lib/releases/gerrit";
 import { WORKFLOW_PROGRESS_PENDING_MESSAGE } from "../lib/build";
 import { createCrpClient } from "../lib/integrations/crp/client";
 import { readCrpConfig } from "../lib/integrations/crp/config";
+import { requireScriptUserId } from "./credentialUser";
 import { pickExactProject } from "../lib/integrations/crp";
 import { prisma } from "../lib/db";
 
@@ -312,6 +313,8 @@ async function mintSession(): Promise<{ cookie: string; cleanup: () => Promise<v
 // ---------------------------------------------------------------------------
 
 type Env = {
+  /** 演练用谁配置的 CRP / Gerrit 凭据（`--user` 或 `CREDENTIAL_USER_EMAIL`）。 */
+  userId: string;
   workspaceId: string;
   baselineId: string;
   syncToken: string;
@@ -339,6 +342,7 @@ async function loadEnv(options: Options): Promise<Env> {
   expect(baseline !== null, `库里没有基线 ${BASELINE_NAME}，先执行 pnpm db:seed。`);
 
   const env: Env = {
+    userId: await requireScriptUserId(),
     workspaceId: workspace.id,
     baselineId: baseline.id,
     syncedArches: [],
@@ -506,7 +510,7 @@ async function registerPackages(
   step("3. 登记软件包（POST /api/packages）");
 
   const specs = packageSpecs(options);
-  const reader = createGerritReader();
+  const reader = createGerritReader(undefined, env.userId);
   const bodies: Array<Record<string, string>> = [];
   const heads = new Map<string, Awaited<ReturnType<typeof readHead>>>();
 
@@ -604,7 +608,7 @@ type CreatedRelease = {
 async function resolveReleaseTags(
   packages: ReadonlyArray<{ name: string; crpProjectName: string; codeVersion: string }>,
 ): Promise<Map<string, string>> {
-  const crp = createCrpClient(readCrpConfig());
+  const crp = createCrpClient(await readCrpConfig(await requireScriptUserId()));
   const tags = new Map<string, string>();
   const branchId = Number(BASELINE_BRANCH_ID);
 

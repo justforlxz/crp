@@ -825,6 +825,8 @@ const EXPECTED_COUNTS: { table: string; expected: number; count: () => Promise<n
   { table: "webhook_endpoint", expected: 2, count: () => prisma.webhookEndpoint.count() },
   { table: "webhook_delivery", expected: 3, count: () => prisma.webhookDelivery.count() },
   { table: "sync_run", expected: 4, count: () => prisma.syncRun.count() },
+  // 凭据是运行时数据：成员在「我的账号」里配置，种子不写，干净库上必须是 0 条。
+  { table: "user_credential", expected: 0, count: () => prisma.userCredential.count() },
 ];
 
 // ---------------------------------------------------------------------------

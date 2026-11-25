@@ -16,6 +16,7 @@
 
 import { Prisma } from "../../generated/prisma/client";
 import { getBaselineVersion, listBaselines } from "../baselines";
+import { CredentialError } from "../credentials/errors";
 import { baselineState, BASELINE_STATE_LABELS, type BaselineState } from "../baselines/status";
 import { prisma } from "../db";
 import { GerritError } from "../integrations/gerrit";
@@ -386,6 +387,12 @@ async function collectSnapshots(
       try {
         codeVersion = await reader.readCodeVersion(pkg.repoPath, submitted.commitSha);
       } catch (error) {
+        // 凭据问题要原样抛出去：这一层翻成「读代码版本失败」会把「去我的账号配置」这条
+        // 唯一能让人自助解决的指引吞掉（CRED-6 要求未配置时说清去哪儿配）。
+        if (error instanceof CredentialError) {
+          throw error;
+        }
+
         return { ok: false as const, error: toReleaseError(error, packageName) };
       }
 

@@ -26,6 +26,8 @@ export {
   findReleaseScope,
   loadReleaseDispatch,
   pollReleaseBuilds,
+  resolveActorUserId,
+  resolveClients,
   retryFailedTasks,
   type AdvanceResult,
   type BuildOptions,

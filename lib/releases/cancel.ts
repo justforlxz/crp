@@ -25,14 +25,12 @@ import {
 } from "../build";
 import { prisma } from "../db";
 import {
-  createCrpClient,
-  createCrpClientFromEnv,
-  CRP_DEFAULT_BASE_URL,
   WORK_PROGRESS,
   WORK_PROGRESS_TRANSFERRED_TO_TEST,
   workProgressLabel,
   type CrpClient,
 } from "../integrations/crp";
+import { resolveReleaseCrpClient } from "./crpClient";
 import { ReleaseError } from "./service";
 
 /** 导入的提测不提供「取消提测」，原因只有一句，页面与接口共用。 */
@@ -99,25 +97,20 @@ export async function loadCancelableReleaseCount(releaseId: string): Promise<num
 type CancelCrpApis = Pick<CrpClient, "getTopicWorkflow">;
 
 /** 建 CRP 客户端，并把调用记录挂到请求层上；写法与 `lib/releases/abandon.ts` 的同名函数一致。 */
-function resolveCrp(releaseId: string, network: BuildNetwork | undefined): CancelCrpApis {
+async function resolveCrp(releaseId: string, options: CancelReleaseOptions): Promise<CancelCrpApis> {
   const recorder = createCrpCallRecorder(releaseId);
 
-  if (network?.crpFetch === undefined) {
-    return createCrpClientFromEnv(process.env, { onRequest: recorder.observe });
-  }
-
-  return createCrpClient({
-    baseUrl: network.crpBaseUrl ?? CRP_DEFAULT_BASE_URL,
-    token: network.crpToken ?? "injected",
-    tokenPath: null,
-    fetchImpl: network.crpFetch,
-    onRequest: recorder.observe,
-  });
+  return resolveReleaseCrpClient(options, recorder.observe);
 }
 
 export type CancelReleaseOptions = {
   /** 注入用：单测换掉 CRP 的网络层，其余代码照旧。 */
   network?: BuildNetwork;
+  /**
+   * 这次取消以谁的身份调 CRP。前台接口传当前登录用户；不传就按当前登录用户。
+   * 单测显式传，不依赖请求上下文。
+   */
+  actorUserId?: string;
 };
 
 /**
@@ -130,7 +123,7 @@ export type CancelReleaseOptions = {
 async function readWorkProgress(
   releaseId: string,
   topicId: string | null,
-  network: BuildNetwork | undefined,
+  options: CancelReleaseOptions,
 ): Promise<{ workProgress: number; workProgressLabel: string }> {
   if (topicId === null) {
     return {
@@ -140,7 +133,9 @@ async function readWorkProgress(
   }
 
   try {
-    const workflow = await resolveCrp(releaseId, network).getTopicWorkflow(Number(topicId));
+    const workflow = await (
+      await resolveCrp(releaseId, options)
+    ).getTopicWorkflow(Number(topicId));
 
     return { workProgress: workflow.workProgress, workProgressLabel: workflow.workProgressLabel };
   } catch (error) {
@@ -185,7 +180,7 @@ export async function cancelPlatformRelease(
     throw new ReleaseError("这条提测已经取消过了，不能重复取消。", 409);
   }
 
-  const progress = await readWorkProgress(releaseId, release.crpTopicId, options.network);
+  const progress = await readWorkProgress(releaseId, release.crpTopicId, options);
   const lockReason = cancelReleaseLockReason({
     source: release.source,
     status: release.status,
@@ -197,5 +192,9 @@ export async function cancelPlatformRelease(
     throw new ReleaseError(lockReason, 409);
   }
 
-  return cancelRelease(releaseId, { network: options.network });
+  // 调用身份要一路传下去：取消会删 Release 与放弃 Topic，CRP 侧记的必须是这个人的账号。
+  return cancelRelease(releaseId, {
+    network: options.network,
+    actorUserId: options.actorUserId,
+  });
 }

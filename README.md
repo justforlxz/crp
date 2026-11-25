@@ -99,7 +99,7 @@ lib/releases/abandon.ts(209,9): error TS2322: Type '"abandon_topic"' is not assi
 | `pnpm db:seed` | 执行 `prisma/seed.ts` 写入种子数据，使用 upsert，可重复执行 |
 | `pnpm db:studio` | 打开 Prisma Studio |
 | `pnpm tsx scripts/verify-baseline-sync.ts` | 用真实 CRP 与 Shuttle 跑一次基线同步，打印分支条数对照、`eagle-1071` 里 `kwin` 的版本对照与本次请求明细，会写库 |
-| `pnpm tsx scripts/verify-gerrit.ts` | 用真实 Gerrit 复核分支、提交与 `debian/changelog` 读取，需要先配好 `GERRIT_*` 三项 |
+| `pnpm tsx scripts/verify-gerrit.ts --user <邮箱>` | 用真实 Gerrit 复核分支、提交与 `debian/changelog` 读取，用这个账号在「我的账号」里配置的凭据 |
 | `pnpm tsx scripts/verify-projects.ts` | 用真实数据库验收项目经理与项目：归属校验、共用基线、复制不带提交历史、软删后提测记录仍可查；只动自己建的临时行 |
 | `pnpm tsx scripts/verify-webhook.ts` | 本机起一个 Webhook 接收端点，验收投递、签名与重试，约 15 秒 |
 | `pnpm tsx scripts/verify-webhook-signature.ts` | 独立复算某次投递的签名，参数见 `docs/WEBHOOK.md` |
@@ -392,13 +392,10 @@ CI 里的 `验收用例` job **非阻断**（`continue-on-error: true`）：用�
 | 变量 | 必需 | 含义 |
 | --- | --- | --- |
 | `DATABASE_URL` | 是 | PostgreSQL 连接串，Prisma CLI 与应用运行共用。格式 `postgresql://<用户>:<密码>@<主机>:<端口>/<库名>?schema=public` |
+| `CREDENTIAL_ENCRYPTION_KEY` | 用凭据功能时必需 | 凭据密文的主密钥，32 字节的 base64（`openssl rand -base64 32`）。个人账号**不再**放环境变量，每个成员在「我的账号」（`/settings/credentials`）配置自己的 CRP 与 Gerrit 账号 |
+| `CREDENTIAL_ENCRYPTION_KEY_VERSION` | 否 | 主密钥版本，默认 `1`；轮换时加一，见 [docs/RUNBOOK.md](docs/RUNBOOK.md) |
 | `GERRIT_BASE_URL` | 否 | Gerrit 服务地址，默认 `https://gerrit.uniontech.com` |
-| `GERRIT_USERNAME` | Gerrit 集成必需 | Gerrit 用户名 |
-| `GERRIT_HTTP_PASSWORD` | Gerrit 集成必需 | Gerrit HTTP 凭据密码，在 Gerrit 网页 Settings → HTTP Credentials 生成 |
-| `CRP_USERNAME` | 用 CRP 写接口时必需 | CRP 登录用的 LDAP 账号 |
-| `CRP_PASSWORD` | 用 CRP 写接口时必需 | 上述账号的 LDAP 密码；登录前用 CRP 的公钥加密，不落盘 |
 | `CRP_BASE_URL` | 否 | CRP 接口前缀，默认 `https://crp.uniontech.com/api` |
-| `CRP_TOKEN_PATH` | 否 | CRP token 缓存文件，默认 `~/.cache/crp/jwt`，权限 0600 |
 | `PACKAGE_API_TOKEN` | 用 `POST /api/packages` 时必需 | 外部系统提交软件包用的独立 token，与用户会话无关；没配置时该接口一律返回 401。接口细节见 [docs/API.md](docs/API.md) |
 | `SYNC_JOB_TOKEN` | 用 `POST /api/jobs/baseline-sync` 时必需 | 定时任务触发基线同步用的独立 token，与用户会话、`PACKAGE_API_TOKEN` 都无关；没配置时该接口一律返回 401 |
 | `BUILD_DISPATCH_JOB_TOKEN` | 用 `POST /api/jobs/build-dispatch` 时必需 | 定时任务推进提测投递用的独立 token；这个接口会真的向 CRP 建 Topic、发 Release，没配置时一律返回 401 |

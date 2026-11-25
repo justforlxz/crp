@@ -5,11 +5,15 @@
  * - Gerrit REST（`/a/...`）读分支，响应体带 XSSI 前缀 `)]}'`。
  * - gitiles（`/plugins/gitiles/...`）读提交与 `debian/changelog`。
  *
- * 两条路都要求认证：匿名请求会被 302 重定向到登录页，所以凭据必须来自环境变量，
- * 且客户端不跟随跳转（跳转目标写成 `http://`，跟过去就是明文传参）。
+ * 两条路都要求认证：匿名请求会被 302 重定向到登录页，所以凭据按人从数据库里取
+ * （`lib/credentials`），且客户端不跟随跳转（跳转目标写成 `http://`，跟过去就是明文传参）。
  * 真实行为与实测证据见同目录 FINDINGS.md。
  */
 
+import { currentActorUserId } from "../../credentials/current";
+import { CREDENTIAL_PAGE_PATH } from "../../credentials/kinds";
+import { readBaseUrl } from "../endpoints";
+import { requireCredentialSecret } from "../../credentials/service";
 import {
   type ChangelogEntry,
   parseChangelog,
@@ -21,7 +25,6 @@ export { type ChangelogEntry, parseChangelog, ChangelogParseError };
 /** 分页上限：任何调用方要求再多，单次也只取这么多条提交。 */
 export const MAX_COMMITS = 50;
 
-const DEFAULT_BASE_URL = "https://gerrit.uniontech.com";
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 /** Gerrit REST 与 gitiles 的 JSON 响应都以这个 XSSI 前缀开头。 */
@@ -71,30 +74,24 @@ export type GerritConfig = {
 };
 
 /**
- * 从环境变量读出 Gerrit 配置。
+ * 按人读出 Gerrit 配置。
  *
- * 凭据缺失直接抛错，而不是退回匿名请求——匿名请求只会拿到登录页跳转，
- * 会把「没配置」伪装成「接口不存在」。
+ * 账号与 HTTP 密码来自数据库里这个人的凭据（`.agents/spec/product/credentials.md` 第四节），
+ * 地址仍然来自环境变量。没配凭据抛 `CredentialMissingError`，而不是退回匿名请求——
+ * 匿名请求只会拿到登录页跳转，会把「没配置」伪装成「接口不存在」。
  */
-export function readGerritConfig(
+export async function readGerritConfig(
+  userId: string,
   source: Record<string, string | undefined> = process.env,
-): GerritConfig {
-  const username = source.GERRIT_USERNAME?.trim();
-  const httpPassword = source.GERRIT_HTTP_PASSWORD?.trim();
+): Promise<GerritConfig> {
+  const credential = await requireCredentialSecret(userId, "gerrit", source);
 
-  if (!username || !httpPassword) {
-    throw new GerritError(
-      "缺少 Gerrit 凭据：需要环境变量 GERRIT_USERNAME 与 GERRIT_HTTP_PASSWORD。" +
-        "HTTP 凭据在 Gerrit 网页 Settings → HTTP Credentials 生成，复制到 .env 后不要提交。",
-    );
-  }
-
-  const baseUrl = (source.GERRIT_BASE_URL?.trim() || DEFAULT_BASE_URL).replace(
-    /\/+$/,
-    "",
-  );
-
-  return { baseUrl, username, httpPassword, timeoutMs: DEFAULT_TIMEOUT_MS };
+  return {
+    baseUrl: readBaseUrl("gerrit", source),
+    username: credential.username,
+    httpPassword: credential.secret,
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+  };
 }
 
 export type GerritBranch = {
@@ -285,13 +282,14 @@ export function createGerritClient(
       throw new GerritAuthError(
         `Gerrit 未接受本次请求的凭据：${url.pathname} 返回 ${response.status}` +
           (location ? `，跳转目标 ${location}` : "") +
-          "。匿名访问会被重定向到登录页，请检查 GERRIT_USERNAME 与 GERRIT_HTTP_PASSWORD。",
+          `。匿名访问会被重定向到登录页，请到「我的账号」更新 Gerrit 账号（${CREDENTIAL_PAGE_PATH}）。`,
       );
     }
 
     if (response.status === 401 || response.status === 403) {
       throw new GerritAuthError(
-        `Gerrit 拒绝访问：${url.pathname} 返回 ${response.status}，请检查 GERRIT_USERNAME 与 GERRIT_HTTP_PASSWORD。`,
+        `Gerrit 拒绝访问：${url.pathname} 返回 ${response.status}，` +
+          `这份 HTTP 凭据可能已被撤换，请到「我的账号」更新（${CREDENTIAL_PAGE_PATH}）。`,
       );
     }
 
@@ -409,4 +407,27 @@ export function createGerritClient(
       );
     },
   };
+}
+
+/**
+ * 按某个人的凭据建客户端。
+ *
+ * 后台作业传数据所有者，前台接口传当前登录用户；没配凭据时抛 `CredentialMissingError`，
+ * 此时一个 Gerrit 请求都还没发出去。
+ */
+export async function createGerritClientForUser(
+  userId: string,
+  options: GerritClientOptions = {},
+  source: Record<string, string | undefined> = process.env,
+): Promise<GerritClient> {
+  return createGerritClient(await readGerritConfig(userId, source), options);
+}
+
+/** 按当前登录用户的凭据建客户端：页面与前台接口的默认做法。 */
+export async function createGerritClientForCurrentUser(
+  options: GerritClientOptions = {},
+): Promise<GerritClient> {
+  const userId = await currentActorUserId();
+
+  return createGerritClientForUser(userId, options);
 }

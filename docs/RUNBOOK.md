@@ -76,8 +76,7 @@ cp .env.example .env
 | 变量 | 用途 |
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL 连接串；Prisma CLI 与运行时共用 |
-| `CRP_USERNAME` / `CRP_PASSWORD` | CRP 的 LDAP 账号；建 Topic、投递 Release、读工作流进度都要它 |
-| `GERRIT_USERNAME` / `GERRIT_HTTP_PASSWORD` | Gerrit HTTP 凭据；读分支、提交与 `debian/changelog` 要它 |
+| `CREDENTIAL_ENCRYPTION_KEY` | 凭据密文的主密钥，32 字节的 base64。**个人账号不再进环境变量**：每个成员在「我的账号」页配置自己的 CRP 与 Gerrit 账号 |
 | `PACKAGE_API_TOKEN` | `POST /api/packages` 的独立 token；不配则该接口一律 401 |
 | `SYNC_JOB_TOKEN` | `POST /api/jobs/baseline-sync` 的独立 token |
 | `BUILD_DISPATCH_JOB_TOKEN` | `POST /api/jobs/build-dispatch` 的独立 token |
@@ -88,7 +87,7 @@ cp .env.example .env
 | 变量 | 默认 | 用途 |
 | --- | --- | --- |
 | `CRP_BASE_URL` | `https://crp.uniontech.com/api` | CRP 接口前缀 |
-| `CRP_TOKEN_PATH` | `~/.cache/crp/jwt` | CRP 的 JWT 缓存，按 `exp` 自动失效，写成 0600 |
+| `CREDENTIAL_ENCRYPTION_KEY_VERSION` | `1` | 主密钥版本；轮换主密钥时改成新版本号 |
 | `GERRIT_BASE_URL` | `https://gerrit.uniontech.com` | Gerrit 地址 |
 | `SHUTTLE_BASE_URL` | `https://shuttle.uniontech.com/api/shuttle` | Shuttle 地址 |
 | `SHUTTLE_TOKEN` | 空 | 当前用到的三个读接口实测不校验身份，不填也能用 |
@@ -98,6 +97,20 @@ token 的生成方式：
 
 ```bash
 openssl rand -hex 32     # 四个 token 各生成一份，不要复用
+openssl rand -base64 32  # CREDENTIAL_ENCRYPTION_KEY：正好 32 字节，AES-256 用
+```
+
+**主密钥的备份与轮换**（凭据密文靠它解密，丢了所有凭据都解不开）：
+
+1. 生成新密钥，先把它写进部署环境的 `CREDENTIAL_ENCRYPTION_KEY`，同时把
+   `CREDENTIAL_ENCRYPTION_KEY_VERSION` 加一。
+2. 通知所有成员到「我的账号」重新保存一次凭据（保存时会用新版本号重新加密）。
+3. 确认没有人还留着旧版本的密文（`select distinct key_version from user_credential;` 只剩新版本）之后，
+   才把旧密钥从备份里删掉。
+4. 新旧密钥并存期间，旧版本的密文会解密失败并提示「密钥版本不匹配」——那是预期行为，
+   不是数据损坏；让本人重配一次即可。
+
+token 的生成方式（续）：
 ```
 
 `.env` 里的值只给服务端读，不要在前端出现，也不要写进提交信息。
@@ -359,9 +372,9 @@ pnpm db:migrate && pnpm db:seed
 # 2. 样式门禁先跑（它要求纯种子库，演练之后库就不干净了）
 scripts/style-check/container.sh
 
-# 3. 环境变量：DATABASE_URL、CRP_USERNAME、CRP_PASSWORD、GERRIT_USERNAME、
-#    GERRIT_HTTP_PASSWORD、PACKAGE_API_TOKEN、SYNC_JOB_TOKEN、
-#    BUILD_DISPATCH_JOB_TOKEN、BUILD_POLL_JOB_TOKEN（缺一个脚本就直接退出 2）
+# 3. 环境变量：DATABASE_URL、CREDENTIAL_ENCRYPTION_KEY、PACKAGE_API_TOKEN、
+#    SYNC_JOB_TOKEN、BUILD_DISPATCH_JOB_TOKEN、BUILD_POLL_JOB_TOKEN（缺一个脚本就直接退出 2）
+#    另外演练要用一个配好凭据的平台账号：--user <邮箱> 或 CREDENTIAL_USER_EMAIL
 ```
 
 > **样式门禁会在仓库里跑 `next build`，而且容器里是 root。** `scripts/style-check/container.sh`
@@ -453,8 +466,8 @@ snapshot > before.json
 **一、CRP 认证过期。** 用一个错误密码起一份服务，再触发两个定时入口：
 
 ```bash
-rm -f ~/.cache/crp/jwt                     # 有缓存 token 就不会再走登录，先删掉
-CRP_PASSWORD=故意写错 pnpm exec next start -p 3205 &
+# 令牌只缓存在进程内存里，重启服务即可强制重新登录
+pnpm exec next start -p 3205 &
 curl -s -X POST -H "Authorization: Bearer $BUILD_POLL_JOB_TOKEN"   http://127.0.0.1:3205/api/jobs/build-poll
 curl -s -X POST -H "Authorization: Bearer $BUILD_DISPATCH_JOB_TOKEN" http://127.0.0.1:3205/api/jobs/build-dispatch
 ```
@@ -595,9 +608,14 @@ docker run --rm -v "$PWD":/work -w /work mcr.microsoft.com/playwright:v1.65.1-no
 
 **处理**：
 
-1. 核对 `CRP_USERNAME` / `CRP_PASSWORD`；
-2. 删掉 token 缓存强制重新登录：`rm -f ~/.cache/crp/jwt`（或 `CRP_TOKEN_PATH` 指向的那个文件）；
+1. 让该提测的创建者到「我的账号」（`/settings/credentials`）重新保存一次 CRP 账号 ——
+   凭据按人存放，报错的是**创建者**那一份，不是服务端配置；
+2. 如果是服务端没配主密钥，接口会回 `503 credential_key_missing`，那时才需要检查
+   `CREDENTIAL_ENCRYPTION_KEY`；
 3. 手工验一次：`curl -i -X POST -H "Authorization: Bearer $BUILD_POLL_JOB_TOKEN" http://127.0.0.1:3000/api/jobs/build-poll`。
+
+**创建者没配凭据时**：作业不报 500，也不静默成功 —— 该条提测的 `items[].action` 是
+`skipped`，`error` 里是「请先在「我的账号」配置 CRP 账号」，其余提测照常推进。
 
 **不会发生的事**：不会改任何 `release.status` / `snapshot.status` / `crp_work_progress`。查不到不等于构建失败，这一点是设计约束。唯一会动的是 `release.updated_at` / `last_polled_at`（「这一轮看过它了」，防止一直失败的提测占住队首）。
 

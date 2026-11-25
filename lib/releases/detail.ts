@@ -29,11 +29,11 @@
 
 import type { BuildNetwork } from "../build";
 import { prisma } from "../db";
+import { CredentialError } from "../credentials/errors";
 import { CRP_DEFAULT_BASE_URL } from "../integrations/crp";
 import {
-  createGerritClient,
+  createGerritClientForCurrentUser,
   GerritError,
-  readGerritConfig,
   type GerritClient,
 } from "../integrations/gerrit";
 import { buildSoftwareView, type SoftwareEntry } from "../projects/softwareView";
@@ -240,12 +240,12 @@ export type GerritCommitInfo = { summary: string; authorName: string };
 /** 按仓库路径与提交号读提交信息；单测传假实现，不连真实 Gerrit。 */
 export type CommitInfoReader = (repoPath: string, commitSha: string) => Promise<GerritCommitInfo>;
 
-/** 默认实现：走 A3 的 Gerrit 客户端，凭据按环境变量新建，第一次真正请求时才建。 */
+/** 默认实现：走 A3 的 Gerrit 客户端，按当前登录用户的凭据新建，第一次真正请求时才建。 */
 function defaultCommitInfoReader(): CommitInfoReader {
   let client: GerritClient | null = null;
 
   return async (repoPath, commitSha) => {
-    client ??= createGerritClient(readGerritConfig());
+    client ??= await createGerritClientForCurrentUser();
 
     const commit = await client.getCommit(repoPath, commitSha);
 
@@ -274,9 +274,11 @@ async function readCommitInfo(
     return { ...(await reader(repoPath, commitSha)), error: null };
   } catch (error) {
     const message =
-      error instanceof GerritError ? error.message : "读取 Gerrit 提交信息失败，请稍后重试。";
+      error instanceof GerritError || error instanceof CredentialError
+        ? error.message
+        : "读取 Gerrit 提交信息失败，请稍后重试。";
 
-    if (!(error instanceof GerritError)) {
+    if (!(error instanceof GerritError) && !(error instanceof CredentialError)) {
       console.error(`[releases] 读取提交信息失败（${repoPath}@${commitSha}）`, error);
     }
 
@@ -300,6 +302,11 @@ export type ReleaseDetailOptions = {
   readCommitInfo?: CommitInfoReader;
   /** 替换 CRP 客户端，单测用假实现。 */
   network?: BuildNetwork;
+  /**
+   * 这次读取以谁的身份调 CRP 与 Gerrit。前台传当前登录用户；不传就按当前登录用户。
+   * 单测显式传，不依赖请求上下文。
+   */
+  actorUserId?: string;
   /** CRP 接口前缀，用来拼 Topic 地址；默认取 `CRP_BASE_URL`。 */
   crpBaseUrl?: string;
 };
@@ -316,7 +323,10 @@ export async function loadReleaseDetail(
   options: ReleaseDetailOptions = {},
 ): Promise<ReleaseDetail> {
   // 能不能改、更新历史都复用 A17 的读取：锁定规则只有一份，详情页与更新页不会各说一套。
-  const updateView = await loadReleaseUpdateView(releaseId, { network: options.network });
+  const updateView = await loadReleaseUpdateView(releaseId, {
+    network: options.network,
+    actorUserId: options.actorUserId,
+  });
 
   const release = await prisma.release.findUnique({
     where: { id: releaseId },

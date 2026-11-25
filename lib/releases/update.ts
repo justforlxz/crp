@@ -37,9 +37,6 @@ import {
 import { prisma } from "../db";
 import { GerritError } from "../integrations/gerrit";
 import {
-  createCrpClient,
-  createCrpClientFromEnv,
-  CRP_DEFAULT_BASE_URL,
   CrpError,
   WORK_PROGRESS,
   WORK_PROGRESS_TRANSFERRED_TO_TEST,
@@ -52,6 +49,7 @@ import {
   type DependencyEdge,
 } from "../packages/dependencyGraph";
 import { collectDownstream } from "./downstream";
+import { resolveReleaseCrpClient } from "./crpClient";
 import { createGerritReader, type GerritReader } from "./gerrit";
 import { loadReleaseProject, ReleaseError } from "./service";
 import type { ReleaseUpdateInput } from "./validation";
@@ -89,13 +87,21 @@ export type ReleaseUpdateOptions = {
   reader?: Pick<GerritReader, "readCodeVersion">;
   /** 注入用的网络接线，与 A12 的 `BuildOptions.network` 同一形状。 */
   network?: BuildNetwork;
+  /**
+   * 这次更新以谁的身份调 CRP 与 Gerrit。前台接口传当前登录用户；不传就按当前登录用户。
+   * 单测显式传，不依赖请求上下文。
+   */
+  actorUserId?: string;
 };
 
-/** 预览只需要网络接线，不需要发起人。 */
-export type ReleaseUpdatePreviewOptions = Pick<ReleaseUpdateOptions, "reader" | "network">;
+/** 预览只需要网络接线与调用身份，不需要发起人。 */
+export type ReleaseUpdatePreviewOptions = Pick<
+  ReleaseUpdateOptions,
+  "reader" | "network" | "actorUserId"
+>;
 
-/** 来不及改的原因也只需要网络接线。 */
-export type ReleaseUpdateViewOptions = Pick<ReleaseUpdateOptions, "network">;
+/** 来不及改的原因只需要网络接线与调用身份。 */
+export type ReleaseUpdateViewOptions = Pick<ReleaseUpdateOptions, "network" | "actorUserId">;
 
 /** 新起的一轮快照。字段与 `release_package_snapshot` 的列一一对应。 */
 export type PlannedSnapshot = {
@@ -291,20 +297,13 @@ type UpdateCrpApis = Pick<CrpClient, "getTopicWorkflow" | "deleteRelease">;
  *
  * 放弃 Release、现读工作流这两件事都会发请求，它们要能在 `crp_call_log` 里查到（AC1、AC5 的证据）。
  */
-function resolveCrp(releaseId: string, network: BuildNetwork | undefined): UpdateCrpApis {
+async function resolveCrp(
+  releaseId: string,
+  options: ReleaseUpdatePreviewOptions,
+): Promise<UpdateCrpApis> {
   const recorder = createCrpCallRecorder(releaseId);
 
-  if (network?.crpFetch === undefined) {
-    return createCrpClientFromEnv(process.env, { onRequest: recorder.observe });
-  }
-
-  return createCrpClient({
-    baseUrl: network.crpBaseUrl ?? CRP_DEFAULT_BASE_URL,
-    token: network.crpToken ?? "injected",
-    tokenPath: null,
-    fetchImpl: network.crpFetch,
-    onRequest: recorder.observe,
-  });
+  return resolveReleaseCrpClient(options, recorder.observe);
 }
 
 /**
@@ -466,7 +465,7 @@ async function buildUpdatePlan(
 
   assertNotTransferredToTest(workProgress, label);
 
-  const reader = options.reader ?? createGerritReader();
+  const reader = options.reader ?? createGerritReader(undefined, options.actorUserId);
   const inside = new Set<string>([
     ...currentByName.keys(),
     ...input.append.map((item) => item.packageName),
@@ -638,7 +637,7 @@ export async function previewReleaseUpdate(
   input: ReleaseUpdateInput,
   options: ReleaseUpdatePreviewOptions = {},
 ): Promise<ReleaseUpdatePlan> {
-  const crp = resolveCrp(releaseId, options.network);
+  const crp = await resolveCrp(releaseId, options);
   const { plan } = await buildUpdatePlan(releaseId, input, options, crp);
 
   return plan;
@@ -948,7 +947,7 @@ export async function applyReleaseUpdate(
   input: ReleaseUpdateInput,
   options: ReleaseUpdateOptions,
 ): Promise<ReleaseUpdateResult> {
-  const crp = resolveCrp(releaseId, options.network);
+  const crp = await resolveCrp(releaseId, options);
   const timeout = await transactionTimeoutFor(releaseId);
 
   /** CRP 侧已经删掉的旧 Release。事务失败时按这份记录决定补偿哪些包。 */
@@ -1005,7 +1004,10 @@ export async function applyReleaseUpdate(
   let advanceError: string | null = null;
 
   try {
-    advance = await advanceRelease(releaseId, { network: options.network });
+    advance = await advanceRelease(releaseId, {
+      network: options.network,
+      actorUserId: options.actorUserId,
+    });
   } catch (error) {
     advanceError = error instanceof Error ? error.message : String(error);
     console.error(`[releases] 更新之后推进投递失败（${releaseId}）`, error);
@@ -1060,7 +1062,7 @@ export async function loadReleaseUpdateView(
   let workProgressError: string | null = null;
 
   try {
-    const read = await readWorkProgress(resolveCrp(releaseId, options.network), release.crpTopicId);
+    const read = await readWorkProgress(await resolveCrp(releaseId, options), release.crpTopicId);
     workProgress = read.workProgress;
     label = read.label;
   } catch (error) {

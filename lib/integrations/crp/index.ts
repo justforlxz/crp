@@ -2,7 +2,8 @@
 
 export {
   createCrpClient,
-  createCrpClientFromEnv,
+  createCrpClientForCurrentUser,
+  createCrpClientForUser,
   type CrpClient,
   type CrpClientOptions,
 } from "./client";
@@ -16,12 +17,18 @@ export {
   CRP_DEFAULT_BASE_URL,
   CRP_DEFAULT_RETRIES,
   CRP_DEFAULT_TIMEOUT_MS,
-  CRP_DEFAULT_TOKEN_PATH,
   CRP_ENV,
-  expandHomePath,
   readCrpConfig,
+  readCrpSettings,
   type CrpConfig,
+  type CrpSettings,
 } from "./config";
+export {
+  clearAllCachedTokens,
+  clearCachedToken,
+  readCachedToken,
+  writeCachedToken,
+} from "./tokenCache";
 export {
   CrpAuthError,
   CrpBusinessError,

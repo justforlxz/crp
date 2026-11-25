@@ -5,9 +5,9 @@
  * 投递一个软件包 → 查回 Release 与构建状态 → 查 Shuttle 任务与作业 → 删 Release →
  * 放弃 Topic → 用错 token 换一条认证错误。
  *
- * 用法（凭据只从环境变量来，不要写进仓库）：
+ * 用法（凭据按人存在库里，脚本用 `--user` 指定是谁的凭据）：
  *
- *   CRP_USERNAME=... CRP_PASSWORD=... \
+ *   pnpm tsx scripts/verify-crp.ts --user you@example.com \
  *   CRP_VERIFY_PROJECT=dde-file-manager \
  *   CRP_VERIFY_PROJECT_BRANCH=develop/eagle \
  *   CRP_VERIFY_COMMIT=f8e9527a37495a1f0f0d297f0ecedcbeaffab268 \
@@ -29,6 +29,7 @@ import "dotenv/config";
 import { toCrpArches } from "../lib/integrations/crp/arches";
 import { createCrpClient } from "../lib/integrations/crp/client";
 import { readCrpConfig } from "../lib/integrations/crp/config";
+import { requireScriptUserId } from "./credentialUser";
 import { CrpAuthError, CrpError } from "../lib/integrations/crp/errors";
 import { createShuttleClient, readShuttleEnv } from "../lib/integrations/shuttle";
 
@@ -98,16 +99,16 @@ async function waitForBuildState(
 }
 
 async function main(): Promise<void> {
-  const config = readCrpConfig();
+  const config = await readCrpConfig(await requireScriptUserId());
   const params = readVerifyParams(process.env);
-  const client = createCrpClient({ ...config, tokenPath: config.tokenPath });
+  const client = createCrpClient(config);
 
   step("1. 登录");
   const token = await client.login();
   const user = await client.getCurrentUser();
   console.log(`  账号：${user.name}（${user.nameCn}）`);
   console.log(`  token 长度：${token.length}（不打印内容）`);
-  console.log(`  token 缓存：${config.tokenPath}`);
+  console.log(`  token 缓存：进程内存（键是账号 ID），不落盘`);
 
   step("2. 取交付分支");
   const branches = await client.listBranches();
@@ -216,7 +217,7 @@ async function main(): Promise<void> {
   const badClient = createCrpClient({
     baseUrl: config.baseUrl,
     token: "deliberately-wrong-token",
-    tokenPath: null,
+    tokenKey: null,
     retries: 0,
   });
   try {

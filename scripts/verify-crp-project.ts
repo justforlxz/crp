@@ -16,7 +16,7 @@
  *
  * | 变量 | 默认 | 含义 |
  * | --- | --- | --- |
- * | `CRP_USERNAME` / `CRP_PASSWORD` | 无 | CRP 账号，可选。给了就登录后查询，没给按匿名查询（见下） |
+ * | `--user <邮箱>` / `CREDENTIAL_USER_EMAIL` | 无 | 用谁的凭据；给了就登录后查询，没给按匿名查询（见下） |
  * | `CRP_VERIFY_BRANCH_ID` | `108` | CRP 交付分支 ID（`eagle-1071` 是 108） |
  * | `CRP_VERIFY_PACKAGES` | `kwin` | 逗号分隔的**本地包名**；这些包必须已经登记在库里 |
  *
@@ -34,7 +34,7 @@ import "dotenv/config";
 
 import { prisma } from "../lib/db";
 import { CRP_DEFAULT_BASE_URL, readCrpConfig } from "../lib/integrations/crp/config";
-import { CrpInvalidParameterError } from "../lib/integrations/crp/errors";
+import { findScriptUserId, readScriptUserEmail } from "./credentialUser";
 import { resolveProjectId } from "../lib/integrations/crp/projects";
 import { createCrpTransport } from "../lib/integrations/crp/request";
 import { resolveCrpProjectName } from "../lib/packages/crpProject";
@@ -73,23 +73,23 @@ async function main(): Promise<void> {
   let transport: ReturnType<typeof createCrpTransport>;
   let loggedIn = false;
 
-  try {
-    const config = readCrpConfig(process.env);
+  const email = readScriptUserEmail();
+
+  if (email !== null) {
+    // 指名了账号就一定用它：这个账号没配凭据时直接报错（`CredentialMissingError`），
+    // 不悄悄退回匿名 —— 那样会让人以为「登录过了」。
+    const config = await readCrpConfig(await findScriptUserId(email));
     baseUrl = config.baseUrl;
     transport = createCrpTransport(config);
     loggedIn = true;
-  } catch (error) {
-    if (!(error instanceof CrpInvalidParameterError)) {
-      throw error;
-    }
-
+  } else {
     const anonymous = anonymousTransport(process.env);
     baseUrl = anonymous.baseUrl;
     transport = anonymous.transport;
   }
 
   console.log(`CRP 接口：${baseUrl}`);
-  console.log(`查询方式：${loggedIn ? "登录后的只读查询" : "匿名只读查询（未配置 CRP_USERNAME / CRP_PASSWORD）"}`);
+  console.log(`查询方式：${loggedIn ? "登录后的只读查询" : "匿名只读查询（没指定 --user）"}`);
   console.log(`交付分支：ID ${params.branchId}`);
   console.log(`待验证的包：${params.packageNames.join("、")}`);
 

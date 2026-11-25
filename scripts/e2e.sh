@@ -17,16 +17,18 @@
 #     但库里只要还有上一次 `pnpm test` 留下的数据，样式门禁就过不了 —— 样式门禁要求纯种子库。
 #     顺序建议：`pnpm db:reset` → `scripts/style-check/container.sh` → `scripts/e2e.sh`。
 #   - `E2E_BASE_URL` 未设置时自己起服务；设置了就复用已有服务（不再 build、不再起进程）。
-#   - 外部系统凭据只从环境变量注入，不要写进仓库、日志或提交信息。
+#   - 外部系统凭据按人存在库里（「我的账号」页配置），不再走环境变量；演练用谁配置的凭据
+#     由 `--user <平台账号邮箱>` 或 `CREDENTIAL_USER_EMAIL` 指定，这个账号要已经在
+#     `/settings/credentials` 里配好 CRP 与 Gerrit 账号。凭据本身不要写进仓库、日志或提交信息。
 #
 # 必备环境变量：
 #   DATABASE_URL                  PostgreSQL 连接串
-#   CRP_USERNAME / CRP_PASSWORD   CRP 登录用 LDAP 账号（投递与轮询会真的调 CRP）
-#   GERRIT_USERNAME / GERRIT_HTTP_PASSWORD   Gerrit HTTP 凭据（读分支、提交与 changelog）
+#   CREDENTIAL_ENCRYPTION_KEY     凭据密文的主密钥（32 字节 base64）
 #   PACKAGE_API_TOKEN             POST /api/packages 的独立 token
 #   SYNC_JOB_TOKEN                POST /api/jobs/baseline-sync 的独立 token
 #   BUILD_DISPATCH_JOB_TOKEN      POST /api/jobs/build-dispatch 的独立 token
 #   BUILD_POLL_JOB_TOKEN          POST /api/jobs/build-poll 的独立 token
+#   CREDENTIAL_USER_EMAIL         可选：用谁的凭据；也可以用 `--user <邮箱>` 传下去
 #
 # 可选：
 #   E2E_BASE_URL      已有服务的地址，例如 http://127.0.0.1:3000
@@ -48,15 +50,35 @@ die() {
 
 # 缺变量时一次列全，不要跑到一半才失败。
 missing=()
-for name in DATABASE_URL CRP_USERNAME CRP_PASSWORD GERRIT_USERNAME GERRIT_HTTP_PASSWORD \
+for name in DATABASE_URL CREDENTIAL_ENCRYPTION_KEY \
   PACKAGE_API_TOKEN SYNC_JOB_TOKEN BUILD_DISPATCH_JOB_TOKEN BUILD_POLL_JOB_TOKEN; do
   if [ -z "${!name:-}" ]; then
     missing+=("$name")
   fi
 done
 if [ "${#missing[@]}" -gt 0 ]; then
-  die "缺少环境变量：${missing[*]}。凭据从环境变量注入，不要写进仓库。"
+  die "缺少环境变量：${missing[*]}。平台密钥与定时任务 token 从环境变量注入，不要写进仓库。"
 fi
+
+# 用谁的凭据（`--user <邮箱>` 或 `CREDENTIAL_USER_EMAIL`）：演练会真的建 Topic、投 Release，
+# CRP 侧记录的操作人就是这个账号。这里先判一次，免得跑完 build 才在 e2e.ts 里报「没指定账号」。
+user_arg=""
+email_arg=""
+prev=""
+for arg in "$@"; do
+  case "$arg" in
+    --user=*) user_arg="${arg#--user=}" ;;
+    --user) ;;
+    *) if [ "$prev" = "--user" ]; then user_arg="$arg"; fi ;;
+  esac
+  prev="$arg"
+done
+email_arg="${user_arg:-${CREDENTIAL_USER_EMAIL:-}}"
+if [ -z "$email_arg" ]; then
+  die "缺少演练用的平台账号：用 --user <邮箱> 或 CREDENTIAL_USER_EMAIL 指定。这个账号要已经在「我的账号」里配好凭据。"
+fi
+
+export CREDENTIAL_USER_EMAIL="$email_arg"
 
 log_dir="${XDG_CACHE_HOME:-$HOME/.cache}/crp"
 mkdir -p "$log_dir"

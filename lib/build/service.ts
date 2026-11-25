@@ -29,7 +29,7 @@
 import { prisma } from "../db";
 import {
   createCrpClient,
-  createCrpClientFromEnv,
+  createCrpClientForUser,
   CRP_DEFAULT_BASE_URL,
   CrpBusinessError,
   CrpInvalidParameterError,
@@ -115,9 +115,42 @@ export type BuildNetwork = {
 };
 
 export type BuildOptions = {
-  /** 注入用。生产代码不传，按环境变量建客户端（缺凭据会直接报错，不退回匿名）。 */
+  /** 注入用。生产代码不传，按人建客户端（缺凭据会直接报错，不退回匿名）。 */
   network?: BuildNetwork;
+  /**
+   * 这次调用以谁的身份去调 CRP。
+   *
+   * 前台（页面点「投递」「重试」）传当前登录用户；后台作业不传，按这条提测的创建者
+   * （`release.created_by_id`）—— 作业没有登录会话，契约要求它代表数据所有者
+   * （`.agents/spec/product/credentials.md` 第六节）。
+   */
+  actorUserId?: string;
 };
+
+/**
+ * 这次调用用谁的凭据：显式给了就用它，没给就用这条提测的创建者。
+ *
+ * 后台作业走的是「没给」这条路：定时器不代表任何人，只能代表数据所有者。
+ */
+export async function resolveActorUserId(
+  releaseId: string,
+  options: BuildOptions,
+): Promise<string> {
+  if (options.actorUserId !== undefined) {
+    return options.actorUserId;
+  }
+
+  const release = await prisma.release.findUnique({
+    where: { id: releaseId },
+    select: { createdById: true },
+  });
+
+  if (release === null) {
+    throw new BuildError("提测记录不存在。", 404);
+  }
+
+  return release.createdById;
+}
 
 /**
  * 投递与轮询用到的那几个 CRP 与 Shuttle 能力。
@@ -153,17 +186,22 @@ type Resolved = {
  * 导出给 `lib/build` 内的轮询层（A14）复用：它只多需要一项 `getTopicWorkflow`，
  * 不该为此再写一份建客户端的代码，也不该绕开调用记录。
  */
-export function resolveClients(releaseId: string, options: BuildOptions): Resolved {
+export async function resolveClients(
+  releaseId: string,
+  options: BuildOptions,
+): Promise<Resolved> {
   const recorder = createCrpCallRecorder(releaseId);
   const network = options.network;
 
   const crp: DispatchApis["crp"] =
     network?.crpFetch === undefined
-      ? createCrpClientFromEnv(process.env, { onRequest: recorder.observe })
+      ? await createCrpClientForUser(await resolveActorUserId(releaseId, options), {
+          onRequest: recorder.observe,
+        })
       : createCrpClient({
           baseUrl: network.crpBaseUrl ?? CRP_DEFAULT_BASE_URL,
           token: network.crpToken ?? "injected",
-          tokenPath: null,
+          tokenKey: null,
           fetchImpl: network.crpFetch,
           onRequest: recorder.observe,
         });
@@ -407,7 +445,7 @@ export async function pollReleaseBuilds(
   releaseId: string,
   options: BuildOptions = {},
 ): Promise<PollSummary> {
-  const { clients } = resolveClients(releaseId, options);
+  const { clients } = await resolveClients(releaseId, options);
 
   const release = await prisma.release.findUnique({
     where: { id: releaseId },
@@ -678,7 +716,7 @@ export async function advanceRelease(
   releaseId: string,
   options: BuildOptions = {},
 ): Promise<AdvanceResult> {
-  const resolved = resolveClients(releaseId, options);
+  const resolved = await resolveClients(releaseId, options);
   const loaded = await loadRelease(releaseId);
   const status = loaded.status as ReleaseStateName;
 
@@ -700,7 +738,10 @@ export async function advanceRelease(
 
   await releaseStaleClaims(releaseId);
 
-  const polled = await pollReleaseBuilds(releaseId, { network: options.network });
+  const polled = await pollReleaseBuilds(releaseId, {
+    network: options.network,
+    actorUserId: options.actorUserId,
+  });
   const fresh = await loadRelease(releaseId);
   const chain = await loadChain(fresh);
   const evaluation = evaluateChain(chain);
@@ -1343,7 +1384,7 @@ export async function retryFailedTasks(
   releaseId: string,
   options: BuildOptions = {},
 ): Promise<RetryResult> {
-  const resolved = resolveClients(releaseId, options);
+  const resolved = await resolveClients(releaseId, options);
   const release = await loadRelease(releaseId);
 
   if (release.crpTopicId === null) {
@@ -1430,7 +1471,10 @@ export async function retryFailedTasks(
     }
   }
 
-  const advance = await advanceRelease(releaseId, { network: options.network });
+  const advance = await advanceRelease(releaseId, {
+    network: options.network,
+    actorUserId: options.actorUserId,
+  });
 
   return { releaseId, resetPackageNames, unblockedPackageNames, failures, advance };
 }
@@ -1462,7 +1506,7 @@ export async function cancelRelease(
   releaseId: string,
   options: BuildOptions = {},
 ): Promise<CancelResult> {
-  const { clients } = resolveClients(releaseId, options);
+  const { clients } = await resolveClients(releaseId, options);
   const release = await loadRelease(releaseId);
 
   if (release.status === "abandoned") {
