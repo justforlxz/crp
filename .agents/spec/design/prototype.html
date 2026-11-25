@@ -194,8 +194,8 @@ a:hover { text-decoration: underline; }
    3. 通用件
    ============================================================ */
 .btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  min-height: 40px; padding: 0 14px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 40px; padding: 0 16px;
   border-radius: var(--r-sm);
   border: 1px solid var(--line-ctl);
   background: var(--card);
@@ -215,7 +215,7 @@ a:hover { text-decoration: underline; }
 .btn-danger { color: var(--bad); border-color: #e6b3ae; }
 .btn-danger:hover { background: var(--bad-bg); }
 .btn[disabled] { opacity: .45; pointer-events: none; }
-.btn-sm { min-height: 32px; padding: 0 10px; font-size: 12px; position: relative; }
+.btn-sm { min-height: 32px; padding: 0 12px; font-size: 12px; position: relative; }
 .btn-sm::after { content: ""; position: absolute; inset: -4px; }
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
@@ -246,7 +246,7 @@ a:hover { text-decoration: underline; }
 .sec-hd .spacer { margin-left: auto; }
 
 /* 状态点 */
-.dot { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 12px; }
+.dot { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; font-size: 12px; }
 .dot::before {
   content: ""; width: 7px; height: 7px; border-radius: 50%;
   background: currentColor; flex: none;
@@ -260,8 +260,8 @@ a:hover { text-decoration: underline; }
 
 /* 提示块 */
 .tip {
-  display: flex; gap: 10px;
-  padding: 12px 14px;
+  display: flex; gap: 12px;
+  padding: 12px 16px;
   border: 1px solid #dbe6fb;
   border-radius: var(--r-sm);
   background: #f4f8ff;
@@ -323,13 +323,13 @@ a:hover { text-decoration: underline; }
 .stat-main { min-width: 0; flex: 1; }
 .stat-label { color: var(--ink-3); font-size: 12px; font-weight: 500; }
 .stat-value {
-  margin-top: 2px;
+  margin-top: 0;
   font-size: 30px; font-weight: 600; line-height: 1.1;
   letter-spacing: -.02em;
   color: var(--ink);
 }
 .stat-value small { font-size: 13px; font-weight: 500; color: var(--ink-4); margin-left: 4px; letter-spacing: 0; }
-.stat-foot { margin-top: 6px; font-size: 12px; color: var(--ink-4); }
+.stat-foot { margin-top: 8px; font-size: 12px; color: var(--ink-4); }
 .stat-ico {
   width: 38px; height: 38px; border-radius: 10px;
   display: grid; place-items: center;
@@ -359,13 +359,13 @@ table.grid th {
   color: var(--ink-3);
   font-size: 12px; font-weight: 600;
   text-align: left;
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
 table.grid th.num, table.grid td.num { text-align: right; }
 table.grid td {
-  padding: 12px 14px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--line-2);
   color: var(--ink-2);
   vertical-align: middle;
@@ -375,7 +375,7 @@ table.grid tbody tr { cursor: default; }
 table.grid tbody tr.is-clickable { cursor: pointer; }
 table.grid tbody tr.is-clickable:hover { background: #fafbfd; }
 table.grid td strong { color: var(--ink); font-weight: 600; }
-table.grid .cell-sub { display: block; color: var(--ink-4); font-size: 11.5px; margin-top: 1px; }
+table.grid .cell-sub { display: block; color: var(--ink-4); font-size: 11.5px; margin-top: 2px; }
 table.grid .col-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: var(--ink-3); }
 table.grid .nowrap { white-space: nowrap; }
 
@@ -389,9 +389,9 @@ table.grid .nowrap { white-space: nowrap; }
   min-height: 48px;
 }
 .tab {
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; gap: 8px;
   min-height: 44px;
-  padding: 0 10px;
+  padding: 0 12px;
   color: var(--ink-3);
   font-size: 13px;
   border-bottom: 2px solid transparent;
@@ -407,7 +407,7 @@ table.grid .nowrap { white-space: nowrap; }
 .tab-n {
   font-size: 11px; color: var(--ink-4);
   background: var(--line-2); border-radius: 20px;
-  padding: 0 6px; min-width: 18px; text-align: center;
+  padding: 0 8px; min-width: 20px; text-align: center;
 }
 .tab[aria-selected="true"] .tab-n { background: var(--accent-bg); color: var(--accent-ink); }
 
@@ -434,7 +434,7 @@ table.grid .nowrap { white-space: nowrap; }
 .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
 
 .select {
-  min-height: 40px; padding: 0 30px 0 12px;
+  min-height: 40px; padding: 0 32px 0 12px;
   border: 1px solid var(--line-ctl);
   border-radius: var(--r-sm);
   background: var(--card) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4.5 6 8.5 10 4.5' fill='none' stroke='%235b6472' stroke-width='1.5' stroke-linecap='round'/></svg>") no-repeat right 10px center;
@@ -454,7 +454,7 @@ table.grid .nowrap { white-space: nowrap; }
 }
 .manager-card {
   display: flex; align-items: center; gap: var(--s3);
-  padding: 14px var(--s4);
+  padding: 16px var(--s4);
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--r);
@@ -485,7 +485,7 @@ table.grid .nowrap { white-space: nowrap; }
   overflow: hidden;
 }
 .project-card:hover { border-color: #cfd7e3; }
-.pc-hd { display: flex; align-items: flex-start; gap: 10px; padding: 14px var(--s4) 10px; }
+.pc-hd { display: flex; align-items: flex-start; gap: 8px; padding: 16px var(--s4); }
 .pc-ico {
   width: 32px; height: 32px; border-radius: var(--r-sm);
   background: var(--accent-bg); color: var(--accent-ink);
@@ -499,16 +499,16 @@ table.grid .nowrap { white-space: nowrap; }
 .pc-facts {
   display: grid; grid-template-columns: repeat(3, 1fr);
   gap: var(--s2);
-  padding: 10px 0;
+  padding: 12px 0;
   border-top: 1px solid var(--line-2);
   border-bottom: 1px solid var(--line-2);
 }
 .pc-fact { min-width: 0; }
 .pc-fact dt { font-size: 11px; color: var(--ink-4); }
 .pc-fact dd { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink-2); }
-.pc-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 0; }
+.pc-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 12px 0; }
 .chip {
-  display: inline-flex; align-items: center; gap: 5px;
+  display: inline-flex; align-items: center; gap: 4px;
   padding: 2px 8px;
   border-radius: 20px;
   background: var(--line-2);
@@ -520,7 +520,7 @@ table.grid .nowrap { white-space: nowrap; }
 .pc-ft {
   margin-top: auto;
   display: flex; align-items: center; gap: var(--s2);
-  padding: 10px var(--s4);
+  padding: 12px var(--s4);
   border-top: 1px solid var(--line-2);
   background: #fcfcfd;
 }
@@ -549,8 +549,8 @@ table.grid .nowrap { white-space: nowrap; }
 .qi-name { display: flex; align-items: baseline; gap: 8px; }
 .qi-name b { font-size: 13px; font-weight: 600; color: var(--ink); }
 .qi-name small { font-size: 11.5px; color: var(--ink-4); }
-.qi-desc { font-size: 12px; color: var(--ink-3); margin-top: 1px; }
-.qi-bar { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.qi-desc { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+.qi-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 progress {
   appearance: none;
   width: 100%; height: 5px;
@@ -576,7 +576,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
   display: grid;
   grid-template-columns: 24px minmax(0,1fr) auto;
   gap: var(--s3); align-items: center;
-  padding: 10px var(--s4);
+  padding: 12px var(--s4);
   position: relative;
 }
 .dep-row + .dep-row::before {
@@ -608,14 +608,14 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
   border-radius: var(--r);
   box-shadow: var(--shadow-card);
 }
-.summary-cell { padding: 14px var(--s4); border-left: 1px solid var(--line-2); }
+.summary-cell { padding: 16px var(--s4); border-left: 1px solid var(--line-2); }
 .summary-cell:first-child { border-left: 0; }
 .summary-cell dt { font-size: 11.5px; color: var(--ink-4); }
 .summary-cell dd { margin: 2px 0 0; font-size: 14px; font-weight: 600; color: var(--ink); letter-spacing: -.01em; }
 .summary-cell dd small { font-size: 11.5px; font-weight: 400; color: var(--ink-4); letter-spacing: 0; }
 
 .timeline { position: relative; padding-left: 8px; }
-.tl-item { position: relative; padding: 0 0 var(--s4) 26px; }
+.tl-item { position: relative; padding: 0 0 var(--s4) 24px; }
 .tl-item:last-child { padding-bottom: 0; }
 .tl-item::before {
   content: ""; position: absolute; left: 6px; top: 6px; bottom: -6px;
@@ -667,7 +667,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
 .modal-hd .modal-sub { color: var(--ink-4); font-size: 12px; }
 .modal-hd .spacer { margin-left: auto; }
 .icon-btn {
-  width: 40px; height: 40px; border-radius: var(--r-sm);
+  width: 40px; height: 40px; padding: 0; border-radius: var(--r-sm);
   display: grid; place-items: center; color: var(--ink-3);
 }
 .icon-btn:hover { background: var(--line-2); }
@@ -701,7 +701,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
 
 /* 表单 */
 .field { display: block; margin-bottom: var(--s4); }
-.field > .label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-2); margin-bottom: 6px; }
+.field > .label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-2); margin-bottom: 8px; }
 .field .note { font-size: 11.5px; color: var(--ink-4); margin-top: 4px; }
 .input, .textarea {
   width: 100%; min-height: 40px;
@@ -890,6 +890,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
         <div class="nav-label">工作区</div>
         <button class="nav-item" data-nav="dashboard" aria-current="page"><svg><use href="#i-dashboard"/></svg><span>工作台</span></button>
         <button class="nav-item" data-nav="releases"><svg><use href="#i-releases"/></svg><span>提测记录</span><span class="nav-count num">12</span></button>
+        <button class="nav-item" data-nav="detail"><svg><use href="#i-releases"/></svg><span>提测详情</span></button>
         <button class="nav-item" data-nav="queue"><svg><use href="#i-queue"/></svg><span>构建队列</span><span class="nav-count num">3</span></button>
       </div>
       <div class="nav-group">
@@ -1111,7 +1112,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
         <section class="page" data-page="packages">
           <div class="stack">
             <div class="panel">
-              <div class="panel-hd"><h2>软件包登记</h2><span class="hint">全平台共用一份</span><div class="spacer"></div><button class="btn" data-toast-ok="新建软件包（原型未实现）"><svg><use href="#i-plus"/></svg>新建软件包</button></div>
+              <div class="panel-hd"><h2>软件包登记</h2><span class="hint">全平台共用一份</span><div class="spacer"></div><button class="btn" data-act="pkg:new"><svg><use href="#i-plus"/></svg>新建软件包</button></div>
               <div class="panel-bd flush table-scroll">
                 <table class="grid">
                   <thead><tr><th style="width:18%">名称</th><th style="width:20%">仓库路径</th><th style="width:16%">CRP 项目名</th><th style="width:14%">分支</th><th style="width:12%">当前版本</th><th style="width:12%">依赖</th><th style="width:8%" class="num">引用</th></tr></thead>
@@ -1362,8 +1363,9 @@ const PAGES = {
     actions: () => btn('返回列表', '', 'arrow-left', 'nav:releases')
                 + btn('放弃主题', 'danger', 'x', 'abandon') },
   projects:  { title: '项目',     desc: '4 个项目，5 位项目经理',
-    actions: () => btn('新建项目', 'primary', 'plus', 'toast:原型未实现新建项目') },
-  managers:  { title: '项目经理', desc: '项目创建时必须分配一位' },
+    actions: () => btn('新建项目', 'primary', 'plus', 'project:new') },
+  managers:  { title: '项目经理', desc: '项目创建时必须分配一位',
+    actions: () => btn('新建项目经理', 'primary', 'plus', 'mgr:new') },
   packages:  { title: '软件包',   desc: '12 个，全平台共用一份登记' },
   baselines: { title: '基线',     desc: '4 条，来自 CRP 分支' },
   queue:     { title: '构建队列', desc: '3 个作业，1 个进行中',
@@ -1524,7 +1526,7 @@ function renderDetail() {
 
   $('#detail-info').innerHTML = `
     <div class="project-card" style="border:0;box-shadow:none">
-      <div class="pc-hd" style="padding:0 0 10px">
+      <div class="pc-hd" style="padding:0">
         <div class="pc-ico">${icon('projects')}</div>
         <div class="pc-title">
           <div class="pc-name">${d.project}</div>
@@ -1559,7 +1561,7 @@ function renderDetail() {
    ============================================================ */
 function renderProjects() {
   $('#proj-managers').innerHTML = MANAGERS.filter(m => m.projects > 0).map(m => `
-    <button class="manager-card" data-act="toast:打开 ${m.name} 的项目（原型未实现）">
+    <button class="manager-card" data-act="mgr:open:${m.name}">
       <span class="avatar">${m.name[0]}</span>
       <span style="min-width:0">
         <span class="manager-name">${m.name}</span>
@@ -1569,17 +1571,19 @@ function renderProjects() {
     </button>`).join('');
 
   const q = ($('#proj-q')?.value || '').trim().toLowerCase();
-  const list = PROJECTS.filter(p => !q || p.name.toLowerCase().includes(q));
-  $('#proj-count').textContent = `共 ${PROJECTS.length} 个，显示 ${list.length} 个`;
+  const list = PROJECTS.filter(p => (!q || (p.name + p.mgr).toLowerCase().includes(q)) && (!projMgrFilter || p.mgr === projMgrFilter));
+  $('#proj-count').innerHTML = (projMgrFilter
+    ? `只看 <b>${projMgrFilter}</b> 的项目 · <button class="text-link" style="display:inline;padding:0" data-act="mgr:open:${projMgrFilter}">清除</button>`
+    : `共 ${PROJECTS.length} 个，显示 ${list.length} 个`);
   $('#proj-cards').innerHTML = list.map(p => `
-    <div class="project-card">
+    <div class="project-card" data-act="project:edit:${p.key}" style="cursor:pointer">
       <div class="pc-hd">
         <div class="pc-ico">${icon('projects')}</div>
         <div class="pc-title">
           <div class="pc-name">${p.name}</div>
           <div class="pc-key">${p.key}</div>
         </div>
-        <button class="icon-btn" data-act="toast:项目操作菜单（原型未实现）">${icon('more')}</button>
+        <button class="icon-btn" data-act="project:menu:${p.key}">${icon('more')}</button>
       </div>
       <div class="pc-body">
         <div class="pc-facts">
@@ -1595,7 +1599,7 @@ function renderProjects() {
       <div class="pc-ft">
         <span class="dot is-wait" style="font-size:11.5px">基线 ${p.baseline}</span>
         <span class="spacer"></span>
-        <button class="btn btn-sm" data-act="toast:创建提测已经打开（原型未实现）">发起提测</button>
+        <button class="btn btn-sm" data-act="project:start:${p.key}">发起提测</button>
       </div>
     </div>`).join('');
 
@@ -1609,7 +1613,7 @@ function renderProjects() {
 
 function renderManagers() {
   $('#mgr-cards').innerHTML = MANAGERS.map(m => `
-    <div class="manager-card">
+    <div class="manager-card" data-act="mgr:edit:${m.name}" style="cursor:pointer">
       <span class="avatar">${m.name[0]}</span>
       <span style="min-width:0">
         <span class="manager-name">${m.name}</span>
@@ -1633,7 +1637,7 @@ function renderManagers() {
    ============================================================ */
 function renderPackages() {
   $('#pkg-rows').innerHTML = PACKAGES.map(p => `
-    <tr>
+    <tr class="is-clickable" data-act="pkg:edit:${p.name}">
       <td><strong>${p.name}</strong></td>
       <td class="col-mono">${p.repo}</td>
       <td class="col-mono">${p.crp}</td>
@@ -1709,9 +1713,9 @@ function renderWebhooks() {
         </div>
       </div>
       <div class="pc-ft">
-        <button class="btn btn-sm" data-act="toast:已发送测试投递">测试</button>
+        <button class="btn btn-sm" data-act="wh:test:${WEBHOOKS.indexOf(w)}">测试</button>
         <span class="spacer"></span>
-        <button class="btn btn-sm btn-quiet" data-act="toast:端点编辑（原型未实现）">编辑</button>
+        <button class="btn btn-sm btn-quiet" data-act="wh:edit:${WEBHOOKS.indexOf(w)}">编辑</button>
       </div>
     </div>`).join('');
 
@@ -2191,6 +2195,41 @@ document.addEventListener('click', (e) => {
       confirmDialog('放弃这条提测主题？', '会在 CRP 上把主题标记为放弃，已提交的构建不会撤回，别人基于这个主题的提测不受影响。这个操作不能撤销。', '放弃主题', () => toast('主题已放弃', 'CRP 返回 200', 'bad'));
       return;
     }
+    if (act === 'project:new') { projectFormModal(); return; }
+    if (act === 'mgr:new') { managerFormModal(); return; }
+    if (act === 'pkg:new') { packageFormModal(); return; }
+    if (act.startsWith('project:edit:')) { projectFormModal(act.slice(13)); return; }
+    if (act.startsWith('project:menu:')) { projectMenuModal(act.slice(13)); return; }
+    if (act.startsWith('project:software:')) { projectSoftwareModal(act.slice(17)); return; }
+    if (act.startsWith('project:start:')) { startRelease(act.slice(14)); return; }
+    if (act.startsWith('project:clone:')) {
+      const src = PROJECTS.find(x => x.key === act.slice(14));
+      if (src) {
+        const key = src.key + '-copy';
+        PROJECTS.push({ ...src, key, name: src.name + '（副本）', chips: [...src.chips] });
+        PROJ_SOFTWARE[key] = (PROJ_SOFTWARE[src.key] || []).map(r => ({ ...r }));
+        renderProjects();
+        toast('项目副本已创建', src.name + '（副本）');
+      }
+      return;
+    }
+    if (act.startsWith('project:delete:')) {
+      const key = act.slice(15);
+      const pj = PROJECTS.find(x => x.key === key);
+      if (pj) confirmDialog('删除这个项目？', '只删平台里的项目配置，不动 CRP 上的任何东西。名下的提测记录会保留，但不再归属这个项目。', '删除项目', () => {
+        const i = PROJECTS.indexOf(pj);
+        if (i >= 0) PROJECTS.splice(i, 1);
+        delete PROJ_SOFTWARE[key];
+        renderProjects();
+        toast('项目已删除', pj.name, 'bad');
+      });
+      return;
+    }
+    if (act.startsWith('mgr:open:')) { projMgrFilter = projMgrFilter === act.slice(9) ? '' : act.slice(9); go('projects'); renderProjects(); return; }
+    if (act.startsWith('mgr:edit:')) { managerFormModal(act.slice(9)); return; }
+    if (act.startsWith('pkg:edit:')) { packageFormModal(act.slice(9)); return; }
+    if (act.startsWith('wh:edit:')) { webhookFormModal(Number(act.slice(8))); return; }
+    if (act.startsWith('wh:test:')) { toast('测试投递已发送', '返回 200，耗时 128 ms'); return; }
     if (act.startsWith('toast:')) { toast(act.slice(6)); return; }
   }
 
@@ -2210,8 +2249,335 @@ document.addEventListener('keydown', (e) => {
 
 $('#release-q').addEventListener('input', (e) => { releaseQuery = e.target.value; renderReleases(); });
 $('#proj-q').addEventListener('input', () => renderProjects());
-$('#wh-add').addEventListener('click', openWebhookForm);
+$('#wh-add').addEventListener('click', () => webhookFormModal());
 $('.account')?.addEventListener('click', () => toast('账号设置（原型未实现）'));
+
+/* ============================================================
+   项目 / 项目经理 / 软件包 / Webhook 的编辑弹窗
+   原型也要能真的走完流程，不能停在「未实现」的提示上。
+   ============================================================ */
+
+/** 项目页按项目经理筛选，空串表示不筛。 */
+let projMgrFilter = '';
+
+/** 从项目直接发起提测：打开向导并预选该项目。 */
+function startRelease(key) {
+  const p = PROJECTS.find((x) => x.key === key);
+  if (!p) return;
+  openWizard();
+  WIZ.mgr = p.mgr;
+  WIZ.proj = p.key;
+  drawWizard();
+}
+
+/* ---- 项目：新建 / 编辑 ---- */
+function projectFormModal(key) {
+  const isNew = !key;
+  const p = isNew
+    ? { key: '', name: '', mgr: MANAGERS.find((m) => m.projects > 0).name, baseline: BASELINES[0].name, desc: '', chips: [] }
+    : PROJECTS.find((x) => x.key === key);
+  if (!p) return;
+
+  openModal(`
+    <div class="modal-hd">
+      <h2>${isNew ? '新建项目' : '编辑项目'}</h2>
+      <span class="modal-sub">${isNew ? '项目边界就是提测边界' : p.key}</span>
+      <div class="spacer"></div>
+      <button class="icon-btn" data-close="1">${icon('x')}</button>
+    </div>
+    <div class="modal-bd">
+      <div class="form-row2">
+        <label class="field"><span class="label">项目名称 *</span>
+          <input class="input" id="pf-name" value="${esc(p.name)}" placeholder="例如：桌面核心 V25">
+        </label>
+        <label class="field"><span class="label">项目标识</span>
+          <input class="input" id="pf-key" value="${esc(p.key)}" placeholder="desktop-core" ${isNew ? '' : 'disabled'}>
+        </label>
+      </div>
+      <div class="form-row2">
+        <label class="field"><span class="label">项目经理 *</span>
+          <select class="select" id="pf-mgr">${MANAGERS.filter((m) => m.projects > 0).map((m) => `<option ${m.name === p.mgr ? 'selected' : ''}>${m.name}</option>`).join('')}</select>
+        </label>
+        <label class="field"><span class="label">CRP 基线 *</span>
+          <select class="select" id="pf-base">${BASELINES.map((b) => `<option ${b.name === p.baseline ? 'selected' : ''}>${b.name}</option>`).join('')}</select>
+        </label>
+      </div>
+      <label class="field"><span class="label">项目说明</span>
+        <textarea class="textarea" id="pf-desc" placeholder="这个项目负责的范围">${esc(p.desc || '')}</textarea>
+      </label>
+      <div class="tip">${icon('info')}
+        <div><b>项目里的全部软件包都会在提测时一起提交。</b>顺序按软件包依赖排，用户不能改。基线决定提交到 CRP 的哪条分支。</div>
+      </div>
+    </div>
+    <div class="modal-ft"><div class="spacer"></div>
+      <button class="btn" data-close="1">取消</button>
+      <button class="btn btn-primary" id="pf-save">${isNew ? '创建项目' : '保存'}</button>
+    </div>`);
+
+  $('#pf-save').addEventListener('click', () => {
+    const name = $('#pf-name').value.trim();
+    const keyv = $('#pf-key').value.trim();
+    if (!name) { toast('项目名称不能为空', '', 'bad'); return; }
+    if (isNew) {
+      if (keyv && PROJECTS.some((x) => x.key === keyv)) { toast('项目标识已存在', '', 'bad'); return; }
+      PROJECTS.push({
+        key: keyv || 'project-' + (PROJECTS.length + 1),
+        name,
+        mgr: $('#pf-mgr').value,
+        baseline: $('#pf-base').value,
+        pkgs: 0,
+        deps: 0,
+        desc: $('#pf-desc').value.trim(),
+        chips: [],
+      });
+      PROJ_SOFTWARE[PROJECTS[PROJECTS.length - 1].key] = [];
+    } else {
+      p.name = name;
+      p.mgr = $('#pf-mgr').value;
+      p.baseline = $('#pf-base').value;
+      p.desc = $('#pf-desc').value.trim();
+    }
+    closeModal();
+    renderProjects();
+    toast(isNew ? '项目已创建' : '项目已保存', isNew ? name : p.name);
+  });
+}
+
+/* ---- 项目：操作菜单 ---- */
+function projectMenuModal(key) {
+  const p = PROJECTS.find((x) => x.key === key);
+  if (!p) return;
+  const item = (act, title, desc) => `
+    <button class="pick" data-act="${act}">
+      <span><span class="pick-t">${title}</span><span class="pick-d"> ${desc}</span></span>
+      <span class="spacer"></span>${icon('chevron')}
+    </button>`;
+  openModal(`
+    <div class="modal-hd"><h2>${esc(p.name)}</h2><span class="modal-sub">${p.key}</span>
+      <div class="spacer"></div><button class="icon-btn" data-close="1">${icon('x')}</button></div>
+    <div class="modal-bd">
+      <div class="pick-list">
+        ${item('project:edit:' + p.key, '编辑项目', '名称、项目经理、基线、说明')}
+        ${item('project:software:' + p.key, '软件包清单', (PROJ_SOFTWARE[p.key] || []).length + ' 个仓库，决定提测内容与顺序')}
+        ${item('project:start:' + p.key, '发起提测', '按这个项目的软件清单走三步向导')}
+        ${item('project:clone:' + p.key, '复制项目', '复制软件清单，提交历史从空白开始')}
+        ${item('project:delete:' + p.key, '删除项目', '只删平台配置，不动 CRP 上的任何东西')}
+      </div>
+    </div>
+    <div class="modal-ft"><div class="spacer"></div><button class="btn" data-close="1">关闭</button></div>`);
+}
+
+/* ---- 项目：软件包清单 ---- */
+function projectSoftwareModal(key) {
+  const p = PROJECTS.find((x) => x.key === key);
+  if (!p) return;
+  const rows = PROJ_SOFTWARE[p.key] || [];
+
+  openModal(`
+    <div class="modal-hd"><h2>软件包清单</h2><span class="modal-sub">${esc(p.name)}</span>
+      <div class="spacer"></div><button class="icon-btn" data-close="1">${icon('x')}</button></div>
+    <div class="modal-bd">
+      <div class="pick-list">
+        ${rows.length ? rows.map((r, i) => `
+          <div class="pick" style="cursor:default">
+            <span class="step-n num">${i + 1}</span>
+            <span><span class="pick-t">${r.pkg}</span>
+              <span class="pick-d"> ${r.branch} · 代码版本 ${r.code} · CRP 仓库版本 ${r.repo}${r.updated ? ' · 有更新' : ' · 无变化'}</span></span>
+            <span class="spacer"></span>
+            <button class="btn btn-sm btn-danger" data-ps-remove="${r.pkg}">移除</button>
+          </div>`).join('') : `<div class="empty"><div class="empty-ico">${icon('empty')}</div><div class="empty-t">这个项目还没有软件包</div><div class="empty-d">从下面加一个，或者先把软件包登记到「软件包」页。</div></div>`}
+      </div>
+      <div class="form-row2" style="margin-top:16px">
+        <label class="field"><span class="label">添加软件包</span>
+          <select class="select" id="ps-add">${PACKAGES.filter((x) => !rows.some((r) => r.pkg === x.name)).map((x) => `<option value="${x.name}">${x.name} · ${x.ver}</option>`).join('')}</select>
+        </label>
+        <label class="field"><span class="label">&nbsp;</span>
+          <button class="btn" id="ps-add-btn" style="width:100%">${icon('plus')}加入清单</button>
+        </label>
+      </div>
+      <div class="tip">${icon('info')}<div><b>顺序由软件包依赖决定，不按添加顺序。</b>这里只决定「提测哪些包」，排在第几位由依赖关系算出来。</div></div>
+    </div>
+    <div class="modal-ft"><div class="spacer"></div><button class="btn" data-close="1">完成</button></div>`);
+
+  const persist = () => {
+    PROJ_SOFTWARE[p.key] = rows;
+    p.pkgs = rows.length;
+    p.chips = rows.map((r) => r.pkg);
+    renderProjects();
+  };
+
+  $$('[data-ps-remove]').forEach((b) => b.addEventListener('click', () => {
+    const i = rows.findIndex((r) => r.pkg === b.dataset.psRemove);
+    if (i >= 0) rows.splice(i, 1);
+    persist();
+    projectSoftwareModal(key);
+  }));
+
+  $('#ps-add-btn')?.addEventListener('click', () => {
+    const name = $('#ps-add')?.value;
+    const pkg = PACKAGES.find((x) => x.name === name);
+    if (!pkg) return;
+    rows.push({ pkg: pkg.name, branch: pkg.br, code: pkg.ver, repo: pkg.ver, updated: true, msg: '新增到清单' });
+    persist();
+    projectSoftwareModal(key);
+  });
+}
+
+/* ---- 项目经理：新建 / 编辑 ---- */
+function managerFormModal(name) {
+  const isNew = !name;
+  const m = isNew ? { name: '', mail: '', ws: '桌面核心组' } : MANAGERS.find((x) => x.name === name);
+  if (!m) return;
+
+  openModal(`
+    <div class="modal-hd"><h2>${isNew ? '新建项目经理' : '编辑项目经理'}</h2>
+      <div class="spacer"></div><button class="icon-btn" data-close="1">${icon('x')}</button></div>
+    <div class="modal-bd">
+      <div class="form-row2">
+        <label class="field"><span class="label">姓名 *</span>
+          <input class="input" id="mf-name" value="${esc(m.name)}" placeholder="输入姓名">
+        </label>
+        <label class="field"><span class="label">邮箱</span>
+          <input class="input" id="mf-mail" value="${esc(m.mail || '')}" placeholder="name@uniontech.com">
+        </label>
+      </div>
+      <label class="field"><span class="label">所属工作区</span>
+        <select class="select" id="mf-ws">
+          ${['桌面核心组', '系统应用组', '安全组'].map((w) => `<option ${w === m.ws ? 'selected' : ''}>${w}</option>`).join('')}
+        </select>
+      </label>
+      <div class="tip">${icon('info')}<div><b>同一个工作区内不能重名。</b>改名只改姓名，不动工作区归属，也不动名下项目。</div></div>
+    </div>
+    <div class="modal-ft"><div class="spacer"></div>
+      <button class="btn" data-close="1">取消</button>
+      <button class="btn btn-primary" id="mf-save">${isNew ? '创建' : '保存'}</button>
+    </div>`);
+
+  $('#mf-save').addEventListener('click', () => {
+    const nm = $('#mf-name').value.trim();
+    if (!nm) { toast('姓名不能为空', '', 'bad'); return; }
+    if (isNew) {
+      if (MANAGERS.some((x) => x.name === nm)) { toast('这个姓名已存在', '', 'bad'); return; }
+      MANAGERS.push({ name: nm, mail: $('#mf-mail').value.trim(), ws: $('#mf-ws').value, projects: 0, active: 0 });
+    } else {
+      const old = m.name;
+      m.name = nm;
+      m.mail = $('#mf-mail').value.trim();
+      m.ws = $('#mf-ws').value;
+      PROJECTS.forEach((p) => { if (p.mgr === old) p.mgr = nm; });
+    }
+    closeModal();
+    renderManagers();
+    renderProjects();
+    toast(isNew ? '项目经理已创建' : '已保存', nm);
+  });
+}
+
+/* ---- 软件包：编辑 ---- */
+function packageFormModal(name) {
+  const isNew = !name;
+  const pkg = isNew ? { name: '', repo: '', crp: '', br: 'master', ver: '', dep: '无依赖', refs: 0 } : PACKAGES.find((x) => x.name === name);
+  if (!pkg) return;
+
+  openModal(`
+    <div class="modal-hd"><h2>${isNew ? '新建软件包' : '编辑软件包'}</h2>
+      <div class="spacer"></div><button class="icon-btn" data-close="1">${icon('x')}</button></div>
+    <div class="modal-bd">
+      <div class="form-row2">
+        <label class="field"><span class="label">deb 包名 *</span>
+          <input class="input" id="kf-name" value="${esc(pkg.name)}" placeholder="dde-file-manager" ${isNew ? '' : 'disabled'}>
+        </label>
+        <label class="field"><span class="label">CRP 项目名 *</span>
+          <input class="input" id="kf-crp" value="${esc(pkg.crp)}" placeholder="v25_filemanager">
+        </label>
+      </div>
+      <label class="field"><span class="label">仓库路径 *</span>
+        <input class="input" id="kf-repo" value="${esc(pkg.repo)}" placeholder="deepin-file-manager">
+      </label>
+      <div class="form-row2">
+        <label class="field"><span class="label">跟踪分支</span>
+          <input class="input" id="kf-br" value="${esc(pkg.br)}" placeholder="master">
+        </label>
+        <label class="field"><span class="label">当前版本</span>
+          <input class="input" id="kf-ver" value="${esc(pkg.ver)}" placeholder="6.0.12">
+        </label>
+      </div>
+      <div class="tip">${icon('info')}<div><b>CRP 项目名可以和 deb 包名不同。</b>提交到 CRP 时按 CRP 项目名找主题，两个名字不一致必须都填对。</div></div>
+    </div>
+    <div class="modal-ft"><div class="spacer"></div>
+      <button class="btn" data-close="1">取消</button>
+      <button class="btn btn-primary" id="kf-save">${isNew ? '登记' : '保存'}</button>
+    </div>`);
+
+  $('#kf-save').addEventListener('click', () => {
+    const nm = $('#kf-name').value.trim();
+    if (!nm) { toast('包名不能为空', '', 'bad'); return; }
+    if (isNew) {
+      if (PACKAGES.some((x) => x.name === nm)) { toast('这个包已登记', '', 'bad'); return; }
+      PACKAGES.push({ name: nm, repo: $('#kf-repo').value.trim(), crp: $('#kf-crp').value.trim(), br: $('#kf-br').value.trim(), ver: $('#kf-ver').value.trim(), dep: '无依赖', refs: 0 });
+    } else {
+      pkg.crp = $('#kf-crp').value.trim();
+      pkg.repo = $('#kf-repo').value.trim();
+      pkg.br = $('#kf-br').value.trim();
+      pkg.ver = $('#kf-ver').value.trim();
+    }
+    closeModal();
+    renderPackages();
+    toast(isNew ? '软件包已登记' : '已保存', nm);
+  });
+}
+
+/* ---- Webhook：新增 / 编辑 ---- */
+function webhookFormModal(index) {
+  const isNew = index === undefined || index === null || Number.isNaN(index);
+  const w = isNew ? { name: '', url: 'https://', ev: '全部事件' } : WEBHOOKS[index];
+  if (!w) return;
+
+  openModal(`
+    <div class="modal-hd"><h2>${isNew ? '新增端点' : '编辑端点'}</h2>
+      <div class="spacer"></div><button class="icon-btn" data-close="1">${icon('x')}</button></div>
+    <div class="modal-bd">
+      <label class="field"><span class="label">名称 *</span>
+        <input class="input" id="wf-name" value="${esc(w.name)}" placeholder="例如 研发群机器人">
+      </label>
+      <label class="field"><span class="label">回调地址 *</span>
+        <input class="input" id="wf-url" value="${esc(w.url)}" placeholder="https://">
+      </label>
+      <label class="field"><span class="label">订阅事件</span>
+        <div class="pick-list">
+          ${['提测创建（release.created）', '构建开始（build.started）', '构建完成（build.success）', '构建失败（build.failed）', '认领失败（build.claim.failed）'].map((e, i) => `
+            <button class="pick" data-ev="${e}" aria-pressed="${i < 2}">
+              <span class="check">${i < 2 ? icon('check') : ''}</span>
+              <span class="pick-t">${e}</span>
+            </button>`).join('')}
+        </div>
+      </label>
+      <div class="tip">${icon('alert')}<div><b>保存后会立即发一次测试请求。</b>密钥只在创建时显示一次。</div></div>
+    </div>
+    <div class="modal-ft"><div class="spacer"></div>
+      <button class="btn" data-close="1">取消</button>
+      <button class="btn btn-primary" id="wf-save">${isNew ? '保存并测试' : '保存'}</button>
+    </div>`);
+
+  $$('[data-ev]').forEach((b) => b.addEventListener('click', () => {
+    const on = b.getAttribute('aria-pressed') === 'true';
+    b.setAttribute('aria-pressed', String(!on));
+    b.querySelector('.check').innerHTML = !on ? icon('check') : '';
+  }));
+
+  $('#wf-save').addEventListener('click', () => {
+    const name = $('#wf-name').value.trim();
+    const url = $('#wf-url').value.trim();
+    if (!name || !url) { toast('名称和地址都要填', '', 'bad'); return; }
+    const picked = $$('[data-ev]').filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset.ev);
+    const ev = picked.length === 5 ? '全部事件' : (picked.join(' ').replace(/（[^）]*）/g, '') || '未订阅');
+    if (isNew) WEBHOOKS.push({ name, url, ev, on: true });
+    else { WEBHOOKS[index].name = name; WEBHOOKS[index].url = url; WEBHOOKS[index].ev = ev; }
+    closeModal();
+    renderWebhooks();
+    toast(isNew ? '端点已创建' : '端点已保存', isNew ? '测试投递返回 200' : name);
+  });
+}
 
 /* ============================================================
    启动
