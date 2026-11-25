@@ -89,14 +89,15 @@ lib/releases/abandon.ts(209,9): error TS2322: Type '"abandon_topic"' is not assi
 | 命令 | 作用 |
 | --- | --- |
 | `pnpm dev` | 启动开发服务器 |
-| `pnpm build` / `pnpm start` | 生产构建 / 启动生产服务 |
+| `pnpm build` / `pnpm start` | 生产构建 / 启动生产服务。`pnpm start` 先跑种子自检：库里有种子数据就以非零退出、不起服务（见 docs/RUNBOOK.md 第 3.7 节） |
 | `pnpm lint` | ESLint 检查 |
 | `pnpm typecheck` | TypeScript 类型检查（`tsc --noEmit`） |
 | `pnpm test` | 单元测试（Node 内置测试运行器，经 tsx 执行 TypeScript）。分两组跑：会读到全库在跑提测的三个文件（`baseline-sync`、`build-dispatch`、`build-poll`，它们调用的定时任务是跨工作区挑活的）一次只跑一个；其余文件 4 个并行，靠各自的数据区间隔开（工作区前缀、假 CRP 的 Topic / Release ID 区间起点，两段重叠会让唯一约束凭空失败）。新增用例时：碰全库的函数只能加进第一组，其余用例只管自己的数据 |
 | `pnpm db:migrate` | 应用已提交的迁移（`prisma migrate deploy`），空库建表用它 |
 | `pnpm db:migrate:dev` | 开发时新建迁移（`prisma migrate dev --name <名称>`） |
 | `pnpm db:reset` | 清空数据库、重放全部迁移并跑种子（`prisma migrate reset --force && prisma db seed`）；Prisma 7 的 reset 不再自动跑种子，所以这里显式接上；会丢数据，只对本地开发库用 |
-| `pnpm db:seed` | 执行 `prisma/seed.ts` 写入种子数据，使用 upsert，可重复执行 |
+| `pnpm db:seed` | 执行 `prisma/seed.ts` 写入种子数据，使用 upsert，可重复执行。**只能用在本地开发、测试与 CI**；部署路径不许调用 |
+| `pnpm check:seed` | 部署实例的种子自检（`scripts/check-seed-data.ts`）：退出码 0 通过、1 检测到种子数据或读不到库 |
 | `pnpm db:studio` | 打开 Prisma Studio |
 | `pnpm tsx scripts/verify-baseline-sync.ts` | 用真实 CRP 与 Shuttle 跑一次基线同步，打印分支条数对照、`eagle-1071` 里 `kwin` 的版本对照与本次请求明细，会写库 |
 | `pnpm tsx scripts/verify-gerrit.ts` | 用真实 Gerrit 复核分支、提交与 `debian/changelog` 读取，需要先配好 `GERRIT_*` 三项 |
