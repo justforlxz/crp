@@ -1310,3 +1310,95 @@ curl -fsS -X POST -b cookie.txt -H 'Content-Type: application/json' \
 curl -fsS -X DELETE -b cookie.txt \
   'http://localhost:3000/api/settings/credentials?kind=gerrit'
 ```
+
+## GET /api/crp/projects
+
+当场问一次 CRP：这个名字在 CRP 里对应哪些项目。用于登记软件包时确认「CRP 项目名到底叫什么」，
+不写库 —— 这个接口不产生任何 `package` / `baseline` 行。
+
+### 鉴权
+
+用户会话（Cookie），登录即可，不区分工作区角色：查的是 CRP 的数据，不是本平台的数据。
+未登录返回 `401`。
+
+CRP 的调用身份是**当前登录用户**自己的 CRP 凭据（在「我的账号」里配置）。没配凭据时
+在发出任何 CRP 请求之前就返回 `409 credential_missing`，消息里带配置页地址。
+
+### 查询参数
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `q` | 是 | 关键词。去掉首尾空白后长度必须 ≥ 1，否则 `400 query_required`，**且不向 CRP 发请求**。 |
+| `limit` | 否 | 最多要几条，`1..100`，默认 `100`。不合法时退回默认值，超过 100 压到 100。 |
+| `branchId` | 否 | CRP 的交付分支 ID，默认 `0`。**CRP 在这个接口上忽略它**（四个不同分支返回的内容完全一致），传了只为对齐 CRP 的请求格式。 |
+
+CRP 只支持按名字模糊查，`page` 参数被服务端忽略（翻页拿到的是同一批），`perPage` 超过 100 仍是
+100 条。所以没有「列出全部 CRP 项目」这种用法。
+
+### 返回体
+
+```json
+{
+  "items": [
+    { "crpProjectName": "kwin-qtrebuild", "packageName": "kwin",
+      "repoUrl": "ssh://git@gitlabwh.uniontech.com/wuhan/kelvinu-porting/kwin-5.15.5.5.git",
+      "exact": true },
+    { "crpProjectName": "dde-kwin", "packageName": "dde-kwin",
+      "repoUrl": "ssh://gerrit.uniontech.com:29418/dde-kwin", "exact": false }
+  ],
+  "truncated": false,
+  "query": "kwin"
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `items[].crpProjectName` | CRP 里的项目名，登记时填进「CRP 项目名」。 |
+| `items[].packageName` | CRP 里这一项的 Debian 源码包名。**可能是空串**（实测 `kwindowsystem` 就是空），不要假设它非空。 |
+| `items[].repoUrl` | CRP 登记的仓库地址。与软件包的 `repoPath` 不是一回事：`repoPath` 是 Gerrit 仓库路径（`deepin-kde/kwin`），要用前先去掉协议与主机。 |
+| `items[].exact` | `packageName` 与 `q` 忽略大小写后完全相等。模糊匹配里只有它才是「就是这个名字」。 |
+| `truncated` | CRP 返回满 100 条：还有更多没拿到，该换个更具体的关键词。 |
+| `query` | 实际使用的关键词（已去掉首尾空白）。 |
+
+排序规则：`exact` 为真的排最前，其余按 `crpProjectName` 长度升序，长度相同按名字排
+（同样的输入永远同样的顺序）。
+
+**不返回 CRP 的原始对象。** 精简到上面四个字段，其余字段（`Branches`、`BuildArgs`、`Arches` 等）
+不出这个接口。
+
+### 缓存
+
+同一关键词（连同 `limit` / `branchId`）60 秒内复用结果，进程内缓存，最多 200 条，超了淘汰最旧的。
+用户每敲一个字就打一次 CRP 既慢又容易触发限流，这层缓存就是为了避免这件事。缓存只在进程里，
+重启即失效，不落盘。
+
+### 状态码
+
+| 状态码 | `error.code` | 什么情况 | 用户看到的话 |
+| --- | --- | --- | --- |
+| `200` | — | 查询成功（包括「一条都没有」） | — |
+| `400` | `query_required` | `q` 去空白后为空 | 「请输入要搜索的项目名」 |
+| `401` | `unauthenticated` | 未登录 | 「请先登录」 |
+| `409` | `credential_missing` | 这个账号还没配 CRP 凭据 | 消息里带「我的账号」配置页地址 |
+| `502` | `crp_unavailable` | CRP 回 5xx、连不上，或拒绝了这组凭据 | 「CRP 暂时不可用」/「CRP 拒绝了这次查询的凭据……」 |
+| `503` | `crp_rate_limited` | CRP 限流（429） | 「CRP 限流，约 N 秒后再试」，带 `retryAfter` |
+| `503` | `credential_key_missing` | 服务端没配 `CREDENTIAL_ENCRYPTION_KEY` | 运维处理 |
+| `504` | `crp_timeout` | 等 CRP 响应超时 | 「CRP 响应超时」 |
+
+限流时 `error.retryAfter` 是秒数，同一个值也写进 `Retry-After` 响应头：
+
+```json
+{ "error": { "code": "crp_rate_limited", "message": "CRP 限流，约 42 秒后再试", "retryAfter": 42 } }
+```
+
+**CRP 的原始报错不会透给前端**（里面有英文原文与内部路径），只进服务端日志。
+
+### 示例
+
+```bash
+# 查 kwin 在 CRP 里的项目
+curl -fsS -b cookie.txt 'http://localhost:3000/api/crp/projects?q=kwin'
+
+# 只要前 10 条
+curl -fsS -b cookie.txt 'http://localhost:3000/api/crp/projects?q=kwin&limit=10'
+```

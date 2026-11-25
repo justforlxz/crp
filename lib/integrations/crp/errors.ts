@@ -26,6 +26,13 @@ export type CrpErrorOptions = {
   status?: number;
   /** CRP 原始响应片段。 */
   responseSnippet?: string;
+  /**
+   * 限流时 CRP 给的等待秒数（来自响应头 `Retry-After`）。
+   *
+   * 只有 `CrpRateLimitedError` 会填它。放在基类上是因为错误对象从请求层往上抛时类型是
+   * `CrpError`，上层不该为了读一个数字再做一次 `instanceof` 之外的字符串解析。
+   */
+  retryAfterSeconds?: number | null;
   cause?: unknown;
 };
 
@@ -34,6 +41,8 @@ export class CrpError extends Error {
   readonly kind: CrpErrorKind;
   readonly status?: number;
   readonly responseSnippet?: string;
+  /** 限流时该等多少秒；没有这个信息（或不是限流）时为 `null`。 */
+  readonly retryAfterSeconds: number | null;
 
   constructor(message: string, kind: CrpErrorKind, options: CrpErrorOptions = {}) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
@@ -41,6 +50,7 @@ export class CrpError extends Error {
     this.kind = kind;
     this.status = options.status;
     this.responseSnippet = options.responseSnippet;
+    this.retryAfterSeconds = options.retryAfterSeconds ?? null;
   }
 }
 

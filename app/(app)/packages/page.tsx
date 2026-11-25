@@ -16,6 +16,7 @@ import { PageShell } from "@/components/page-shell";
 import { listPackages } from "@/lib/packages";
 
 import { resolveWorkspaceScope } from "../workspaceScope";
+import { CrpProjectSearch } from "./crpSearch";
 
 // 数据每分钟都在被同步任务改，页面不做静态化。
 export const dynamic = "force-dynamic";
@@ -101,6 +102,8 @@ export default async function PackagesPage({ searchParams }: PackagesPageProps) 
           )}
         </div>
 
+        {/* 不知道 CRP 项目名时先在这里查（MKACG-996），查到直接带去新建表单。 */}
+        <CrpProjectSearch />
         <div className="tip">
           <span aria-hidden="true">ⓘ</span>
           <div>

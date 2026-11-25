@@ -104,6 +104,22 @@ function sleepDefault(ms: number): Promise<void> {
   });
 }
 
+/**
+ * `Retry-After` → 秒数。
+ *
+ * 只认「秒」这一种写法（CRP 给的就是秒）。HTTP 规范还允许给一个日期，遇到那种写法返回
+ * `null`：宁可不显示等待时间，也不要显示一个编出来的数字。
+ */
+function parseRetryAfterSeconds(value: string | null): number | null {
+  if (value === null) {
+    return null;
+  }
+
+  const seconds = Number.parseInt(value.trim(), 10);
+
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
+}
+
 /** 把失败响应翻译成五类错误里合适的那一类。 */
 function toHttpError(
   init: CrpRequest,
@@ -131,6 +147,7 @@ function toHttpError(
     return new CrpRateLimitedError(`${label}：CRP 限流，请稍后重试${wait}`, {
       status,
       responseSnippet: snippet,
+      retryAfterSeconds: parseRetryAfterSeconds(retryAfter),
     });
   }
 
