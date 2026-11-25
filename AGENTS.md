@@ -16,7 +16,9 @@
 
 1. **原型是唯一基准。** 实现与原型不一致时以原型为准。要改原型，先在 issue 里说明理由。
 2. **先改原型，再改代码。** 任何 UI 讨论先改 `.agents/spec/design/prototype.html`，同意后再动实现。
-3. **涉及 UI 的 PR 必须 @ lxz 确认。** 没有他的明确确认，**不允许合并**。这条优先于「CI 全绿」「评审通过」「QA 通过」。
+3. **交付 UI 必须 @ lxz 确认。** 刻度按「交付」算，不按「合并」算：
+   - 单张 UI PR 合进集成分支（`feat/ui-v2`）**不需要**确认；
+   - 集成分支 → `main` **必须**确认，没有明确确认不允许合并，这条优先于「CI 全绿」「评审通过」「QA 通过」。
 4. **QA 验收必须逐页对照原型**，结论写进 `[Result]`。只跑功能 AC、不做原型对照的验收判不通过。
 5. **样式门禁必须绿。** `pnpm test:style` 只保证「样式没被意外改坏」，不保证「符合设计」，两者都要。
 6. **收尾必须跑验收用例集。** `pnpm test:acceptance` 必跑；有部署环境时加跑 `pnpm test:acceptance:ui`。结果贴进 `[Result]`，有失败就判不通过。用例集在 `.agents/spec/design/test-cases.md`。
@@ -54,10 +56,23 @@ pnpm test:style           # 样式门禁（三层检查）
 | `.agents/spec/design/` | **界面规范、原型、模块清单、验收用例集，改 UI 前必读** |
 | `.agents/spec/product/` | **产品契约：凭据、权限等跨模块规则** |
 | `tests/acceptance/` | 验收用例实现，按 `FUNC-` / `UI-` / `EDGE-` / `SEC-` 分组 |
-| `docs/` | RUNBOOK、API、Webhook 等运维文档 |
+| `docs/` | RUNBOOK、API、Webhook、**WORKFLOW（派单与唤醒纪律）** 等运维文档 |
 
 ## 提交与验收
 
 - 提交信息用 `type(scope): 说明`，正文带 `Closes <issue-key>`。
 - 每个 PR 的最后一次提交是 `chore: 功能点开发完成` 空提交，由合并人追加，不改任何文件。
 - 合并前必须满足：CI 两个 job 全绿、评审 APPROVED、QA APPROVED、验收用例集通过、无冲突；**涉及 UI 的还要 lxz 确认**。
+
+## 任务与唤醒纪律
+
+详细操作、命令与三次真实事故见 `docs/WORKFLOW.md`。四条硬规则：
+
+1. **容器单不挂执行型唤醒。** 容器单只记状态，不派执行者。唤醒只挂到真正要做事的单上；巡检类唤醒的指令第一句必须是「你只做巡检，不要改代码，不要改本单状态」。
+2. **巡检只发评论，不动状态。** 状态只由 PL 依据交付证据推进。巡检改状态会让「谁在推进」失去唯一来源。
+3. **`wakeup create` 是追加语义，不是替换。** 建完立刻 `multica issue wakeup list <KEY> --output json` 核对，只允许一条且 `enabled: true`，多出来的用 `wakeup delete` 删掉。
+4. **派单前确认 spec 已在 `main` 上。** 子单从 `main` 检出，spec 还在 PR 里时子单会按旧基准开工，整轮返工。派完看 `issue runs <KEY>`：**有且只有一条** running，排队的那条是重复发起。
+
+### 为什么这么定
+
+这三类错误每次的代价都是整轮重跑：取消 run、重新派单、再等四十分钟。而且错得很隐蔽，表面看是「任务停了」，实际是唤醒把容器单当成了执行单。
