@@ -167,6 +167,9 @@ export function detectSeedData(snapshot: SeedGuardSnapshot): SeedFinding[] {
  * 三件事必须写清：命中的是哪张表的哪些值、这是怎么进来的、怎么清理。
  * 结论由 `hasDecisiveFinding` 决定，和调用方的动作保持一致：
  * 有决定性特征才写「拒绝启动」，只有证据时写明「不拒绝启动」。
+ *
+ * 两段的收尾文案**必须**跟着判定走：真实库（RUNBOOK 3.6 建的工作区、CRP 拉下来的基线）
+ * 会命中「证据」这几条，那时若照「把上面列出的演示行删掉」去做，删掉的是真实数据。
  */
 export function formatSeedReport(findings: SeedFinding[]): string {
   const decisive = hasDecisiveFinding(findings);
@@ -181,13 +184,22 @@ export function formatSeedReport(findings: SeedFinding[]): string {
     lines.push(`  - ${item.table}（${mark}）：${item.what} —— ${item.values.join("、")}`);
   }
 
-  lines.push(
-    "",
-    "部署实例上不允许出现种子数据（.agents/spec/product/runtime.md 第一节）。",
-    "这些行来自 `pnpm db:seed`；部署路径不允许调用它，它只该出现在本地开发、测试与 CI 里。",
-    "清理办法：把上面列出的演示行删掉（或换一个干净的库）再启动，",
-    "步骤见 docs/RUNBOOK.md 第 3.7 节「种子数据政策与启动自检」。",
-  );
+  lines.push("");
+
+  if (decisive) {
+    lines.push(
+      "部署实例上不允许出现种子数据（.agents/spec/product/runtime.md 第一节）。",
+      "这些行来自 `pnpm db:seed`；部署路径不允许调用它，它只该出现在本地开发、测试与 CI 里。",
+      "清理办法：把上面列出的演示行删掉（或换一个干净的库）再启动，",
+      "步骤见 docs/RUNBOOK.md 第 3.7 节「种子数据政策与启动自检」。",
+    );
+  } else {
+    lines.push(
+      "这些是按名字命中的证据（工作区名、基线名、账号邮箱），真实库里本来就会出现，本次不拒绝启动。",
+      "决定性特征只有占位密码哈希与占位签名密钥；上面一条都没有，说明这个库不是纯种子库。",
+      "若这些行确实来自 `pnpm db:seed`，按 docs/RUNBOOK.md 第 3.7 节清理即可，不影响启动。",
+    );
+  }
 
   return lines.join("\n");
 }

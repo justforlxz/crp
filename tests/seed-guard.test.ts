@@ -127,6 +127,29 @@ test("失败信息可读：写清命中的表、具体值与清理办法", () =>
   assert.match(report, /RUNBOOK/, "要指到清理办法");
 });
 
+test("拒绝启动时，日志写明「不允许出现种子数据」与删除演示行的清理办法", () => {
+  const report = formatSeedReport(detectSeedData(pureSeedSnapshot()));
+
+  assert.match(report, /不允许出现种子数据/);
+  assert.match(report, /清理办法：把上面列出的演示行删掉/);
+  assert.match(report, /docs\/RUNBOOK\.md 第 3\.7 节/);
+});
+
+test("只有证据时，日志不写拒绝启动，也不给删除演示行的清理办法", () => {
+  // 真实库（RUNBOOK 3.6 建的工作区、CRP 拉下来的基线）会命中「证据」这几条。
+  // 照「把上面列出的演示行删掉」去做，删掉的是真实工作区与真实基线。
+  const snapshot = realSnapshot();
+  snapshot.workspaces = SEED_WORKSPACES.map((item) => ({ ...item }));
+  snapshot.baselines = SEED_BASELINES.map((item) => ({ ...item }));
+
+  const report = formatSeedReport(detectSeedData(snapshot));
+
+  assert.match(report, /只有证据，本次不拒绝启动/, "要写明本次不拒绝启动");
+  assert.match(report, /这些是按名字命中的证据/, "要说清这些命中只是名字相同");
+  assert.doesNotMatch(report, /不允许出现种子数据/, "只有证据时不许写「不允许出现种子数据」");
+  assert.doesNotMatch(report, /清理办法：把上面列出的演示行删掉/, "只有证据时不许给删除演示行的清理办法");
+});
+
 test("指纹常量与 prisma/seed.ts 一致：种子改了而自检没跟上时，这条会失败", () => {
   const seedSource = readFileSync(join(process.cwd(), "prisma/seed.ts"), "utf8");
 
@@ -138,5 +161,55 @@ test("指纹常量与 prisma/seed.ts 一致：种子改了而自检没跟上时�
     ...SEED_BASELINES.flatMap((item) => [item.name, item.description]),
   ]) {
     assert.ok(seedSource.includes(value), `prisma/seed.ts 里找不到指纹值「${value}」，自检已经过期`);
+  }
+
+  // 反向：种子里新增账号、工作区或基线时，上面那条单向断言不会失败（新值不在自检常量里），
+  // 自检就会漏报。这里从种子的四张表里把值抽出来，逐个要求自检常量已经收录。
+  const block = (name: string): string => {
+    const declaration = seedSource.indexOf(`const ${name}`);
+    assert.ok(declaration >= 0, `prisma/seed.ts 里找不到 ${name} 数组`);
+    const start = seedSource.indexOf("= [", declaration);
+    const end = seedSource.indexOf("\n]", start);
+    assert.ok(start >= 0 && end > start, `${name} 数组没有闭合`);
+    return seedSource.slice(start, end);
+  };
+
+  const collect = (text: string, pattern: RegExp): string[] =>
+    [...text.matchAll(pattern)].map((match) => match[1]);
+
+  for (const email of collect(block("USERS"), /email: "([^"]+)"/gu)) {
+    assert.ok(SEED_USER_EMAILS.some((item) => item === email), `种子账号「${email}」没进 SEED_USER_EMAILS`);
+  }
+
+  for (const [slug, name] of [
+    ...block("WORKSPACES").matchAll(/\{ slug: "([^"]+)", name: "([^"]+)" \}/gu),
+  ].map((match) => [match[1], match[2]])) {
+    assert.ok(
+      SEED_WORKSPACES.some((item) => item.slug === slug && item.name === name),
+      `种子工作区「${slug}」/「${name}」没进 SEED_WORKSPACES`,
+    );
+  }
+
+  for (const [name, description] of [
+    ...block("BASELINES").matchAll(/name: "([^"]+)",\s+description: "([^"]+)"/gu),
+  ].map((match) => [match[1], match[2]])) {
+    assert.ok(
+      SEED_BASELINES.some((item) => item.name === name && item.description === description),
+      `种子基线「${name}」/「${description}」没进 SEED_BASELINES`,
+    );
+  }
+
+  for (const passwordHash of collect(block("USERS"), /passwordHash: "([^"]+)"/gu)) {
+    assert.ok(
+      passwordHash.startsWith(SEED_PASSWORD_HASH_PREFIX),
+      `种子账号的密码哈希「${passwordHash}」不是占位前缀，自检认不出来`,
+    );
+  }
+
+  for (const secret of collect(block("WEBHOOK_ENDPOINTS"), /secret: "([^"]+)"/gu)) {
+    assert.ok(
+      secret.startsWith(SEED_WEBHOOK_SECRET_PREFIX),
+      `种子端点的签名密钥「${secret}」不是占位前缀，自检认不出来`,
+    );
   }
 });

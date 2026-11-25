@@ -20,7 +20,7 @@ const REASONS: Record<EnvNeed, string> = {
   database:
     "缺少 DATABASE_URL：这组用例要连库。复制 .env.example 为 .env 填好，再执行 pnpm db:migrate 与 pnpm db:seed",
   baseUrl:
-    "缺少 BASE_URL：这组用例要一个跑起来的实例。先 pnpm build && pnpm start，再设 BASE_URL=http://127.0.0.1:3000",
+    "缺少 BASE_URL：这组用例要一个跑起来的实例。先 pnpm build && pnpm exec next start（种子库上用它会绕开种子自检），再设 BASE_URL=http://127.0.0.1:3000",
 };
 
 /** 数据库连接串；没配返回 `null`。 */

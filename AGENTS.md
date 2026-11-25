@@ -36,7 +36,7 @@ pnpm dev                  # 本地开发
 pnpm build                # 生产构建
 pnpm lint && pnpm typecheck && pnpm test
 pnpm db:migrate           # 迁移
-pnpm db:seed              # 灌种子数据
+pnpm db:seed              # 灌种子数据（只用于本地开发、测试与 CI；部署路径不许调用）
 pnpm test:style           # 样式门禁（三层检查）
 ```
 
