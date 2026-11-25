@@ -9,7 +9,7 @@
 import { spawn } from "node:child_process";
 import { createConnection } from "node:net";
 
-import { chromium } from "@playwright/test";
+import { chromium, type BrowserContext } from "@playwright/test";
 
 import { prisma } from "../../lib/db";
 import {
@@ -270,6 +270,59 @@ function collectAnchors(properties: string[]): AnchorMap {
   return anchors;
 }
 
+/**
+ * 起一个浏览器与上下文，按需注入会话 Cookie。
+ *
+ * 单独抽出来是因为验收用例集（`tests/acceptance/ui/`）要的浏览器与登录方式和这里完全一样：
+ * 一样的视口语义、一样直接写会话行、一样按 `url` 注入 Cookie。两处各起一套的话，样式门禁量到的
+ * 页面与验收看到的页面会慢慢分叉 —— `reducedMotion`、`locale`、`timezoneId` 差一项就量出不同布局。
+ */
+export type StyleBrowser = {
+  context: BrowserContext;
+  /** 关掉浏览器；上下文随浏览器一起关，不需要单独调。 */
+  close: () => Promise<void>;
+};
+
+export async function openStyleBrowser(input: {
+  viewport: { width: number; height: number };
+  /** 与 `sessionToken` 一起给时才注入会话 Cookie；只量公开页时两个都不给。 */
+  baseUrl?: string;
+  sessionToken?: string;
+}): Promise<StyleBrowser> {
+  const browser = await chromium.launch();
+
+  try {
+    const context = await browser.newContext({
+      viewport: input.viewport,
+      deviceScaleFactor: 1,
+      locale: "zh-CN",
+      timezoneId: "UTC",
+      colorScheme: "light",
+      reducedMotion: "reduce",
+    });
+
+    if (input.baseUrl !== undefined && input.sessionToken !== undefined) {
+      await context.addCookies([
+        {
+          name: SESSION_COOKIE_NAME,
+          value: input.sessionToken,
+          url: `${input.baseUrl}/`,
+        },
+      ]);
+    }
+
+    return {
+      context,
+      close: async () => {
+        await browser.close();
+      },
+    };
+  } catch (error) {
+    await browser.close();
+    throw error;
+  }
+}
+
 export type CapturedPage = {
   page: CoveredPage;
   anchors: AnchorMap;
@@ -290,25 +343,10 @@ export async function capturePages(input: {
   properties: readonly string[];
 }): Promise<CapturedPage[]> {
   const { baseUrl, sessionToken, pages, viewport, properties } = input;
-  const browser = await chromium.launch();
+  const session = await openStyleBrowser({ viewport, baseUrl, sessionToken });
 
   try {
-    const context = await browser.newContext({
-      viewport,
-      deviceScaleFactor: 1,
-      locale: "zh-CN",
-      timezoneId: "UTC",
-      colorScheme: "light",
-      reducedMotion: "reduce",
-    });
-
-    await context.addCookies([
-      {
-        name: SESSION_COOKIE_NAME,
-        value: sessionToken,
-        url: `${baseUrl}/`,
-      },
-    ]);
+    const { context } = session;
 
     const captured: CapturedPage[] = [];
 
@@ -362,6 +400,6 @@ export async function capturePages(input: {
 
     return captured;
   } finally {
-    await browser.close();
+    await session.close();
   }
 }

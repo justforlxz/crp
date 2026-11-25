@@ -7,7 +7,8 @@
  * 四条判据来自 A19 收敛后的约定，明细见 `docs/STYLE-VERIFICATION.md`：
  *
  * 1. 所有 `app/**\/page.tsx` 经 `PageShell` 渲染；
- * 2. 没有裸 `<table>`：每个 `<table>` 都要带 `className="data-table"`，横向滚动容器由 L2 的
+ * 2. 没有裸 `<table>`：每个 `<table>` 都要在 `className` 里带上表模块的类
+ *    （界面规范 v1 的 `data-table`，或 v2 的 `grid`），横向滚动容器由 L2 的
  *    `*.table-scroll` 锚点覆盖；
  * 3. 没有新增内联 `style={{`；
  * 4. `app/globals.css` 的规则数不低于基线；
@@ -181,11 +182,17 @@ export function readCssVariables(css: string): Record<string, string> {
 export type SourceHit = { line: number; text: string };
 
 /**
- * 找出没带表模块类名的 `<table>` 开标签。
+ * `className` 里出现这些 token 之一，就算这张表带了表模块的类。
  *
- * 认两个类名：`.data-table`（v1 的名字，还没迁完的页面在用）与 `table.grid`（`design.md`
- * 第七节的表格模块，v2 页面都用它）。两个都认，界面重做期间新旧页面混着也判得对。
+ * - `data-table`：界面规范 v1 的表模块；
+ * - `grid`：界面规范 v2 的表模块（`modules.json` 里写的是 `table.grid`）。
+ *
+ * 两代并存一段时间：四张 v2 单并行合并，还没迁移的页面仍写着 `data-table`。
+ * 判据只看「有没有显式给表模块类」，不锁死具体是哪一个 —— 锁死会让另一代的页面一夜之间全红。
  */
+const TABLE_MODULE_TOKENS: readonly string[] = ["data-table", "grid"];
+
+/** 找出没带表模块类的 `<table>` 开标签。 */
 export function findBareTables(source: string): SourceHit[] {
   const hits: SourceHit[] = [];
   const pattern = /<table\b([^>]*)>/gu;
@@ -193,16 +200,11 @@ export function findBareTables(source: string): SourceHit[] {
 
   while ((match = pattern.exec(source)) !== null) {
     const attributes = match[1] ?? "";
-
-    // 类名按 token 比对：`className="grid wide"` 也算带了表格模块，不能因为多了个类就判成裸表。
     const className = /className\s*=\s*"([^"]*)"/u.exec(attributes);
+    const tokens = (className?.[1] ?? "").split(/\s+/u).filter((token) => token !== "");
 
-    if (className !== null) {
-      const tokens = (className[1] ?? "").split(/\s+/);
-
-      if (tokens.includes("data-table") || tokens.includes("grid")) {
-        continue;
-      }
+    if (tokens.some((token) => TABLE_MODULE_TOKENS.includes(token))) {
+      continue;
     }
 
     hits.push({ line: lineOf(source, match.index), text: match[0] });
@@ -293,7 +295,7 @@ export function runLint(input: {
     ok: bareTables.length === 0,
     description:
       bareTables.length === 0
-        ? "没有裸 <table>：所有表格都带 .data-table"
+        ? "没有裸 <table>：所有表格都带表模块类（data-table 或 grid）"
         : `有 ${bareTables.length} 处裸 <table>（缺少 className="data-table"）：${bareTables.join("；")}`,
   });
 

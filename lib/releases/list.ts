@@ -49,61 +49,18 @@ export const RELEASE_TAB_STATUSES: Record<ReleaseStatusTab, readonly ReleaseStat
   failed: ["failed", "partial_failure", "abandoned"],
 };
 
-/** 行内显示的精确状态名。 */
-export const RELEASE_STATUS_LABELS: Record<ReleaseStatus, string> = {
-  pending: "排队中",
-  dispatching: "投递中",
-  building: "构建中",
-  success: "成功",
-  partial_failure: "部分失败",
-  failed: "失败",
-  abandoned: "已放弃",
-};
-
-/** 来源标签：平台创建 / 从 CRP 导入。 */
-export const RELEASE_SOURCE_LABELS: Record<"platform" | "imported", string> = {
-  platform: "平台创建",
-  imported: "从 CRP 导入",
-};
-
-/** 状态的中文名；认不出的取值原样返回，不显示成空白。 */
-export function releaseStatusLabel(status: string): string {
-  return RELEASE_STATUS_LABELS[status as ReleaseStatus] ?? status;
-}
-
 /**
- * 状态 pill 的配色档位（原型 `.p-*`）。只决定颜色，不改任何文案。
- *
- * 口径来自 `design.md` 5.1：绿 = 成功，红 = 失败，橙 = 警告/已放弃，
- * 蓝 =「投递中、构建中」这类进行中的信息色，中性 = 待投递、排队中。
- *
- * 放在这里而不是页面里：工作台与提测记录都要用，接下来还要迁七页，
- * 逐页抄一份迟早会出现两页配色不一致。
+ * 状态与来源的中文名、配色档位都在 `./labels` 里（纯函数，客户端组件也能引）。
+ * 这里原样再导出，页面与接口继续从 `lib/releases` 取，不用改调用方。
  */
-export function releaseStatusPillClass(status: string): string {
-  if (status === "success") {
-    return "pill p-green";
-  }
-
-  if (status === "failed" || status === "partial_failure") {
-    return "pill p-red";
-  }
-
-  if (status === "abandoned") {
-    return "pill p-orange";
-  }
-
-  if (status === "dispatching" || status === "building") {
-    return "pill p-blue";
-  }
-
-  return "pill p-gray";
-}
-
-/** 来源的中文名；认不出的取值原样返回。 */
-export function releaseSourceLabel(source: string): string {
-  return RELEASE_SOURCE_LABELS[source as "platform" | "imported"] ?? source;
-}
+export {
+  RELEASE_SOURCE_LABELS,
+  RELEASE_STATUS_LABELS,
+  releaseSourceLabel,
+  releaseStatusLabel,
+  releaseStatusPillClass,
+  releaseStatusTone,
+} from "./labels";
 
 /** 认不出的取值一律当「全部」，不因为一个乱传的查询参数就报错。 */
 export function parseStatusTab(value: string | undefined): ReleaseStatusTab {

@@ -106,6 +106,8 @@ lib/releases/abandon.ts(209,9): error TS2322: Type '"abandon_topic"' is not assi
 | `pnpm tsx scripts/verify-base-url.ts --base-url=http://127.0.0.1:3000` | 从 base URL 打开：不带会话落到 `/login?next=%2Fdashboard`、带会话落到 `/dashboard`，且没有占位页原文。需要跑起来的服务与 `pnpm db:seed` 过的库，几秒；`scripts/e2e.sh` 的第 0 步就是它 |
 | `scripts/style-check/container.sh` | 在门禁镜像里跑样式回归检查（L1 静态结构 + L2 计算样式 + L3 几何与整页截图）；加 `--update` 重写基线。判定口径见 [docs/STYLE-VERIFICATION.md](docs/STYLE-VERIFICATION.md) |
 | `pnpm check:modules` | 拿 `.agents/spec/design/modules.json` 的清单逐页比对实现，列出还缺哪些原型模块；有缺失退 1。加 `--report` 只报告、退出码恒为 0 |
+| `pnpm test:acceptance` | 跑验收用例集的功能、边界、权限三组（`.agents/spec/design/test-cases.md` 的 77 条里除界面组之外的全部），不需要浏览器。连 `DATABASE_URL` 指向的库；缺库时逐条 skip 并写明原因。判定见下节「验收用例集」 |
+| `pnpm test:acceptance:ui` | 跑界面组 25 条，需要浏览器与 `BASE_URL` 指向的已部署实例，另需 `DATABASE_URL` 签发会话。缺环境时不执行任何用例、以退出码 2 结束并说明缺什么 |
 
 ## 账号与登录
 
@@ -268,13 +270,15 @@ lib/releases/abandon.ts(209,9): error TS2322: Type '"abandon_topic"' is not assi
 
 ## 持续集成
 
-`.github/workflows/ci.yml` 在 `push` 到 `main` 与向 `main` 提 PR 时触发，三个 job：
+`.github/workflows/ci.yml` 在 `push` 到 `main` 与向 `main` 提 PR 时触发，四个 job：
 
 **`checks`**（功能）：`pnpm install --frozen-lockfile` → `pnpm db:migrate` → `pnpm db:seed` → `pnpm db:reset`（连续两次） → `pnpm lint` → `pnpm typecheck` → `pnpm test`
 
 **`style`**（样式门禁）：跑在 `mcr.microsoft.com/playwright:v1.65.1-noble` 里 —— 与基线生成用的是同一个镜像，浏览器和字体都随镜像固定，不需要另外下载或缓存；步骤是 `pnpm install` → `pnpm db:migrate` → `pnpm db:seed` → `pnpm test:style`。样式改坏时这个 job 失败、PR 标红；`--update` 在 CI 里被脚本拒绝。
 
 **`模块对照`**（模块清单比对）：`pnpm install` → `pnpm check:modules`。**阻断** —— 模块移植已经收口（MKACG-969/970/971/972 合并后 9 个页面与全局模块齐备），有缺失即退出码 1，PR 直接标红。要临时只看报告，本地加 `--report`：它输出完全相同的清单，但退出码恒为 0。
+
+**`验收用例`**（验收用例集）：`pnpm install` → `pnpm db:migrate` → `pnpm db:seed` → `pnpm test:acceptance`。**非阻断**（`continue-on-error: true`）—— 用例集描述的是界面规范 v2，界面重做还没合并，涉及页面结构的用例本来就该是红的；等页面转绿后由后续单去掉这一行改成阻断。这个 job 不起服务、不给 `BASE_URL`，所以界面组在这里是 skipped（见上节「验收用例集」）。
 
 - `checks` 的 Node 用 `22.x`，与 `package.json` 的 `engines.node` 同一条版本线；pnpm 的版本由 `package.json` 的 `packageManager` 决定（当前 `pnpm@9.15.9`），由 `pnpm/action-setup` 安装，不在 workflow 里重复写版本。
 - `style` job 在容器里跑，Node 来自镜像，pnpm 由 job 按 `package.json` 的 `packageManager` 装上（版本只有这一个来源）；容器用 `--network` 默认桥接，靠 service 名 `postgres` 连库。
@@ -345,6 +349,43 @@ pnpm check:modules --help     # 这条差别也写在帮助里
 
 全局模块按所有页面扫描到的 class 合起来判定；页面模块只看这一页自己的 `sources`，页面之间
 不互相顶替。模块名一律来自 `modules.json`，脚本里不写第二份清单。
+
+## 验收用例集（`pnpm test:acceptance`）
+
+用例集的正文在 `.agents/spec/design/test-cases.md`，77 条分四组。实现放 `tests/acceptance/`，
+一个分组一个目录：`func/`、`ui/`、`edge/`、`sec/`。
+
+```bash
+pnpm test:acceptance        # 功能 + 边界 + 权限（不需要浏览器）
+pnpm test:acceptance:ui     # 界面组（需要 BASE_URL 与 DATABASE_URL）
+```
+
+**编号是唯一标识。** 测试名由 `acceptanceCase("FUNC-03", …)` 拼出来，标题从用例集里取，
+所以文档改标题、测试名跟着改。`tests/acceptance/coverage.test.ts` 每次运行都会把
+「文档里的编号」与「源码里注册的编号」对一遍：缺一条、多一条、同一个编号写两次都会失败。
+
+**失败信息固定三项。** 断言统一走 `tests/acceptance/support/report.ts`，失败时打印编号、预期、实际：
+
+```
+[FUNC-03] 页签「失败」的计数与行数
+  预期：2
+  实际：3
+```
+
+**环境与跳过。** 规则是「缺什么就说什么，绝不报成通过」：
+
+| 情形 | 表现 |
+| --- | --- |
+| 缺 `DATABASE_URL` | 要库的用例逐条 skip，跳过原因写进报告 |
+| 缺 `BASE_URL`（界面组） | 一条用例都不跑，打印缺哪两项环境，退出码 2 |
+| 用例还没实现 | 测试名带 `TODO` 并 skip，原因写清卡在哪个节点 |
+
+界面组的浏览器与会话直接复用 `scripts/style-check/measure.ts`：`openStyleBrowser` 与
+`mintStyleSession` 是同一份实现，视口、locale、时区、动效偏好不会两处各写一套。
+模块清单只从 `.agents/spec/design/modules.json` 读，测试里没有第二份。
+
+CI 里的 `验收用例` job **非阻断**（`continue-on-error: true`）：用例集描述的是界面规范 v2，
+界面重做与本单并行，页面还没对齐时这一组本来就是红的。等页面转绿后由后续单改成阻断。
 
 ## 环境变量
 

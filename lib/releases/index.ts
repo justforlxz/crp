@@ -118,6 +118,7 @@ export {
   releaseSourceLabel,
   releaseStatusLabel,
   releaseStatusPillClass,
+  releaseStatusTone,
   type ReleaseListQuery,
   type ReleaseListResult,
   type ReleaseListRow,

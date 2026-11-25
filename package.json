@@ -16,6 +16,8 @@
     "test:style": "tsx scripts/style-check/index.ts",
     "test:contrast": "tsx scripts/check-contrast.ts",
     "check:modules": "tsx scripts/check-modules.ts",
+    "test:acceptance": "tsx --test --test-concurrency=1 tests/acceptance/coverage.test.ts tests/acceptance/func/*.test.ts tests/acceptance/edge/*.test.ts tests/acceptance/sec/*.test.ts",
+    "test:acceptance:ui": "tsx tests/acceptance/run-ui.ts",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "prisma db seed",

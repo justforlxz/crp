@@ -4,7 +4,7 @@
  * | 能力 | 入口 |
  * | --- | --- |
  * | 工作台一屏的数据（统计卡、最近提测、队列摘要、项目概况、配置待办） | `loadDashboard` |
- * | 「本周」「成功率」的口径与纯函数 | `STATS_WINDOW_DAYS`、`recentWindowStart`、`successRatePercent` |
+ * | 侧栏徽标上的两个数（提测总数、未跑完的提测数） | `loadNavCounts` |
  */
 
 export {
@@ -18,9 +18,4 @@ export {
   type RecentReleaseRow,
 } from "./dashboard";
 
-export {
-  recentWindowStart,
-  SETTLED_RELEASE_STATUSES,
-  STATS_WINDOW_DAYS,
-  successRatePercent,
-} from "./period";
+export { loadNavCounts, type NavCounts } from "./nav";
