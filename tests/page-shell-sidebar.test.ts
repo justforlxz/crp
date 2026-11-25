@@ -1,13 +1,12 @@
 /**
- * 侧栏底部的账号区（MKACG-957）。
+ * 侧栏与账号区（界面规范 v2 第二节）。
  *
- * 工作台原先拿「账号名 + 角色」当页头标题，右边还挂着一个「退出登录」——那是只有工作台一个
- * 页面时的遗留。页头恢复成页面名之后，账号名、角色、邮箱与退出登录要落到每个受保护页面都能
- * 看到的侧栏底部，不能靠删掉退出登录来收场。这里锁住侧栏这一层：
+ * 锁住这一层：
  *
- * - 账号名、角色、邮箱与退出登录都在同一个账号区里，账号区在导航之后；
- * - 没有账号（未登录、准备跳登录页）时侧栏照常出导航，但不出账号区；
- * - 账号区带自己的样式锚点，样式门禁量得到它。
+ * - 侧栏是 `.sidebar`，里面有品牌、两组导航（`.nav-group` + `.nav-label` + `.nav-item`）；
+ * - 状态徽标 `.nav-count` 只在拿到真实数字时出现，拿不到就不显示，不填猜的数字；
+ * - 账号名、角色与退出登录都在底部账号区里，账号区在导航之后；
+ * - 没有账号（未登录、准备跳登录页）时侧栏照常出导航，但不出账号区。
  *
  * 「点下去真的回到登录页」要真浏览器，由验收在页面上点，不在这里伪造。
  */
@@ -47,28 +46,61 @@ function htmlOf(node: ReactNode): string {
   );
 }
 
-test("侧栏底部账号区显示账号名、角色、邮箱与退出登录", () => {
-  const html = htmlOf(createElement(AppNav, { account: ACCOUNT }));
+test("侧栏按原型分成品牌、两组导航与底部账号区", () => {
+  const html = htmlOf(createElement(AppNav, { account: ACCOUNT, counts: null }));
+
+  assert.match(html, /^<aside class="sidebar">/);
+  assert.match(html, /<div class="brand"><div class="brand-mark"/);
+  assert.match(html, /<div class="brand-name">提测平台<\/div><div class="brand-sub">Release Hub<\/div>/);
+
+  // 两组导航：工作区与配置，顺序照原型。
+  const groups = [...html.matchAll(/<div class="nav-group"><div class="nav-label">([^<]+)<\/div>/gu)].map(
+    (match) => match[1],
+  );
+  assert.deepEqual(groups, ["工作区", "配置"]);
+
+  // 每一项都是指向该页的链接，图标 + 文字；当前项高亮要真网址，交给浏览器验收。
+  assert.match(html, /<a class="nav-item"[^>]*href="\/dashboard"[^>]*><svg[\s\S]*?<\/svg><span>工作台<\/span><\/a>/u);
+});
+
+test("账号区显示头像、账号名、角色与退出登录，且排在导航之后", () => {
+  const html = htmlOf(createElement(AppNav, { account: ACCOUNT, counts: null }));
 
   assert.match(html, /data-style-anchor="sidebar\.account"/);
+  assert.match(html, /<span class="avatar" aria-hidden="true">预<\/span>/);
   assert.ok(html.includes(ACCOUNT.displayName), "缺账号名");
   assert.ok(html.includes(ACCOUNT.roleLabel), "缺角色");
-  assert.ok(html.includes(ACCOUNT.email), "缺邮箱");
   assert.ok(html.includes("退出登录"), "缺退出登录");
 
-  // 账号区在侧栏里、导航之后：侧栏由 layout 挂一次，八个受保护页面共用这一份。
   const aside = html.slice(html.indexOf("<aside"), html.indexOf("</aside>"));
   assert.ok(aside !== "", "侧栏没渲染出来");
   assert.ok(
-    aside.indexOf("app-nav__list") < aside.indexOf("sidebar.account"),
+    aside.indexOf("</nav>") < aside.indexOf("sidebar.account"),
     "账号区应该排在导航之后",
   );
 });
 
-test("没有账号时侧栏照常出导航，但不出账号区", () => {
-  const html = htmlOf(createElement(AppNav, { account: null }));
+test("拿不到真实数字时不出徽标", () => {
+  const html = htmlOf(createElement(AppNav, { account: ACCOUNT, counts: null }));
 
-  assert.ok(html.includes("app-nav__list"), "侧栏导航应该照常渲染");
+  assert.equal(html.includes("nav-count"), false);
+});
+
+test("拿到数字时徽标挂在对应项上，数字来自 props", () => {
+  const html = htmlOf(
+    createElement(AppNav, { account: ACCOUNT, counts: { releases: 12, queue: 3 } }),
+  );
+
+  assert.match(html, /<span>提测记录<\/span><span class="nav-count num">12<\/span>/);
+  assert.match(html, /<span>构建队列<\/span><span class="nav-count num">3<\/span>/);
+  // 没有徽标口径的项不加徽标。
+  assert.equal(html.includes("<span>工作台</span><span class=\"nav-count"), false);
+});
+
+test("没有账号时侧栏照常出导航，但不出账号区", () => {
+  const html = htmlOf(createElement(AppNav, { account: null, counts: null }));
+
+  assert.ok(html.includes("nav-item"), "侧栏导航应该照常渲染");
   assert.ok(!html.includes("sidebar.account"), "未登录时不该出账号区");
   assert.ok(!html.includes("退出登录"), "未登录时不该出退出登录");
 });

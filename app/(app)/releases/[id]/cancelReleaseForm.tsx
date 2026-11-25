@@ -46,7 +46,7 @@ export function CancelReleaseForm({
     return (
       <button
         type="button"
-        className="btn btn-danger-outline"
+        className="btn btn-danger"
         onClick={() => setConfirming(true)}
       >
         取消提测
@@ -62,7 +62,7 @@ export function CancelReleaseForm({
       footer={
         <form action={action}>
           <input type="hidden" name="releaseId" value={releaseId} />
-          <button type="button" className="btn btn-secondary" onClick={() => setConfirming(false)}>
+          <button type="button" className="btn" onClick={() => setConfirming(false)}>
             取消
           </button>{" "}
           <button type="submit" className="btn btn-danger">

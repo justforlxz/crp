@@ -1,15 +1,17 @@
 /**
- * 项目页与项目经理页的卡片网格（MKACG-971）。
+ * 项目页与项目经理页的卡片网格（MKACG-971 / MKACG-984 按原型重做）。
  *
- * 锁住的是「卡片不是表格」这条硬约束在当前层的可验证部分：
+ * 锁住的是「卡片不是表格」这条硬约束在当前层的可验证部分
+ * （`.agents/spec/design/test-cases.md` 的 FUNC-10 ~ FUNC-13、UI-09、UI-24）：
  *
- * - 项目以 `.project-grid` 里的 `.project-card` 呈现，软件包构成用 `.project-software-chips`
- *   的胶囊表达，数量与清单一致；依赖环用红色 pill 标出来，空清单写「尚未添加软件包」；
- * - 项目经理以 `.manager-grid` 里的 `.manager-card` 呈现，一张卡一个人；
- * - 没有数据时渲染 `.empty`，不崩、不留空壳；
+ * - 项目以 `.project-grid` 里的 `.project-card` 呈现，结构依次是 `.pc-hd`、`.pc-body`
+ *   （含 `.pc-facts` 与 `.pc-chips`）、`.pc-ft`（UI-09）；
+ * - 软件包用 `.chip` 表达，最多 6 个，超出折成「还有 N 个」（FUNC-11）；
+ * - 项目经理以 `.manager-grid` 里的 `.manager-card` 呈现，一张卡一个人，两页同结构（FUNC-13）；
+ * - 没有数据时渲染 `.empty`，带标题、说明与一个动作（UI-24）；
  * - 项目名搜索是纯函数：大小写不敏感、去首尾空白、关键字为空时原样返回。
  *
- * 「页面上有没有 `<table>`」要真浏览器看 DOM，由验收在页面上确认，不在这里伪造。
+ * 「页面上有没有承载项目与经理的 `<table>`」要真浏览器看 DOM，由验收在页面上确认，不在这里伪造。
  */
 
 import assert from "node:assert/strict";
@@ -20,6 +22,7 @@ import test from "node:test";
 import { ManagerGrid, type ManagerCardData } from "../app/(app)/managers/managerGrid";
 import { filterProjectsByName } from "../app/(app)/projects/filter";
 import { ProjectGrid } from "../app/(app)/projects/projectGrid";
+import { ProjectManagerGrid } from "../app/(app)/projects/projectManagerGrid";
 import type { ProjectCard } from "../lib/projects";
 
 function htmlOf(node: ReactNode): string {
@@ -112,7 +115,29 @@ test("项目列表是网格里的卡片，不是表格行", () => {
   assert.doesNotMatch(html, /<table/);
 });
 
-test("软件包胶囊数量与项目清单一致，并带顺序号与依赖说明", () => {
+test("项目卡结构依次是 pc-hd、pc-body（pc-facts + pc-chips）、pc-ft", () => {
+  const html = htmlOf(
+    createElement(ProjectGrid, {
+      projects: [project({ name: "UOS 主线" })],
+      keyword: "",
+      query: "",
+    }),
+  );
+
+  for (const name of ["pc-hd", "pc-ico", "pc-title", "pc-name", "pc-key", "pc-body", "pc-facts", "pc-chips", "pc-ft"]) {
+    assert.equal(countClass(html, name), 1, `${name} 应该出现一次`);
+  }
+
+  const hd = html.indexOf('class="pc-hd"');
+  const body = html.indexOf('class="pc-body"');
+  const facts = html.indexOf('class="pc-facts"');
+  const chips = html.indexOf('class="pc-chips"');
+  const ft = html.indexOf('class="pc-ft"');
+
+  assert.ok(hd < body && body < facts && facts < chips && chips < ft);
+});
+
+test("软件包胶囊数量与项目清单一致，并带顺序号", () => {
   const html = htmlOf(
     createElement(ProjectGrid, {
       projects: [
@@ -132,13 +157,41 @@ test("软件包胶囊数量与项目清单一致，并带顺序号与依赖说�
     }),
   );
 
-  assert.equal(countClass(html, "project-software-chips"), 1);
+  assert.equal(countClass(html, "pc-chips"), 1);
+  assert.equal(countClass(html, "chip"), 3);
   assert.match(html, /<i>1<\/i>kwayland/u);
   assert.match(html, /<i>2<\/i>kwin/u);
   assert.match(html, /<i>3<\/i>dde-dock/u);
-  assert.match(html, /依赖 1 项/u);
-  assert.match(html, /无依赖/u);
+  assert.doesNotMatch(html, /还有 \d+ 个/u);
   assert.doesNotMatch(html, /尚未添加软件包/u);
+});
+
+test("软件包超过 6 个时只摆 6 个，剩下的折成「还有 N 个」", () => {
+  const names = ["a", "b", "c", "d", "e", "f", "g", "h"];
+
+  const html = htmlOf(
+    createElement(ProjectGrid, {
+      projects: [
+        project({
+          name: "包很多的项目",
+          software: {
+            count: names.length,
+            dependencyCount: 0,
+            order: names,
+            cycle: null,
+            entries: names.map((name) => chip(name)),
+          },
+        }),
+      ],
+      keyword: "",
+      query: "",
+    }),
+  );
+
+  // 6 个包胶囊 + 1 个「还有 2 个」胶囊。
+  assert.equal(countClass(html, "chip"), 7);
+  assert.match(html, /还有 2 个/u);
+  assert.doesNotMatch(html, /<i>7<\/i>/u);
 });
 
 test("清单为空的项目写「尚未添加软件包」，不留空胶囊区", () => {
@@ -146,11 +199,11 @@ test("清单为空的项目写「尚未添加软件包」，不留空胶囊区",
     createElement(ProjectGrid, { projects: [project({ name: "空项目" })], keyword: "", query: "" }),
   );
 
-  assert.equal(countClass(html, "project-software-chips"), 1);
+  assert.equal(countClass(html, "pc-chips"), 1);
   assert.match(html, /尚未添加软件包/u);
 });
 
-test("依赖有环时用红色 pill 点名环上的包", () => {
+test("依赖有环时在胶囊里点名环上的包", () => {
   const html = htmlOf(
     createElement(ProjectGrid, {
       projects: [
@@ -170,19 +223,24 @@ test("依赖有环时用红色 pill 点名环上的包", () => {
     }),
   );
 
-  assert.match(html, /class="pill p-red"/u);
+  assert.match(html, /class="chip"/u);
   assert.match(html, /kwin → kwayland → kwin/u);
+  assert.doesNotMatch(html, /class="pill/u);
 });
 
-test("没有项目时渲染空态，有关键字时说明没有匹配", () => {
+test("没有项目时渲染空态，有关键字时空态给「清除筛选」动作", () => {
   const empty = htmlOf(createElement(ProjectGrid, { projects: [], keyword: "", query: "" }));
   assert.equal(countClass(empty, "project-grid"), 0);
   assert.equal(countClass(empty, "empty"), 1);
+  assert.equal(countClass(empty, "empty-t"), 1);
+  assert.equal(countClass(empty, "empty-d"), 1);
   assert.match(empty, /还没有项目/u);
+  assert.match(empty, /新建项目/u);
 
   const noMatch = htmlOf(createElement(ProjectGrid, { projects: [], keyword: "uos", query: "" }));
   assert.equal(countClass(noMatch, "empty"), 1);
   assert.match(noMatch, /没有名称含「uos」的项目/u);
+  assert.match(noMatch, /清除筛选/u);
 });
 
 test("项目经理是网格里的一张卡一个人", () => {
@@ -197,11 +255,35 @@ test("项目经理是网格里的一张卡一个人", () => {
 
   assert.equal(countClass(html, "manager-grid"), 1);
   assert.equal(countClass(html, "manager-card"), 2);
+  assert.equal(countClass(html, "manager-name"), 2);
+  assert.equal(countClass(html, "manager-meta"), 2);
+  assert.equal(countClass(html, "manager-n"), 2);
   assert.match(html, /林小志/u);
-  assert.match(html, /2 个项目/u);
+  assert.match(html, /<b class="num">2<\/b><span>个项目<\/span>/u);
   assert.match(html, /已绑定平台账号/u);
   assert.match(html, /未绑定平台账号/u);
   assert.doesNotMatch(html, /<table/);
+});
+
+test("项目页顶部的经理卡与项目经理页结构一致，两张卡同样渲染", () => {
+  const managers = [
+    manager({ name: "林小志", projectCount: 2, userId: "user-1" }),
+    manager({ name: "郭垚", projectCount: 1 }),
+  ];
+
+  const projectsPage = htmlOf(createElement(ProjectManagerGrid, { managers }));
+  const managersPage = htmlOf(createElement(ManagerGrid, { managers }));
+
+  assert.equal(projectsPage, managersPage);
+});
+
+test("两份经理卡在空态上也逐字一致", () => {
+  const projectsPage = htmlOf(createElement(ProjectManagerGrid, { managers: [] }));
+  const managersPage = htmlOf(createElement(ManagerGrid, { managers: [] }));
+
+  assert.equal(projectsPage, managersPage);
+  assert.equal(countClass(projectsPage, "empty"), 1);
+  assert.match(projectsPage, /先到「项目经理」页新建一位/u);
 });
 
 test("没有项目经理时渲染空态", () => {

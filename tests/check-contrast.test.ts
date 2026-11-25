@@ -58,7 +58,7 @@ test("对比度：黑白 21:1，同色 1:1，与顺序无关", () => {
   assert.equal(contrastRatio(black, black), 1);
 });
 
-test("对比度与 issue 正文的实测值一致（防止公式被改坏）", () => {
+test("对比度与 design.md 第五节的实测值一致（防止公式被改坏）", () => {
   const ratio = (foreground: string, background: string): number => {
     const foregroundRgb = parseHexColor(foreground);
     const backgroundRgb = parseHexColor(background);
@@ -70,34 +70,35 @@ test("对比度与 issue 正文的实测值一致（防止公式被改坏）", (
     return Number(contrastRatio(foregroundRgb, backgroundRgb).toFixed(2));
   };
 
-  // 逐条抄 issue 正文「定稿 token」那张表的对比度列。
-  assert.equal(ratio("#202b3c", "#ffffff"), 14.26);
-  assert.equal(ratio("#5d6875", "#ffffff"), 5.67);
-  assert.equal(ratio("#5d6875", "#f5f7fa"), 5.28);
-  assert.equal(ratio("#3269e8", "#ffffff"), 4.86);
-  assert.equal(ratio("#aab7ca", "#172338"), 7.75);
-  assert.equal(ratio("#ffffff", "#2d57a8"), 6.91);
-  assert.equal(ratio("#0f6b4a", "#eaf8f1"), 5.96);
-  assert.equal(ratio("#b0363d", "#fff0f0"), 5.51);
-  assert.equal(ratio("#8a5b12", "#fff5e8"), 5.43);
-  assert.equal(ratio("#2a5ac4", "#edf3ff"), 5.62);
-  assert.equal(ratio("#4f5866", "#f1f3f6"), 6.47);
+  // 逐条抄 design.md 第五节「颜色」那张表的「实测对比度」一列。
+  assert.equal(ratio("#101828", "#ffffff"), 17.75);
+  assert.equal(ratio("#344054", "#ffffff"), 10.46);
+  assert.equal(ratio("#5b6472", "#ffffff"), 5.98);
+  assert.equal(ratio("#667085", "#ffffff"), 4.97);
+  assert.equal(ratio("#1e4fc4", "#ffffff"), 7.07);
+  assert.equal(ratio("#ffffff", "#2f6bef"), 4.7);
+  assert.equal(ratio("#1e4fc4", "#eaf0fe"), 6.19);
+  assert.equal(ratio("#0f7a52", "#e9f6f0"), 4.82);
+  assert.equal(ratio("#8f5400", "#fdf3e4"), 5.56);
+  assert.equal(ratio("#b42318", "#fdecea"), 5.75);
+  assert.equal(ratio("#5b6472", "#f0f2f5"), 5.33);
   assert.equal(ratio("#868c95", "#ffffff"), 3.39);
-  assert.equal(ratio("#868c95", "#f5f7fa"), 3.16);
+  assert.equal(ratio("#98a6bb", "#101a2c"), 7.05);
+  // 表里这两行写的是十六进制而不是变量：侧栏组标题没有做成变量，选中底另算。色板里都有它们。
+  assert.equal(ratio("#8593a8", "#101a2c"), 5.58);
+  assert.equal(ratio("#ffffff", "#1e2b45"), 14.13);
 });
 
 test("断言表：正文与非文本两档阈值都在表里用对了", () => {
   assert.equal(TEXT_MINIMUM, 4.5);
   assert.equal(NON_TEXT_MINIMUM, 3);
 
-  const controlBorders = CONTRAST_PAIRS.filter((pair) =>
-    pair.foreground.includes("control-border"),
-  );
+  const controlBorders = CONTRAST_PAIRS.filter((pair) => pair.foreground.includes("line-ctl"));
 
   assert.equal(controlBorders.length, 2);
   assert.ok(controlBorders.every((pair) => pair.minimum === NON_TEXT_MINIMUM));
 
-  const texts = CONTRAST_PAIRS.filter((pair) => !pair.foreground.includes("control-border"));
+  const texts = CONTRAST_PAIRS.filter((pair) => !pair.foreground.includes("line-ctl"));
 
   assert.ok(texts.length > 0);
   assert.ok(texts.every((pair) => pair.minimum === TEXT_MINIMUM));
@@ -105,28 +106,28 @@ test("断言表：正文与非文本两档阈值都在表里用对了", () => {
 
 test("checkContrast：低于阈值的那一对被报成失败，达标的通过", () => {
   const { results, missing } = checkContrast({
-    "--color-text": "#202b3c",
-    "--color-surface": "#ffffff",
-    // 原型里的 #758195 在 #f5f7fa 上只有 3.67:1，正是这次要拒掉的值。
-    "--color-text-muted": "#758195",
-    "--color-bg": "#f5f7fa",
-    "--color-surface-muted": "#fafbfc",
-    "--color-primary-weak": "#edf3ff",
-    "--color-neutral-weak": "#f1f3f6",
-    "--color-primary": "#3269e8",
-    "--color-sidebar-text": "#aab7ca",
-    "--color-sidebar": "#172338",
-    "--color-text-inverse": "#ffffff",
-    "--color-sidebar-selected": "#2d57a8",
-    "--color-danger": "#b0363d",
-    "--color-success": "#0f6b4a",
-    "--color-success-weak": "#eaf8f1",
-    "--color-danger-weak": "#fff0f0",
-    "--color-warn": "#8a5b12",
-    "--color-warn-weak": "#fff5e8",
-    "--color-info": "#2a5ac4",
-    "--color-neutral": "#4f5866",
-    "--color-control-border": "#868c95",
+    "--ink": "#101828",
+    "--ink-2": "#344054",
+    "--ink-3": "#5b6472",
+    // 比 design.md 的 #667085 亮一档：在白面上只有 3.06:1，正是要拒掉的值。
+    "--ink-4": "#8a94a6",
+    "--accent-ink": "#1e4fc4",
+    "--accent": "#2f6bef",
+    "--accent-bg": "#eaf0fe",
+    "--ok": "#0f7a52",
+    "--ok-bg": "#e9f6f0",
+    "--warn": "#8f5400",
+    "--warn-bg": "#fdf3e4",
+    "--bad": "#b42318",
+    "--bad-bg": "#fdecea",
+    "--wait": "#5b6472",
+    "--wait-bg": "#f0f2f5",
+    "--canvas": "#f6f7f9",
+    "--card": "#ffffff",
+    "--line-ctl": "#868c95",
+    "--nav-ink": "#98a6bb",
+    "--nav": "#101a2c",
+    "--nav-3": "#1e2b45",
   });
 
   assert.deepEqual(missing, []);
@@ -135,13 +136,13 @@ test("checkContrast：低于阈值的那一对被报成失败，达标的通过"
 
   assert.deepEqual(
     failing.map((result) => result.label),
-    ["次要文字 / 卡片面", "次要文字 / 画布", "次要文字 / 弱面"],
+    ["三级信息 / 卡片面", "三级信息 / 画布"],
   );
   assert.ok(failing.every((result) => result.ratio < TEXT_MINIMUM));
 });
 
 test("checkContrast：变量缺失单独报出来，不混进对比度失败", () => {
-  const { results, missing } = checkContrast({ "--color-text": "#202b3c" });
+  const { results, missing } = checkContrast({ "--ink": "#101828" });
 
   assert.equal(results.length, 0);
   assert.ok(missing.length > 0);
@@ -150,7 +151,7 @@ test("checkContrast：变量缺失单独报出来，不混进对比度失败", (
 
 test("色板：表外颜色被报出来，表内颜色不报", () => {
   const css = `
-    :root { --a: #3269e8; --b: #FFFFFF; --c: #fff; }
+    :root { --a: #2f6bef; --b: #FFFFFF; --c: #fff; }
     .x { color: #123456; border-color: #123456; }
     .y { background: rgba(35, 50, 75, 0.025); }
   `;
@@ -200,12 +201,14 @@ test("认不出的写法：rgb() / hsl() 与 4/5/7 位十六进制都要报出�
   ]);
 });
 
-test("认不出的写法：design.md 给定的两条阴影整值不算", () => {
+test("认不出的写法：阴影、遮罩与半透明底这些整值不算", () => {
   const css = `
     :root {
-      --shadow-card: 0 2px 7px rgba(35, 50, 75, 0.025);
-      --shadow-raised: 0 6px 20px rgba(31, 35, 41, 0.08);
+      --shadow-card: 0 1px 2px rgba(16,24,40,.04);
+      --shadow-pop: 0 12px 32px -8px rgba(16,24,40,.18), 0 4px 8px -4px rgba(16,24,40,.08);
     }
+    .scrim { background: rgba(16,24,40,.45); }
+    .nav-count { background: rgba(255,255,255,.07); }
   `;
 
   assert.deepEqual(findUnparseableColors(css), []);
