@@ -1,5 +1,9 @@
 /**
- * 基线列表页：CRP 交付分支平铺清单。
+ * 基线列表页（MKACG-984 按原型重做）：CRP 交付分支平铺清单。
+ *
+ * 结构照 `.agents/spec/design/prototype.html` 的基线页与 `design.md` 第七节：
+ * `.panel`（`.panel-hd` 标题 +「立即同步」→ `.panel-bd flush table-scroll` 里的 `table.grid`）
+ * → `.tip` → 同步记录 `.panel`。名字下面用 `.cell-sub num` 带 CRP 分支 ID，数字列走 `.num`。
  *
  * 只读页面：数据由同步任务写入，页面不自己拉 CRP 或 Shuttle。「立即同步」按钮调
  * `app/(app)/baselines/actions.ts` 里的服务端动作，和定时任务入口共用同一段同步逻辑。
@@ -28,20 +32,20 @@ function formatTime(value: Date | null): string {
 }
 
 function isCheckLabel(item: BaselineListItem): string {
-  return item.isCheck ? "IsCheck=1（已停止维护，不建议选择）" : "IsCheck=0（可用）";
+  return item.isCheck ? "IsCheck=1（已停止维护）" : "IsCheck=0（可用）";
 }
 
-/** 状态徽标的颜色档位：只决定颜色，文案仍由 `stateLabel()` 给。 */
-function stateBadgeClass(state: BaselineListItem["state"]): string {
+/** 状态点色档：只决定颜色，文案仍由 `stateLabel()` 给（design.md 第五节）。 */
+function stateDotTone(state: BaselineListItem["state"]): string {
   if (state === "synced") {
-    return "badge badge--success";
+    return "is-ok";
   }
 
   if (state === "failed") {
-    return "badge badge--danger";
+    return "is-bad";
   }
 
-  return "badge badge--warn";
+  return "is-warn";
 }
 
 function stateLabel(item: BaselineListItem): string {
@@ -86,147 +90,172 @@ export default async function BaselinesPage({ searchParams }: BaselinesPageProps
 
   return (
     <PageShell title="基线">
-      <p>
-        基线就是 CRP 的一条交付分支，平铺清单，不做任何分类。项目从这份清单里挑一个作为目标基线，
-        挑选时参考描述与 <code>IsCheck</code>；本平台不按分支名推导类型，也不过滤分支。
-      </p>
+      <div className="stack">
+        <div className="toast-stack">
+          <Toast
+            className="toast bad"
+            role="alert"
+            message={query.error === undefined ? null : `操作失败：${query.error}`}
+          />
+          <Toast
+            className="toast ok"
+            message={query.notice === undefined ? null : query.notice}
+          />
+        </div>
 
-      <Toast
-        className="toast alert alert--error"
-        role="alert"
-        message={query.error === undefined ? null : `操作失败：${query.error}`}
-      />
-      <Toast
-        className="toast alert alert--info"
-        message={query.notice === undefined ? null : query.notice}
-      />
-
-      <h2>分支列表同步</h2>
-      {latestListRun === null ? (
-        <p className="empty">还没有同步过分支列表。</p>
-      ) : (
-        <p>
-          最近一次：{latestListRun.status === "success" ? "成功" : latestListRun.status === "failed" ? "同步失败" : "进行中"}
-          ，{latestListRun.itemCount} 条，
-          {latestListRun.trigger === "manual" ? "手动触发" : "定时触发"}，开始于{" "}
-          {formatTime(latestListRun.startedAt)}，结束于 {formatTime(latestListRun.finishedAt)}
-          {latestListRun.errorMessage === null ? null : (
-            <>
-              ；失败原因：<code>{latestListRun.errorMessage}</code>
-            </>
+        <div className="panel">
+          <div className="panel-hd">
+            <h2>基线</h2>
+            <span className="hint">来自 CRP 分支，同步时幂等写入</span>
+            <div className="spacer" />
+            <form action={refreshBaselinesAction}>
+              <button type="submit" className="btn btn-primary">
+                立即同步
+              </button>
+            </form>
+          </div>
+          {baselines.length === 0 ? (
+            <div className="panel-bd">
+              <div className="empty">
+                <div className="empty-ico" aria-hidden="true">◇</div>
+                <div className="empty-t">还没有基线</div>
+                <div className="empty-d">先点一次「立即同步」，从 CRP 拉取分支列表。</div>
+              </div>
+            </div>
+          ) : (
+            <div className="panel-bd flush table-scroll">
+              <table className="grid">
+                <thead>
+                  <tr>
+                    <th>分支</th>
+                    <th>说明</th>
+                    <th>IsCheck</th>
+                    <th className="num">软件包</th>
+                    <th>架构</th>
+                    <th className="num">最近同步</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {baselines.map((item) => (
+                    <tr key={item.id}>
+                      <td>
+                        <strong>{item.name}</strong>
+                        <span className="cell-sub num">ID {item.crpBranchId}</span>
+                      </td>
+                      <td>{item.description ?? "—"}</td>
+                      <td>
+                        <span className={`dot ${item.isCheck ? "is-warn" : "is-ok"}`}>
+                          {isCheckLabel(item)}
+                        </span>
+                      </td>
+                      <td className="num">{item.packageCount}</td>
+                      <td>
+                        {item.arches.length === 0 ? (
+                          <span title="同步成功后才会写进来；为空时提测投递会被拒绝，不退回任何默认架构">
+                            未同步（不能投递）
+                          </span>
+                        ) : (
+                          <code>{item.arches.join(";")}</code>
+                        )}
+                      </td>
+                      <td className="num">{formatTime(item.syncedAt)}</td>
+                      <td>
+                        <span className={`dot ${stateDotTone(item.state)}`}>{stateLabel(item)}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-        </p>
-      )}
-
-      <form action={refreshBaselinesAction}>
-        <button type="submit" className="btn btn-primary">
-          立即同步
-        </button>
-      </form>
-      <p>
-        手动同步会重拉分支列表，并重新拉取「被项目选中」的基线的软件包版本；定时任务每小时跑一次，
-        只刷新缓存已过期（1 小时）的基线。同步失败时保留上一次成功的数据，失败原因记在下面的同步记录里。
-      </p>
-
-      <h2>基线清单</h2>
-      {baselines.length === 0 ? (
-        <p className="empty">还没有基线，先点一次「立即同步」从 CRP 拉分支列表。</p>
-      ) : (
-        <div className="table-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>分支名</th>
-                <th>说明</th>
-                <th>是否可用于打包（IsCheck）</th>
-                <th>可选软件包数</th>
-                <th>投递架构</th>
-                <th>最近同步</th>
-                <th>状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              {baselines.map((item) => (
-                <tr key={item.id}>
-                  <td>
-                    <code>{item.name}</code>
-                  </td>
-                  <td>{item.description ?? "—"}</td>
-                  <td>{isCheckLabel(item)}</td>
-                  <td>{item.packageCount}</td>
-                  <td>
-                    {item.arches.length === 0 ? (
-                      <span title="同步成功后才会写进来；为空时提测投递会被拒绝，不退回任何默认架构">
-                        未同步（不能投递）
-                      </span>
-                    ) : (
-                      <code>{item.arches.join(";")}</code>
-                    )}
-                  </td>
-                  <td>{formatTime(item.syncedAt)}</td>
-                  <td>
-                    <span className={stateBadgeClass(item.state)}>{stateLabel(item)}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
-      )}
 
-      <div className="tip">
-        <div className="tip-icon" aria-hidden="true">
-          ⓘ
-        </div>
-        <div>
-          <b>基线只用来被项目选中</b>
-          <p>
+        <div className="tip">
+          <span aria-hidden="true">ⓘ</span>
+          <div>
+            <b>基线只用来被项目选中。</b>
             基线就是 CRP 的一条交付分支，项目从这份清单里挑一个作为目标基线，提测时自动带上，不再单独选择。
             <code>IsCheck=1</code> 表示这条分支已停止维护，仍可选但不建议；「投递架构」为空说明还没同步成功，
-            这时提测投递会被拒绝 —— 它不会退回任何默认架构。同步失败时保留上一次成功的数据，失败原因记在下面的同步记录里。
-          </p>
+            这时提测投递会被拒绝 —— 它不会退回任何默认架构。手动同步会重拉分支列表，并重新拉取「被项目选中」
+            的基线的软件包版本；定时任务每小时跑一次，只刷新缓存已过期（1 小时）的基线。同步失败时保留上一次
+            成功的数据，失败原因记在下面的同步记录里。
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-hd">
+            <h2>同步记录</h2>
+            <span className="hint">最近 20 条</span>
+          </div>
+          <div className="panel-bd">
+            <p>
+              {latestListRun === null ? (
+                "还没有同步过分支列表。"
+              ) : (
+                <>
+                  分支列表最近一次同步：
+                  {latestListRun.status === "success"
+                    ? "成功"
+                    : latestListRun.status === "failed"
+                      ? "同步失败"
+                      : "进行中"}
+                  ，{latestListRun.itemCount} 条，
+                  {latestListRun.trigger === "manual" ? "手动触发" : "定时触发"}，开始于{" "}
+                  {formatTime(latestListRun.startedAt)}，结束于 {formatTime(latestListRun.finishedAt)}
+                  {latestListRun.errorMessage === null ? null : (
+                    <>
+                      ；失败原因：<code>{latestListRun.errorMessage}</code>
+                    </>
+                  )}
+                </>
+              )}
+            </p>
+          </div>
+          {runs.length === 0 ? (
+            <div className="panel-bd">
+              <div className="empty">
+                <div className="empty-ico" aria-hidden="true">◇</div>
+                <div className="empty-t">还没有同步记录</div>
+                <div className="empty-d">点一次「立即同步」之后，这里会逐条记下结果与失败原因。</div>
+              </div>
+            </div>
+          ) : (
+            <div className="panel-bd flush table-scroll">
+              <table className="grid">
+                <thead>
+                  <tr>
+                    <th>开始时间</th>
+                    <th>结束时间</th>
+                    <th>种类</th>
+                    <th>范围</th>
+                    <th>触发</th>
+                    <th className="num">条数</th>
+                    <th>结果</th>
+                    <th>失败原因</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {runs.map((run) => (
+                    <tr key={run.id}>
+                      <td className="num">{formatTime(run.startedAt)}</td>
+                      <td className="num">{formatTime(run.finishedAt)}</td>
+                      <td>{run.kindLabel}</td>
+                      <td>{run.targetName ?? "全部"}</td>
+                      <td>{run.trigger === "manual" ? "手动" : "定时"}</td>
+                      <td className="num">{run.itemCount}</td>
+                      <td>
+                        {run.status === "success" ? "成功" : run.status === "failed" ? "失败" : "进行中"}
+                      </td>
+                      <td className="col-mono">{run.errorMessage ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
-
-      <h2>同步记录（最近 20 条）</h2>
-      {runs.length === 0 ? (
-        <p className="empty">还没有同步记录。</p>
-      ) : (
-        <div className="table-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>开始时间</th>
-                <th>结束时间</th>
-                <th>种类</th>
-                <th>范围</th>
-                <th>触发</th>
-                <th>条数</th>
-                <th>结果</th>
-                <th>失败原因</th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs.map((run) => (
-                <tr key={run.id}>
-                  <td>{formatTime(run.startedAt)}</td>
-                  <td>{formatTime(run.finishedAt)}</td>
-                  <td>{run.kindLabel}</td>
-                  <td>{run.targetName ?? "全部"}</td>
-                  <td>{run.trigger === "manual" ? "手动" : "定时"}</td>
-                  <td>{run.itemCount}</td>
-                  <td>
-                    {run.status === "success" ? "成功" : run.status === "failed" ? "失败" : "进行中"}
-                  </td>
-                  <td>
-                    <code>{run.errorMessage ?? "—"}</code>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </PageShell>
   );
 }
