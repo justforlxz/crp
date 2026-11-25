@@ -73,6 +73,13 @@ pnpm test:style           # 样式门禁（三层检查）
 3. **`wakeup create` 是追加语义，不是替换。** 建完立刻 `multica issue wakeup list <KEY> --output json` 核对，只允许一条且 `enabled: true`，多出来的用 `wakeup delete` 删掉。
 4. **派单前确认 spec 已在 `main` 上。** 子单从 `main` 检出，spec 还在 PR 里时子单会按旧基准开工，整轮返工。派完看 `issue runs <KEY>`：**有且只有一条** running，排队的那条是重复发起。
 
+## 数据与部署
+
+1. **只允许测试与原型使用 mock。** 单元测试、CI、界面截图门禁、单文件原型可以用确定性数据；预览与任何部署给他人的实例**必须是实机数据**。
+2. **部署启动不灌种子。** 启动命令里不允许出现 `db:seed`，也不设「开关打开才灌」这类设计。
+3. **调度由服务自己维护。** 用 worker 进程加 Postgres 咨询锁，不依赖宿主 cron 或 systemd timer。
+4. 详细契约与验收见 `.agents/spec/product/runtime.md`。
+
 ### 为什么这么定
 
 这三类错误每次的代价都是整轮重跑：取消 run、重新派单、再等四十分钟。而且错得很隐蔽，表面看是「任务停了」，实际是唤醒把容器单当成了执行单。
