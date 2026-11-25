@@ -3,7 +3,7 @@
  *
  * 分区照 `.agents/spec/design/prototype.html` 的项目经理页与 `design.md` 第七节：
  *
- *   `.manager-grid` 经理卡 → `.panel` 清单表 → `.panel` 新建表单
+ *   `.manager-grid` 经理卡 → `.panel` 清单表（头部「新建项目经理」按钮打开 `.modal` 弹窗）
  *
  * 卡片与项目页共用 `ManagerGrid`，两处的「名下项目」数来自同一次查询（FUNC-13）。
  * 清单表承担改名这类逐行操作，卡片只负责扫读。
@@ -18,8 +18,9 @@ import { PageShell } from "@/components/page-shell";
 import { Toast } from "@/components/toast";
 import { listManagers } from "@/lib/projects";
 import { resolveWorkspaceScope } from "../workspaceScope";
-import { createManagerAction, renameManagerAction } from "./actions";
+import { renameManagerAction } from "./actions";
 import { ManagerGrid } from "./managerGrid";
+import { NewManagerDialog } from "./newManagerDialog";
 
 // 项目经理与项目数随配置变化，页面不做静态化。
 export const dynamic = "force-dynamic";
@@ -63,6 +64,11 @@ export default async function ManagersPage({ searchParams }: ManagersPageProps) 
           <div className="panel-hd">
             <h2>项目经理清单</h2>
             <span className="hint">共 {managers.length} 人</span>
+            <div className="spacer" />
+            <Link className="text-link" href={`/projects${scope.query}`}>
+              返回项目列表 →
+            </Link>
+            <NewManagerDialog workspaceId={scope.active.id} workspaceSlug={scope.active.slug} />
           </div>
 
           <form method="get" action="/managers" className="filters">
@@ -89,7 +95,7 @@ export default async function ManagersPage({ searchParams }: ManagersPageProps) 
               <div className="empty">
                 <div className="empty-ico" aria-hidden="true">◇</div>
                 <div className="empty-t">这个工作区还没有项目经理</div>
-                <div className="empty-d">在下面的表单里新建一位，再把它分配给项目。</div>
+                <div className="empty-d">点右上角「新建项目经理」新建一位，再把它分配给项目。</div>
               </div>
             </div>
           ) : (
@@ -138,40 +144,6 @@ export default async function ManagersPage({ searchParams }: ManagersPageProps) 
               </table>
             </div>
           )}
-        </div>
-
-        <div className="panel">
-          <div className="panel-hd">
-            <h2>新建项目经理</h2>
-            <span className="hint">同一个工作区内不能重名</span>
-          </div>
-          <div className="panel-bd">
-            <form action={createManagerAction}>
-              <input type="hidden" name="workspaceId" value={scope.active.id} />
-              <input type="hidden" name="workspaceSlug" value={scope.active.slug} />
-              <div className="field">
-                <label className="label" htmlFor="manager-name">
-                  姓名
-                </label>
-                <input
-                  id="manager-name"
-                  name="name"
-                  required
-                  placeholder="李伟"
-                  className="input"
-                />
-                <div className="note">改名只改姓名，不动工作区归属，也不动名下项目。</div>
-              </div>
-              <button type="submit" className="btn btn-primary">
-                保存
-              </button>
-            </form>
-            <p>
-              <Link className="text-link" href={`/projects${scope.query}`}>
-                返回项目列表 →
-              </Link>
-            </p>
-          </div>
         </div>
       </div>
     </PageShell>

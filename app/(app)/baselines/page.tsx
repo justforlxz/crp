@@ -3,7 +3,7 @@
  *
  * 结构照 `.agents/spec/design/prototype.html` 的基线页与 `design.md` 第七节：
  * `.panel`（`.panel-hd` 标题 +「立即同步」→ `.panel-bd flush table-scroll` 里的 `table.grid`）
- * → `.tip` → 同步记录 `.panel`。名字下面用 `.cell-sub num` 带 CRP 分支 ID，数字列走 `.num`。
+ * → `.tip`。名字下面用 `.cell-sub num` 带 CRP 分支 ID，数字列走 `.num`。
  *
  * 只读页面：数据由同步任务写入，页面不自己拉 CRP 或 Shuttle。「立即同步」按钮调
  * `app/(app)/baselines/actions.ts` 里的服务端动作，和定时任务入口共用同一段同步逻辑。
@@ -13,7 +13,7 @@
  */
 import { PageShell } from "@/components/page-shell";
 import { Toast } from "@/components/toast";
-import { getLatestListRun, listBaselines, listSyncRuns } from "@/lib/baselines";
+import { listBaselines } from "@/lib/baselines";
 import type { BaselineListItem } from "@/lib/baselines";
 
 import { resolveWorkspaceScope } from "../workspaceScope";
@@ -82,11 +82,7 @@ export default async function BaselinesPage({ searchParams }: BaselinesPageProps
     );
   }
 
-  const [baselines, runs, latestListRun] = await Promise.all([
-    listBaselines(),
-    listSyncRuns(),
-    getLatestListRun(),
-  ]);
+  const baselines = await listBaselines();
 
   return (
     <PageShell title="基线">
@@ -179,81 +175,8 @@ export default async function BaselinesPage({ searchParams }: BaselinesPageProps
             <code>IsCheck=1</code> 表示这条分支已停止维护，仍可选但不建议；「投递架构」为空说明还没同步成功，
             这时提测投递会被拒绝 —— 它不会退回任何默认架构。手动同步会重拉分支列表，并重新拉取「被项目选中」
             的基线的软件包版本；定时任务每小时跑一次，只刷新缓存已过期（1 小时）的基线。同步失败时保留上一次
-            成功的数据，失败原因记在下面的同步记录里。
+            成功的数据，失败原因在点「立即同步」后由页面顶部的提示条给出。
           </div>
-        </div>
-
-        <div className="panel">
-          <div className="panel-hd">
-            <h2>同步记录</h2>
-            <span className="hint">最近 20 条</span>
-          </div>
-          <div className="panel-bd">
-            <p>
-              {latestListRun === null ? (
-                "还没有同步过分支列表。"
-              ) : (
-                <>
-                  分支列表最近一次同步：
-                  {latestListRun.status === "success"
-                    ? "成功"
-                    : latestListRun.status === "failed"
-                      ? "同步失败"
-                      : "进行中"}
-                  ，{latestListRun.itemCount} 条，
-                  {latestListRun.trigger === "manual" ? "手动触发" : "定时触发"}，开始于{" "}
-                  {formatTime(latestListRun.startedAt)}，结束于 {formatTime(latestListRun.finishedAt)}
-                  {latestListRun.errorMessage === null ? null : (
-                    <>
-                      ；失败原因：<code>{latestListRun.errorMessage}</code>
-                    </>
-                  )}
-                </>
-              )}
-            </p>
-          </div>
-          {runs.length === 0 ? (
-            <div className="panel-bd">
-              <div className="empty">
-                <div className="empty-ico" aria-hidden="true">◇</div>
-                <div className="empty-t">还没有同步记录</div>
-                <div className="empty-d">点一次「立即同步」之后，这里会逐条记下结果与失败原因。</div>
-              </div>
-            </div>
-          ) : (
-            <div className="panel-bd flush table-scroll">
-              <table className="grid">
-                <thead>
-                  <tr>
-                    <th>开始时间</th>
-                    <th>结束时间</th>
-                    <th>种类</th>
-                    <th>范围</th>
-                    <th>触发</th>
-                    <th className="num">条数</th>
-                    <th>结果</th>
-                    <th>失败原因</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {runs.map((run) => (
-                    <tr key={run.id}>
-                      <td className="num">{formatTime(run.startedAt)}</td>
-                      <td className="num">{formatTime(run.finishedAt)}</td>
-                      <td>{run.kindLabel}</td>
-                      <td>{run.targetName ?? "全部"}</td>
-                      <td>{run.trigger === "manual" ? "手动" : "定时"}</td>
-                      <td className="num">{run.itemCount}</td>
-                      <td>
-                        {run.status === "success" ? "成功" : run.status === "failed" ? "失败" : "进行中"}
-                      </td>
-                      <td className="col-mono">{run.errorMessage ?? "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
       </div>
     </PageShell>

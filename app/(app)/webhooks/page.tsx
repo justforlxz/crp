@@ -4,7 +4,7 @@
  * 结构照 `.agents/spec/design/prototype.html` 的 Webhook 页与 `design.md` 第七节：
  *
  *   `.sec-hd` + `.project-grid` 端点卡（`.pc-hd` / `.pc-body` / `.pc-ft`）
- *   → 新增端点 `.panel`（表单）
+ *   → 新增端点：`.sec-hd` 右侧的按钮打开的 `.modal` 弹窗（MKACG-1002 从内嵌表单改过来）
  *   → 投递日志 `.panel` + `table.grid`
  *   → `.tip`
  *
@@ -19,11 +19,12 @@
 import { PageShell } from "@/components/page-shell";
 import { Toast } from "@/components/toast";
 import { listWebhookEndpoints } from "@/lib/webhook/endpoints";
-import { isWebhookEventType, WEBHOOK_EVENT_LABELS, WEBHOOK_EVENT_TYPES } from "@/lib/webhook/events";
+import { isWebhookEventType, WEBHOOK_EVENT_LABELS } from "@/lib/webhook/events";
 import { listRecentDeliveries } from "@/lib/webhook/service";
 
 import { resolveWorkspaceScope } from "../workspaceScope";
-import { createEndpointAction, sendTestEventAction, toggleEndpointAction } from "./actions";
+import { sendTestEventAction, toggleEndpointAction } from "./actions";
+import { NewEndpointDialog } from "./newEndpointDialog";
 
 /** 数据来自数据库，不参与静态化。 */
 export const dynamic = "force-dynamic";
@@ -87,6 +88,8 @@ export default async function WebhooksPage({ searchParams }: WebhooksPageProps) 
           <div className="sec-hd">
             <h3>端点</h3>
             <span className="hint">构建状态变化时推送</span>
+            <div className="spacer" />
+            <NewEndpointDialog workspaceId={workspace.id} workspaceSlug={workspace.slug} />
           </div>
 
           <form method="get" action="/webhooks" className="filters">
@@ -115,7 +118,7 @@ export default async function WebhooksPage({ searchParams }: WebhooksPageProps) 
             <div className="empty">
               <div className="empty-ico" aria-hidden="true">◇</div>
               <div className="empty-t">这个工作区还没有端点</div>
-              <div className="empty-d">在下面新增一个端点，选好订阅事件再保存。</div>
+              <div className="empty-d">点右上角「新增端点」新建一个，选好订阅事件再保存。</div>
             </div>
           ) : (
             <div className="project-grid">
@@ -175,82 +178,6 @@ export default async function WebhooksPage({ searchParams }: WebhooksPageProps) 
           )}
         </div>
 
-        <div className="panel">
-          <div className="panel-hd">
-            <h2>新增端点</h2>
-            <span className="hint">密钥保存后页面与日志都不再显示</span>
-          </div>
-          <div className="panel-bd">
-            <form action={createEndpointAction}>
-              <input type="hidden" name="workspaceId" value={workspace.id} />
-              <input type="hidden" name="workspaceSlug" value={workspace.slug} />
-
-              <div className="field">
-                <label className="label" htmlFor="endpoint-name">
-                  名称
-                </label>
-                <input
-                  id="endpoint-name"
-                  className="input"
-                  name="name"
-                  required
-                  maxLength={100}
-                />
-              </div>
-
-              <div className="field">
-                <label className="label" htmlFor="endpoint-url">
-                  回调地址
-                </label>
-                <input
-                  id="endpoint-url"
-                  className="input"
-                  name="url"
-                  type="url"
-                  required
-                  placeholder="https://example.com/crp/webhook"
-                />
-              </div>
-
-              <div className="field">
-                <label className="label" htmlFor="endpoint-secret">
-                  签名密钥
-                </label>
-                <input
-                  id="endpoint-secret"
-                  className="input"
-                  name="secret"
-                  type="{{PASSWORD_2b2afe45}}"
-                  required
-                  minLength={8}
-                  autoComplete="new-{{PASSWORD_2b2afe45}}"
-                />
-                <div className="note">自己填一段与接收方约定的字符串。保存后页面与日志都不再显示它。</div>
-              </div>
-
-              <fieldset className="field">
-                <legend className="label">订阅事件</legend>
-                {WEBHOOK_EVENT_TYPES.map((type) => (
-                  <label key={type}>
-                    <input type="checkbox" name="eventTypes" value={type} />{" "}
-                    {WEBHOOK_EVENT_LABELS[type]}（{type}）
-                  </label>
-                ))}
-              </fieldset>
-
-              <div className="field">
-                <label className="label" htmlFor="endpoint-description">
-                  说明
-                </label>
-                <input id="endpoint-description" className="input" name="description" />
-              </div>
-
-              <button type="submit" className="btn btn-primary">
-                保存端点
-              </button>
-            </form>
-          </div>
-        </div>
 
         <div className="panel">
           <div className="panel-hd">
