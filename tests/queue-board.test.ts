@@ -69,6 +69,10 @@ function task(overrides: Partial<QueueTaskRow> & { packageName: string }): Queue
     waitingFor: [],
     reason: null,
     dispatchFailure: null,
+    arches: [],
+    archProgress: null,
+    blockedBy: null,
+    topicId: null,
     ...rest,
   };
 }

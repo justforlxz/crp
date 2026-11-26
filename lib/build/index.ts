@@ -76,7 +76,6 @@ export {
 
 export {
   buildQueueView,
-  formatDuration,
   loadBuildQueue,
   loadBuildQueueData,
   loadReleaseBuildStatus,
@@ -90,6 +89,8 @@ export {
   type QueueReleaseView,
   type QueueTaskRow,
 } from "./queue";
+
+export { formatDuration } from "./duration";
 
 export {
   buildStatusLabel,

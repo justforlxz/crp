@@ -80,6 +80,21 @@ test("账号区显示头像、账号名、角色与退出登录，且排在导�
   );
 });
 
+/**
+ * 账号块本身是凭据页的入口（MKACG-1012）。
+ *
+ * 凭据按人存放，配置与验证都在 `/settings/credentials` 那一页（MKACG-986）。原型把这块画成
+ * 弹窗，只是因为原型只有一个 HTML 文件；实现里已经有那一页，所以这里只要一个链接 ——
+ * 挂了链接就不会再出现「点了没反应」。
+ */
+test("账号块是去凭据页的链接，不再是一块点不动的文字", () => {
+  const html = htmlOf(createElement(AppNav, { account: ACCOUNT, counts: null }));
+
+  assert.match(html, /<a class="account"[^>]*href="\/settings\/credentials"/u);
+  // 账号块之后紧接着退出登录按钮：两者都在侧栏底部，账号块是链接不是按钮。
+  assert.match(html, /<\/a><button type="button" class="nav-item"/u);
+});
+
 test("拿不到真实数字时不出徽标", () => {
   const html = htmlOf(createElement(AppNav, { account: ACCOUNT, counts: null }));
 

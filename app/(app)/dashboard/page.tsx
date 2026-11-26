@@ -23,6 +23,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { Icon, type IconName } from "@/components/icons";
+import { JobQueueItem } from "@/components/job-detail";
 import { PageShell } from "@/components/page-shell";
 import { requirePageAuth } from "@/lib/auth/server";
 import { listWorkspacesForAccount } from "@/lib/auth/store";
@@ -254,7 +255,11 @@ export default async function DashboardPage() {
             ) : (
               <div className="queue-list" data-style-anchor="dashboard.queue-list">
                 {stats.queueTasks.map((task) => (
-                  <div className="queue-item" key={task.snapshotId}>
+                  <JobQueueItem
+                    job={task}
+                    key={task.snapshotId}
+                    className="queue-item is-clickable"
+                  >
                     <div className="qi-ico" aria-hidden="true">
                       <Icon name="box" />
                     </div>
@@ -279,7 +284,7 @@ export default async function DashboardPage() {
                       <b>{task.stage}</b>
                       {formatDuration(task.durationMs)}
                     </div>
-                  </div>
+                  </JobQueueItem>
                 ))}
               </div>
             )}
