@@ -22,13 +22,13 @@
           "borderRadius": "12px",
           "boxShadow": "rgba(16, 24, 40, 0.04) 0px 1px 2px 0px",
           "width": "1000px",
-          "height": "630.281px"
+          "height": "634.281px"
         },
         "box": {
           "x": 248,
           "y": 80,
           "width": 1000,
-          "height": 630.28
+          "height": 634.28
         }
       }
     ],
@@ -48,13 +48,13 @@
           "borderRadius": "0px",
           "boxShadow": "none",
           "width": "998px",
-          "height": "580.281px"
+          "height": "584.281px"
         },
         "box": {
           "x": 249,
           "y": 129,
           "width": 998,
-          "height": 580.28
+          "height": 584.28
         }
       }
     ],
@@ -74,13 +74,13 @@
           "borderRadius": "0px",
           "boxShadow": "none",
           "width": "998px",
-          "height": "39.5938px"
+          "height": "43.5938px"
         },
         "box": {
           "x": 249,
           "y": 129,
           "width": 998,
-          "height": 39.59
+          "height": 43.59
         }
       }
     ],
@@ -90,7 +90,7 @@
           "display": "table-cell",
           "position": "sticky",
           "margin": "0px",
-          "padding": "10px 14px",
+          "padding": "12px 16px",
           "fontSize": "12px",
           "fontWeight": "600",
           "lineHeight": "18.6px",
@@ -99,14 +99,14 @@
           "border": "",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "345.969px",
-          "height": "39.5938px"
+          "width": "339.297px",
+          "height": "43.5938px"
         },
         "box": {
-          "x": 439.91,
+          "x": 438.31,
           "y": 129,
-          "width": 345.97,
-          "height": 39.59
+          "width": 339.3,
+          "height": 43.59
         }
       }
     ],
@@ -116,7 +116,7 @@
           "display": "table-cell",
           "position": "sticky",
           "margin": "0px",
-          "padding": "10px 14px",
+          "padding": "12px 16px",
           "fontSize": "12px",
           "fontWeight": "600",
           "lineHeight": "18.6px",
@@ -125,14 +125,14 @@
           "border": "",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "107.859px",
-          "height": "39.5938px"
+          "width": "109px",
+          "height": "43.5938px"
         },
         "box": {
-          "x": 785.88,
+          "x": 777.61,
           "y": 129,
-          "width": 107.86,
-          "height": 39.59
+          "width": 109,
+          "height": 43.59
         }
       }
     ]

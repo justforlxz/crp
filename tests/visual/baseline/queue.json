@@ -21,13 +21,13 @@
           "border": "0px none rgb(16, 24, 40)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "82px",
+          "width": "86px",
           "height": "40px"
         },
         "box": {
-          "x": 1166,
+          "x": 1162,
           "y": 7.5,
-          "width": 82,
+          "width": 86,
           "height": 40
         }
       }
@@ -37,7 +37,7 @@
         "style": {
           "display": "block",
           "position": "static",
-          "margin": "12px 0px",
+          "margin": "0px 0px 12px",
           "padding": "0px",
           "fontSize": "12px",
           "fontWeight": "400",
@@ -52,7 +52,7 @@
         },
         "box": {
           "x": 248,
-          "y": 92,
+          "y": 80,
           "width": 1000,
           "height": 18.59
         }
@@ -78,7 +78,7 @@
         },
         "box": {
           "x": 248,
-          "y": 122.59,
+          "y": 110.59,
           "width": 1000,
           "height": 112.19
         }
@@ -100,13 +100,13 @@
           "borderRadius": "12px",
           "boxShadow": "rgba(16, 24, 40, 0.04) 0px 1px 2px 0px",
           "width": "1000px",
-          "height": "299.234px"
+          "height": "307.234px"
         },
         "box": {
           "x": 248,
-          "y": 254.78,
+          "y": 242.78,
           "width": 1000,
-          "height": 299.23
+          "height": 307.23
         }
       }
     ],
@@ -126,13 +126,13 @@
           "borderRadius": "0px",
           "boxShadow": "none",
           "width": "998px",
-          "height": "176.094px"
+          "height": "182.094px"
         },
         "box": {
           "x": 249,
-          "y": 623.02,
+          "y": 619.02,
           "width": 998,
-          "height": 176.09
+          "height": 182.09
         }
       }
     ]

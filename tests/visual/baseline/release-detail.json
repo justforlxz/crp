@@ -11,7 +11,7 @@
         "style": {
           "display": "grid",
           "position": "static",
-          "margin": "20px 0px 13px",
+          "margin": "0px",
           "padding": "0px",
           "fontSize": "13px",
           "fontWeight": "400",
@@ -22,13 +22,13 @@
           "borderRadius": "12px",
           "boxShadow": "rgba(16, 24, 40, 0.04) 0px 1px 2px 0px",
           "width": "1000px",
-          "height": "71.5px"
+          "height": "75.5px"
         },
         "box": {
           "x": 248,
-          "y": 100,
+          "y": 80,
           "width": 1000,
-          "height": 71.5
+          "height": 75.5
         }
       }
     ],
@@ -48,13 +48,13 @@
           "borderRadius": "0px",
           "boxShadow": "none",
           "width": "998px",
-          "height": "365px"
+          "height": "369px"
         },
         "box": {
           "x": 249,
-          "y": 240.5,
+          "y": 224.5,
           "width": 998,
-          "height": 365
+          "height": 369
         }
       }
     ],
@@ -74,13 +74,13 @@
           "borderRadius": "0px",
           "boxShadow": "none",
           "width": "998px",
-          "height": "646.969px"
+          "height": "680.312px"
         },
         "box": {
           "x": 249,
-          "y": 818.5,
+          "y": 793.5,
           "width": 998,
-          "height": 646.97
+          "height": 680.31
         }
       }
     ],
@@ -99,14 +99,14 @@
           "border": "0px none rgb(16, 24, 40)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "1368.33px",
-          "height": "646.969px"
+          "width": "1518.33px",
+          "height": "680.312px"
         },
         "box": {
           "x": 249,
-          "y": 818.5,
-          "width": 1368.33,
-          "height": 646.97
+          "y": 793.5,
+          "width": 1518.33,
+          "height": 680.31
         }
       }
     ],
@@ -126,13 +126,13 @@
           "borderRadius": "12px",
           "boxShadow": "rgba(16, 24, 40, 0.04) 0px 1px 2px 0px",
           "width": "1000px",
-          "height": "526.281px"
+          "height": "515.281px"
         },
         "box": {
           "x": 248,
-          "y": 1655.61,
+          "y": 1657.09,
           "width": 1000,
-          "height": 526.28
+          "height": 515.28
         }
       }
     ],
@@ -152,13 +152,13 @@
           "borderRadius": "12px",
           "boxShadow": "rgba(16, 24, 40, 0.04) 0px 1px 2px 0px",
           "width": "488px",
-          "height": "474.516px"
+          "height": "453.516px"
         },
         "box": {
           "x": 249,
-          "y": 2250.89,
+          "y": 2241.38,
           "width": 488,
-          "height": 474.52
+          "height": 453.52
         }
       }
     ],
@@ -167,7 +167,7 @@
         "style": {
           "display": "block",
           "position": "static",
-          "margin": "13px 0px",
+          "margin": "0px 0px 12px",
           "padding": "0px",
           "fontSize": "13px",
           "fontWeight": "400",
@@ -182,7 +182,7 @@
         },
         "box": {
           "x": 266,
-          "y": 2525.28,
+          "y": 2491.77,
           "width": 454,
           "height": 124.84
         }
@@ -194,7 +194,7 @@
           "display": "flex",
           "position": "static",
           "margin": "0px",
-          "padding": "10px 16px",
+          "padding": "12px 16px",
           "fontSize": "13px",
           "fontWeight": "400",
           "lineHeight": "20.15px",
@@ -204,13 +204,13 @@
           "borderRadius": "0px",
           "boxShadow": "none",
           "width": "486px",
-          "height": "61.2812px"
+          "height": "65.2812px"
         },
         "box": {
           "x": 250,
-          "y": 2663.13,
+          "y": 2628.61,
           "width": 486,
-          "height": 61.28
+          "height": 65.28
         }
       }
     ],
@@ -234,35 +234,9 @@
         },
         "box": {
           "x": 775,
-          "y": 2332.89,
+          "y": 2409.38,
           "width": 456,
           "height": 118.06
-        }
-      }
-    ],
-    "release-detail.danger-zone": [
-      {
-        "style": {
-          "display": "block",
-          "position": "static",
-          "margin": "20px 0px 0px",
-          "padding": "0px",
-          "fontSize": "13px",
-          "fontWeight": "400",
-          "lineHeight": "20.15px",
-          "color": "rgb(16, 24, 40)",
-          "backgroundColor": "rgb(255, 255, 255)",
-          "border": "1px solid rgb(227, 232, 239)",
-          "borderRadius": "12px",
-          "boxShadow": "rgba(16, 24, 40, 0.04) 0px 1px 2px 0px",
-          "width": "1000px",
-          "height": "201.281px"
-        },
-        "box": {
-          "x": 248,
-          "y": 2812.41,
-          "width": 1000,
-          "height": 201.28
         }
       }
     ]
