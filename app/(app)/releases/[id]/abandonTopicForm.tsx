@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * 「放弃提测主题」的二次确认（MKACG-950）。
+ * 「放弃主题」的二次确认（MKACG-950；按钮文案由页面按来源给，MKACG-1011）。
  *
  * 放弃主题不可撤销，所以不让人一点就发：先点按钮，展开一个确认框，把**要放弃的是什么**
  * 写清楚，再点一次才真的提交。确认框里必须出现 Topic ID、主题名、影响包数、
@@ -10,7 +10,9 @@
  * 为什么用客户端组件而不是直接放表单：二次确认要一次点击才展开，这需要一点状态；
  * 这里是页面里唯一需要状态的地方，不引入别的机制。
  *
- * 确认框用原型的 `.modal` 结构（MKACG-972）：外层 + 头部 + 主体 + 底部操作区。
+ * 确认框用原型的 `.modal` 结构（MKACG-972）：外层 + 头部 + 主体 + 底部操作区，
+ * 并挂到 `document.body` 上（`./detailModal`）—— 顶栏的 `backdrop-filter` 会给 `fixed` 后代
+ * 建立包含块，不脱离顶栏时遮罩只有 55px 高、弹窗头部跑到视口上方。
  * 点遮罩、点右上角 ×、按 Esc、点「取消」都收起确认框，行为与改版前一致。
  *
  * 只有「能不能放弃」由页面判定，这个组件不重复判断：页面在不能放弃时根本不会渲染它。
@@ -20,7 +22,7 @@
 
 import { useState } from "react";
 
-import { Modal } from "@/components/modal";
+import { DetailModal } from "./detailModal";
 
 export function AbandonTopicForm({
   releaseId,
@@ -29,7 +31,10 @@ export function AbandonTopicForm({
   packageCount,
   hasCrpReleases,
   action,
+  label,
 }: {
+  /** 按钮文案。由页面按来源给：这里恒为「放弃主题」，与锁定态那个禁用按钮同一个字符串。 */
+  label: string;
   releaseId: string;
   topicId: string;
   /** CRP 上的主题名；读不到时传本地记录的提测版本。 */
@@ -50,13 +55,13 @@ export function AbandonTopicForm({
         className="btn btn-danger"
         onClick={() => setConfirming(true)}
       >
-        放弃提测主题
+        {label}
       </button>
     );
   }
 
   return (
-    <Modal
+    <DetailModal
       className="modal"
       title={`确认放弃 Topic ${topicId}`}
       onClose={() => setConfirming(false)}
@@ -81,6 +86,6 @@ export function AbandonTopicForm({
         <li>不可撤销。</li>
         <li>本操作不删除 CRP 上的 Release，只把主题标记为已放弃。</li>
       </ul>
-    </Modal>
+    </DetailModal>
   );
 }

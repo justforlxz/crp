@@ -184,6 +184,8 @@ function statusView(overrides: Partial<BuildStatusView> = {}): BuildStatusView {
         packageName: "kwin",
         releaseVersion: "5.27.10",
         stage: "构建中",
+        phase: "running",
+        blockedBy: null,
         crpReleaseId: "CRP-9",
         shuttleTaskId: "SHU-7",
         arches: [

@@ -37,6 +37,7 @@ export {
   type PollSummary,
   type ReleaseDispatchView,
   type ReleaseStateName,
+  type RetryOptions,
   type RetryResult,
 } from "./service";
 

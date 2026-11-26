@@ -215,6 +215,79 @@ export function buildSnapshotCsv(packages: readonly ReleaseDetailPackage[]): str
   return `\uFEFF${lines.join("\r\n")}\r\n`;
 }
 
+/**
+ * 快照明细的 7 列（`design.md` 第九节「导出快照」）：每包一行。
+ *
+ * 与 `SNAPSHOT_COLUMNS`（提测单的 11 列）是两份不同的文件，不是同一份文件的两个版本：
+ * 提测单按提测快照表原样导出，明细要多带 CRP 侧版本、架构与构建结果，这三样在快照表里没有。
+ */
+export const SNAPSHOT_DETAIL_COLUMNS = [
+  "软件包",
+  "分支",
+  "Commit",
+  "代码版本",
+  "CRP 仓库版本",
+  "架构",
+  "结果",
+] as const;
+
+/** 逐包的构建状态，直接喂 `loadReleaseBuildStatus().tasks`。 */
+export type SnapshotDetailTask = {
+  packageName: string;
+  /** 阶段名，例如「失败」「构建中」「等待依赖」。 */
+  stage: string;
+  /** 这个包有哪些架构；还没投递时为空数组。 */
+  arches: readonly { arch: string }[];
+};
+
+export type SnapshotDetailInput = {
+  packages: readonly ReleaseDetailPackage[];
+  repositoryRecords: readonly ReleaseDetailRepositoryRecord[];
+  tasks: readonly SnapshotDetailTask[];
+};
+
+/**
+ * 导出这条提测的软件包快照明细。
+ *
+ * 与提测单共用 `snapshotRowCells` 铺「软件包 / 分支 / 代码版本 / Commit」四格 ——
+ * 同一个包在两份文件里不会有两种写法。CRP 仓库版本取 CRP 自己记的那个版本（`crpTag`），
+ * 还没同步过时退回我们提交的 `crpBaseTag`；两样都没有就是破折号，不猜。
+ */
+export function buildSnapshotDetailCsv(input: SnapshotDetailInput): string {
+  const taskByName = new Map(
+    input.tasks.map((task) => [task.packageName, task] as const),
+  );
+  const recordByName = new Map(
+    input.repositoryRecords.map((record) => [record.packageName, record] as const),
+  );
+
+  const lines = [SNAPSHOT_DETAIL_COLUMNS.map((column) => csvCell(column)).join(",")];
+
+  input.packages.forEach((item, index) => {
+    const cells = snapshotRowCells(item, index + 1);
+    const record = recordByName.get(item.packageName);
+    const task = taskByName.get(item.packageName);
+
+    lines.push(
+      [
+        cells[1],
+        cells[2],
+        cells[8],
+        cells[3],
+        record?.crpTag ?? record?.crpBaseTag ?? "—",
+        task === undefined || task.arches.length === 0
+          ? "—"
+          : task.arches.map((arch) => arch.arch).join("、"),
+        task?.stage ?? "—",
+      ]
+        .map(csvCell)
+        .join(","),
+    );
+  });
+
+  return `\uFEFF${lines.join("\r\n")}\r\n`;
+}
+
 /** 按拓扑序排序：上游在前；排不进顺序的包（理论上不会出现）按名字附在末尾。 */
 function orderPackages(
   snapshots: readonly SnapshotRow[],
