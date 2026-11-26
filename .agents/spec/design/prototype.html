@@ -179,6 +179,8 @@ a:hover { text-decoration: underline; }
 .crumb { display: flex; align-items: center; gap: 6px; color: var(--ink-4); font-size: 12px; }
 .crumb b { color: var(--ink); font-weight: 600; }
 .crumb-sep { color: #c3c9d2; }
+.crumb-link { display: inline; padding: 0; border: 0; background: none; color: var(--accent-ink); font-size: 12px; min-height: 0; }
+.crumb-link:hover { text-decoration: underline; }
 .topbar-title { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
 .topbar-desc { color: var(--ink-3); font-size: 12px; }
 .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: var(--s2); }
@@ -194,8 +196,8 @@ a:hover { text-decoration: underline; }
    3. 通用件
    ============================================================ */
 .btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  min-height: 40px; padding: 0 14px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 40px; padding: 0 16px;
   border-radius: var(--r-sm);
   border: 1px solid var(--line-ctl);
   background: var(--card);
@@ -215,7 +217,7 @@ a:hover { text-decoration: underline; }
 .btn-danger { color: var(--bad); border-color: #e6b3ae; }
 .btn-danger:hover { background: var(--bad-bg); }
 .btn[disabled] { opacity: .45; pointer-events: none; }
-.btn-sm { min-height: 32px; padding: 0 10px; font-size: 12px; position: relative; }
+.btn-sm { min-height: 32px; padding: 0 12px; font-size: 12px; position: relative; }
 .btn-sm::after { content: ""; position: absolute; inset: -4px; }
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
@@ -246,7 +248,7 @@ a:hover { text-decoration: underline; }
 .sec-hd .spacer { margin-left: auto; }
 
 /* 状态点 */
-.dot { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 12px; }
+.dot { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; font-size: 12px; }
 .dot::before {
   content: ""; width: 7px; height: 7px; border-radius: 50%;
   background: currentColor; flex: none;
@@ -260,8 +262,8 @@ a:hover { text-decoration: underline; }
 
 /* 提示块 */
 .tip {
-  display: flex; gap: 10px;
-  padding: 12px 14px;
+  display: flex; gap: 12px;
+  padding: 12px 16px;
   border: 1px solid #dbe6fb;
   border-radius: var(--r-sm);
   background: #f4f8ff;
@@ -323,13 +325,13 @@ a:hover { text-decoration: underline; }
 .stat-main { min-width: 0; flex: 1; }
 .stat-label { color: var(--ink-3); font-size: 12px; font-weight: 500; }
 .stat-value {
-  margin-top: 2px;
+  margin-top: 0;
   font-size: 30px; font-weight: 600; line-height: 1.1;
   letter-spacing: -.02em;
   color: var(--ink);
 }
 .stat-value small { font-size: 13px; font-weight: 500; color: var(--ink-4); margin-left: 4px; letter-spacing: 0; }
-.stat-foot { margin-top: 6px; font-size: 12px; color: var(--ink-4); }
+.stat-foot { margin-top: 8px; font-size: 12px; color: var(--ink-4); }
 .stat-ico {
   width: 38px; height: 38px; border-radius: 10px;
   display: grid; place-items: center;
@@ -359,13 +361,13 @@ table.grid th {
   color: var(--ink-3);
   font-size: 12px; font-weight: 600;
   text-align: left;
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
 table.grid th.num, table.grid td.num { text-align: right; }
 table.grid td {
-  padding: 12px 14px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--line-2);
   color: var(--ink-2);
   vertical-align: middle;
@@ -375,7 +377,7 @@ table.grid tbody tr { cursor: default; }
 table.grid tbody tr.is-clickable { cursor: pointer; }
 table.grid tbody tr.is-clickable:hover { background: #fafbfd; }
 table.grid td strong { color: var(--ink); font-weight: 600; }
-table.grid .cell-sub { display: block; color: var(--ink-4); font-size: 11.5px; margin-top: 1px; }
+table.grid .cell-sub { display: block; color: var(--ink-4); font-size: 11.5px; margin-top: 2px; }
 table.grid .col-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: var(--ink-3); }
 table.grid .nowrap { white-space: nowrap; }
 
@@ -389,9 +391,9 @@ table.grid .nowrap { white-space: nowrap; }
   min-height: 48px;
 }
 .tab {
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; gap: 8px;
   min-height: 44px;
-  padding: 0 10px;
+  padding: 0 12px;
   color: var(--ink-3);
   font-size: 13px;
   border-bottom: 2px solid transparent;
@@ -407,7 +409,7 @@ table.grid .nowrap { white-space: nowrap; }
 .tab-n {
   font-size: 11px; color: var(--ink-4);
   background: var(--line-2); border-radius: 20px;
-  padding: 0 6px; min-width: 18px; text-align: center;
+  padding: 0 8px; min-width: 20px; text-align: center;
 }
 .tab[aria-selected="true"] .tab-n { background: var(--accent-bg); color: var(--accent-ink); }
 
@@ -434,7 +436,7 @@ table.grid .nowrap { white-space: nowrap; }
 .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
 
 .select {
-  min-height: 40px; padding: 0 30px 0 12px;
+  min-height: 40px; padding: 0 32px 0 12px;
   border: 1px solid var(--line-ctl);
   border-radius: var(--r-sm);
   background: var(--card) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4.5 6 8.5 10 4.5' fill='none' stroke='%235b6472' stroke-width='1.5' stroke-linecap='round'/></svg>") no-repeat right 10px center;
@@ -454,7 +456,7 @@ table.grid .nowrap { white-space: nowrap; }
 }
 .manager-card {
   display: flex; align-items: center; gap: var(--s3);
-  padding: 14px var(--s4);
+  padding: 16px var(--s4);
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--r);
@@ -485,7 +487,7 @@ table.grid .nowrap { white-space: nowrap; }
   overflow: hidden;
 }
 .project-card:hover { border-color: #cfd7e3; }
-.pc-hd { display: flex; align-items: flex-start; gap: 10px; padding: 14px var(--s4) 10px; }
+.pc-hd { display: flex; align-items: flex-start; gap: 8px; padding: 16px var(--s4); }
 .pc-ico {
   width: 32px; height: 32px; border-radius: var(--r-sm);
   background: var(--accent-bg); color: var(--accent-ink);
@@ -499,16 +501,16 @@ table.grid .nowrap { white-space: nowrap; }
 .pc-facts {
   display: grid; grid-template-columns: repeat(3, 1fr);
   gap: var(--s2);
-  padding: 10px 0;
+  padding: 12px 0;
   border-top: 1px solid var(--line-2);
   border-bottom: 1px solid var(--line-2);
 }
 .pc-fact { min-width: 0; }
 .pc-fact dt { font-size: 11px; color: var(--ink-4); }
 .pc-fact dd { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink-2); }
-.pc-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 0; }
+.pc-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 12px 0; }
 .chip {
-  display: inline-flex; align-items: center; gap: 5px;
+  display: inline-flex; align-items: center; gap: 4px;
   padding: 2px 8px;
   border-radius: 20px;
   background: var(--line-2);
@@ -520,7 +522,7 @@ table.grid .nowrap { white-space: nowrap; }
 .pc-ft {
   margin-top: auto;
   display: flex; align-items: center; gap: var(--s2);
-  padding: 10px var(--s4);
+  padding: 12px var(--s4);
   border-top: 1px solid var(--line-2);
   background: #fcfcfd;
 }
@@ -549,8 +551,8 @@ table.grid .nowrap { white-space: nowrap; }
 .qi-name { display: flex; align-items: baseline; gap: 8px; }
 .qi-name b { font-size: 13px; font-weight: 600; color: var(--ink); }
 .qi-name small { font-size: 11.5px; color: var(--ink-4); }
-.qi-desc { font-size: 12px; color: var(--ink-3); margin-top: 1px; }
-.qi-bar { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.qi-desc { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+.qi-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 progress {
   appearance: none;
   width: 100%; height: 5px;
@@ -576,7 +578,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
   display: grid;
   grid-template-columns: 24px minmax(0,1fr) auto;
   gap: var(--s3); align-items: center;
-  padding: 10px var(--s4);
+  padding: 12px var(--s4);
   position: relative;
 }
 .dep-row + .dep-row::before {
@@ -608,14 +610,14 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
   border-radius: var(--r);
   box-shadow: var(--shadow-card);
 }
-.summary-cell { padding: 14px var(--s4); border-left: 1px solid var(--line-2); }
+.summary-cell { padding: 16px var(--s4); border-left: 1px solid var(--line-2); }
 .summary-cell:first-child { border-left: 0; }
 .summary-cell dt { font-size: 11.5px; color: var(--ink-4); }
 .summary-cell dd { margin: 2px 0 0; font-size: 14px; font-weight: 600; color: var(--ink); letter-spacing: -.01em; }
 .summary-cell dd small { font-size: 11.5px; font-weight: 400; color: var(--ink-4); letter-spacing: 0; }
 
 .timeline { position: relative; padding-left: 8px; }
-.tl-item { position: relative; padding: 0 0 var(--s4) 26px; }
+.tl-item { position: relative; padding: 0 0 var(--s4) 24px; }
 .tl-item:last-child { padding-bottom: 0; }
 .tl-item::before {
   content: ""; position: absolute; left: 6px; top: 6px; bottom: -6px;
@@ -667,7 +669,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
 .modal-hd .modal-sub { color: var(--ink-4); font-size: 12px; }
 .modal-hd .spacer { margin-left: auto; }
 .icon-btn {
-  width: 40px; height: 40px; border-radius: var(--r-sm);
+  width: 40px; height: 40px; padding: 0; border-radius: var(--r-sm);
   display: grid; place-items: center; color: var(--ink-3);
 }
 .icon-btn:hover { background: var(--line-2); }
@@ -701,7 +703,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
 
 /* 表单 */
 .field { display: block; margin-bottom: var(--s4); }
-.field > .label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-2); margin-bottom: 6px; }
+.field > .label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-2); margin-bottom: 8px; }
 .field .note { font-size: 11.5px; color: var(--ink-4); margin-top: 4px; }
 .input, .textarea {
   width: 100%; min-height: 40px;
@@ -729,6 +731,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
 .pick-t { font-size: 13px; font-weight: 600; color: var(--ink); }
 .pick-d { font-size: 11.5px; color: var(--ink-4); }
 .pick .spacer { margin-left: auto; }
+.pick svg { width: 16px; height: 16px; flex: none; }
 .check {
   width: 16px; height: 16px; border-radius: 4px;
   border: 1px solid var(--line-ctl);
@@ -890,6 +893,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
         <div class="nav-label">工作区</div>
         <button class="nav-item" data-nav="dashboard" aria-current="page"><svg><use href="#i-dashboard"/></svg><span>工作台</span></button>
         <button class="nav-item" data-nav="releases"><svg><use href="#i-releases"/></svg><span>提测记录</span><span class="nav-count num">12</span></button>
+        <button class="nav-item" data-nav="detail"><svg><use href="#i-releases"/></svg><span>提测详情</span></button>
         <button class="nav-item" data-nav="queue"><svg><use href="#i-queue"/></svg><span>构建队列</span><span class="nav-count num">3</span></button>
       </div>
       <div class="nav-group">
@@ -903,7 +907,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
     </nav>
 
     <div class="sidebar-foot">
-      <button class="account" data-toast="账号设置（原型未实现）">
+      <button class="account" data-act="account:open">
         <span class="avatar">张</span>
         <span style="min-width:0">
           <span class="account-name">张丁元</span>
@@ -915,6 +919,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
 
   <div class="main">
     <header class="topbar">
+      <div class="crumb" id="page-crumb" hidden></div>
       <div class="topbar-title" id="page-title">工作台</div>
       <div class="topbar-desc" id="page-desc">今天要处理的事</div>
       <div class="topbar-actions" id="page-actions"></div>
@@ -1006,7 +1011,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
               </select>
               <span class="result-n" id="release-count"></span>
               <div class="spacer"></div>
-              <button class="btn" data-toast-ok="已开始导出，完成后会给你通知"><svg><use href="#i-download"/></svg>导出</button>
+              <button class="btn" data-act="export:run"><svg><use href="#i-download"/></svg>导出</button>
             </div>
             <div class="table-scroll">
               <table class="grid">
@@ -1047,7 +1052,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
               <div class="panel-hd"><h2>软件包快照</h2><span class="hint">基线版本与本次提交</span></div>
               <div class="panel-bd flush table-scroll">
                 <table class="grid">
-                  <thead><tr><th style="width:22%">软件包</th><th style="width:14%">基线版本</th><th style="width:14%">本次版本</th><th style="width:22%">架构</th><th style="width:14%" class="num">构建</th><th style="width:14%">结果</th></tr></thead>
+                  <thead><tr><th style="width:20%">软件包</th><th style="width:12%">基线版本</th><th style="width:12%">本次版本</th><th style="width:20%">架构</th><th style="width:10%" class="num">构建</th><th style="width:12%">结果</th><th style="width:14%">操作</th></tr></thead>
                   <tbody id="detail-snapshots"></tbody>
                 </table>
               </div>
@@ -1122,7 +1127,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
         <section class="page" data-page="packages">
           <div class="stack">
             <div class="panel">
-              <div class="panel-hd"><h2>软件包登记</h2><span class="hint">全平台共用一份</span><div class="spacer"></div><button class="btn" data-toast-ok="新建软件包（原型未实现）"><svg><use href="#i-plus"/></svg>新建软件包</button></div>
+              <div class="panel-hd"><h2>软件包登记</h2><span class="hint">全平台共用一份</span><div class="spacer"></div><button class="btn" data-act="pkg:new"><svg><use href="#i-plus"/></svg>新建软件包</button></div>
               <div class="panel-bd flush table-scroll">
                 <table class="grid">
                   <thead><tr><th style="width:18%">名称</th><th style="width:20%">仓库路径</th><th style="width:16%">CRP 项目名</th><th style="width:14%">分支</th><th style="width:12%">当前版本</th><th style="width:12%">依赖</th><th style="width:8%" class="num">引用</th></tr></thead>
@@ -1141,7 +1146,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
         <section class="page" data-page="baselines">
           <div class="stack">
             <div class="panel">
-              <div class="panel-hd"><h2>基线</h2><span class="hint">来自 CRP 分支，同步时幂等写入</span><div class="spacer"></div><button class="btn" data-toast-ok="已触发同步"><svg><use href="#i-refresh"/></svg>立即同步</button></div>
+              <div class="panel-hd"><h2>基线</h2><span class="hint">来自 CRP 分支，同步时幂等写入</span><div class="spacer"></div><button class="btn" data-act="sync:run"><svg><use href="#i-refresh"/></svg>立即同步</button></div>
               <div class="panel-bd flush table-scroll">
                 <table class="grid">
                   <thead><tr><th style="width:20%">分支</th><th style="width:26%">说明</th><th style="width:12%">IsCheck</th><th style="width:12%" class="num">软件包</th><th style="width:16%">架构</th><th style="width:14%">最近同步</th></tr></thead>
@@ -1162,7 +1167,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
             <div class="stats" id="queue-stats"></div>
 
             <div class="panel">
-              <div class="panel-hd"><h2>依赖与投递顺序</h2><span class="hint">v25_kwin / 25.0.3</span><div class="spacer"></div><button class="btn btn-sm" data-toast="已重排队列">重排</button></div>
+              <div class="panel-hd"><h2>依赖与投递顺序</h2><span class="hint">v25_kwin / 25.0.3</span><div class="spacer"></div><button class="btn btn-sm" data-act="requeue:run">重排</button></div>
               <div class="dep-flow" id="queue-deps"></div>
             </div>
 
@@ -1323,6 +1328,8 @@ const DETAIL = {
   id: '25.0.3', project: '窗口管理 V25', key: 'window-core', mgr: '李薇',
   baseline: 'eagle-1071', created: '2026-11-24 13:42', by: '李薇',
   topic: '29254', st: 'building',
+  source: 'platform',
+  lockReason: null,
   repos: [
     { pkg: 'kwin',             repo: 'deepin-kde/kwin',         br: 'develop/snipe', sha: '9f3c1ab', st: 'building' },
     { pkg: 'wayland',          repo: 'deepin-kde/wayland',      br: 'develop/eagle', sha: '2b7de04', st: 'success'  },
@@ -1370,11 +1377,19 @@ const PAGES = {
   releases:  { title: '提测记录', desc: '共 12 条，3 条需要处理',
     actions: () => btn('创建提测', 'primary', 'plus', 'wizard') },
   detail:    { title: '提测详情', desc: '25.0.3 · 窗口管理 V25',
-    actions: () => btn('返回列表', '', 'arrow-left', 'nav:releases')
-                + btn('放弃主题', 'danger', 'x', 'abandon') },
+    crumb: () => `<button class="text-link crumb-link" data-act="nav:releases">提测记录</button>`
+                 + `<span class="crumb-sep">/</span><b>${DETAIL.id} · ${DETAIL.project}</b>`,
+    actions: () => btn('刷新仓库记录', '', 'refresh', 'detail:refresh')
+                + btn('导出快照', '', 'download', 'detail:export')
+                + (DETAIL.lockReason
+                    ? `<button class="btn btn-danger" disabled>${DETAIL.source === 'platform' ? '取消提测' : '放弃主题'}</button>`
+                    : (DETAIL.source === 'platform'
+                        ? btn('取消提测', 'danger', 'x', 'abandon')
+                        : btn('放弃主题', 'danger', 'x', 'abandon'))) },
   projects:  { title: '项目',     desc: '4 个项目，5 位项目经理',
-    actions: () => btn('新建项目', 'primary', 'plus', 'toast:原型未实现新建项目') },
-  managers:  { title: '项目经理', desc: '项目创建时必须分配一位' },
+    actions: () => btn('新建项目', 'primary', 'plus', 'project:new') },
+  managers:  { title: '项目经理', desc: '项目创建时必须分配一位',
+    actions: () => btn('新建项目经理', 'primary', 'plus', 'mgr:new') },
   packages:  { title: '软件包',   desc: '12 个，全平台共用一份登记' },
   baselines: { title: '基线',     desc: '4 条，来自 CRP 分支' },
   queue:     { title: '构建队列', desc: '3 个作业，1 个进行中',
@@ -1434,7 +1449,7 @@ function stat(label, value, foot, ico, tone) {
 }
 
 function queueItem(q) {
-  return `<div class="queue-item">
+  return `<div class="queue-item is-clickable" data-act="job:open:${q.name}" style="cursor:pointer">
     <div class="qi-ico">${icon('box')}</div>
     <div class="queue-info">
       <div class="qi-name"><b>${q.name}</b><small class="num">${q.ver}</small></div>
@@ -1523,19 +1538,27 @@ function renderDetail() {
       <td class="num">${r.st === 'waiting' ? '—' : '#' + d.topic}</td>
     </tr>`).join('');
 
-  $('#detail-snapshots').innerHTML = d.snaps.map(s => `
-    <tr>
+  $('#detail-snapshots').innerHTML = d.snaps.map(s => {
+    const canRetry = s.st === 'failed' || s.st === 'waiting';
+    const why = s.st === 'success' ? '已成功，无需重投'
+              : s.st === 'building' ? '正在构建，等这一轮跑完'
+              : '';
+    return `<tr>
       <td><strong>${s.pkg}</strong></td>
       <td class="col-mono">${s.base}</td>
       <td class="col-mono">${s.now}</td>
       <td class="muted" style="font-size:11.5px">${s.arch}</td>
       <td class="num">${s.done}/${s.total}</td>
       <td>${dot(s.st)}</td>
-    </tr>`).join('');
+      <td>${canRetry
+        ? `<button class="btn btn-sm" data-act="detail:retry:${s.pkg}">重新投递</button>`
+        : `<button class="btn btn-sm" disabled>重新投递</button><span class="cell-sub">${why}</span>`}</td>
+    </tr>`;
+  }).join('');
 
   $('#detail-info').innerHTML = `
-    <div class="project-card" style="border:0;box-shadow:none">
-      <div class="pc-hd" style="padding:0 0 10px">
+    <div class="project-card" data-act="project:edit:${d.key}" style="border:0;box-shadow:none;cursor:pointer">
+      <div class="pc-hd" style="padding:0">
         <div class="pc-ico">${icon('projects')}</div>
         <div class="pc-title">
           <div class="pc-name">${d.project}</div>
@@ -1555,7 +1578,9 @@ function renderDetail() {
       </div>
     </div>`;
 
-  $('#detail-risk').innerHTML = d.risk ? `<div class="risk" style="margin-bottom:16px">${icon('alert')}<div><b>${d.risk.t}</b><br>${d.risk.d}</div></div>` : '';
+  const lock = d.lockReason ? `<div class="risk" style="margin-bottom:16px">${icon('alert')}<div><b>现在不能取消这条提测</b><br>${d.lockReason}</div></div>` : '';
+  const risk = d.risk ? `<div class="risk" style="margin-bottom:16px">${icon('alert')}<div><b>${d.risk.t}</b><br>${d.risk.d}</div></div>` : '';
+  $('#detail-risk').innerHTML = lock + risk;
 
   $('#detail-timeline').innerHTML = d.timeline.map(t => `
     <div class="tl-item ${t.c}">
@@ -1570,7 +1595,7 @@ function renderDetail() {
    ============================================================ */
 function renderProjects() {
   $('#proj-managers').innerHTML = MANAGERS.filter(m => m.projects > 0).map(m => `
-    <button class="manager-card" data-act="toast:打开 ${m.name} 的项目（原型未实现）">
+    <button class="manager-card" data-act="mgr:open:${m.name}">
       <span class="avatar">${m.name[0]}</span>
       <span style="min-width:0">
         <span class="manager-name">${m.name}</span>
@@ -1580,17 +1605,18 @@ function renderProjects() {
     </button>`).join('');
 
   const q = ($('#proj-q')?.value || '').trim().toLowerCase();
-  const list = PROJECTS.filter(p => !q || p.name.toLowerCase().includes(q));
-  $('#proj-count').textContent = `共 ${PROJECTS.length} 个，显示 ${list.length} 个`;
+  const list = PROJECTS.filter(p => (!q || (p.name + p.mgr).toLowerCase().includes(q)) && (!projMgrFilter || p.mgr === projMgrFilter));
+  $('#proj-count').innerHTML = (projMgrFilter
+    ? `只看 <b>${projMgrFilter}</b> 的项目 · <button class="text-link" style="display:inline;padding:0" data-act="mgr:open:${projMgrFilter}">清除</button>`
+    : `共 ${PROJECTS.length} 个，显示 ${list.length} 个`);
   $('#proj-cards').innerHTML = list.map(p => `
-    <div class="project-card">
+    <div class="project-card" data-act="project:edit:${p.key}" style="cursor:pointer">
       <div class="pc-hd">
         <div class="pc-ico">${icon('projects')}</div>
         <div class="pc-title">
           <div class="pc-name">${p.name}</div>
           <div class="pc-key">${p.key}</div>
         </div>
-        <button class="icon-btn" data-act="toast:项目操作菜单（原型未实现）">${icon('more')}</button>
       </div>
       <div class="pc-body">
         <div class="pc-facts">
@@ -1606,7 +1632,7 @@ function renderProjects() {
       <div class="pc-ft">
         <span class="dot is-wait" style="font-size:11.5px">基线 ${p.baseline}</span>
         <span class="spacer"></span>
-        <button class="btn btn-sm" data-act="toast:创建提测已经打开（原型未实现）">发起提测</button>
+        <button class="btn btn-sm" data-act="project:start:${p.key}">发起提测</button>
       </div>
     </div>`).join('');
 
@@ -1620,7 +1646,7 @@ function renderProjects() {
 
 function renderManagers() {
   $('#mgr-cards').innerHTML = MANAGERS.map(m => `
-    <div class="manager-card">
+    <div class="manager-card" data-act="mgr:edit:${m.name}" style="cursor:pointer">
       <span class="avatar">${m.name[0]}</span>
       <span style="min-width:0">
         <span class="manager-name">${m.name}</span>
@@ -1644,7 +1670,7 @@ function renderManagers() {
    ============================================================ */
 function renderPackages() {
   $('#pkg-rows').innerHTML = PACKAGES.map(p => `
-    <tr>
+    <tr class="is-clickable" data-act="pkg:edit:${p.name}">
       <td><strong>${p.name}</strong></td>
       <td class="col-mono">${p.repo}</td>
       <td class="col-mono">${p.crp}</td>
@@ -1679,7 +1705,7 @@ function renderQueue() {
   ].join('');
 
   $('#queue-deps').innerHTML = DEPS.map(d => `
-    <div class="dep-row is-${d.st}">
+    <div class="dep-row is-${d.st}" data-act="dep:open:${d.name}" style="cursor:pointer">
       <div class="dep-n num">${d.n}</div>
       <div>
         <div class="dep-name">${d.name}</div>
@@ -1704,7 +1730,7 @@ function renderQueue() {
    ============================================================ */
 function renderWebhooks() {
   $('#wh-cards').innerHTML = WEBHOOKS.map(w => `
-    <div class="project-card">
+    <div class="project-card" data-act="wh:edit:${WEBHOOKS.indexOf(w)}" style="cursor:pointer">
       <div class="pc-hd">
         <div class="pc-ico">${icon('webhook')}</div>
         <div class="pc-title">
@@ -1720,9 +1746,9 @@ function renderWebhooks() {
         </div>
       </div>
       <div class="pc-ft">
-        <button class="btn btn-sm" data-act="toast:已发送测试投递">测试</button>
+        <button class="btn btn-sm" data-act="wh:test:${WEBHOOKS.indexOf(w)}">测试</button>
         <span class="spacer"></span>
-        <button class="btn btn-sm btn-quiet" data-act="toast:端点编辑（原型未实现）">编辑</button>
+        <button class="btn btn-sm btn-quiet" data-act="wh:edit:${WEBHOOKS.indexOf(w)}">编辑</button>
       </div>
     </div>`).join('');
 
@@ -1751,8 +1777,19 @@ function go(name) {
     if (el.dataset.nav === name) el.setAttribute('aria-current', 'page');
     else el.removeAttribute('aria-current');
   });
-  $('#page-title').textContent = meta.title;
-  $('#page-desc').textContent = meta.desc;
+  const crumb = $('#page-crumb');
+  if (meta.crumb) {
+    crumb.innerHTML = meta.crumb();
+    crumb.hidden = false;
+    $('#page-title').hidden = true;
+    $('#page-desc').hidden = true;
+  } else {
+    crumb.hidden = true;
+    $('#page-title').hidden = false;
+    $('#page-desc').hidden = false;
+    $('#page-title').textContent = meta.title;
+    $('#page-desc').textContent = meta.desc;
+  }
   $('#page-actions').innerHTML = meta.actions ? meta.actions() : '';
   window.scrollTo({ top: 0 });
 }
@@ -2199,9 +2236,74 @@ document.addEventListener('click', (e) => {
     }
     if (act.startsWith('nav:')) { go(act.slice(4)); return; }
     if (act === 'abandon') {
-      confirmDialog('放弃这条提测主题？', '会在 CRP 上把主题标记为放弃，已提交的构建不会撤回，别人基于这个主题的提测不受影响。这个操作不能撤销。', '放弃主题', () => toast('主题已放弃', 'CRP 返回 200', 'bad'));
+      if (DETAIL.source === 'platform') {
+        confirmDialog(
+          '取消这条提测？',
+          '会做两件事：删掉平台里的这条提测记录，以及在 CRP 上把主题标记为放弃。已提交的构建不会撤回。这个操作不能撤销。',
+          '取消提测',
+          () => toast('提测已取消', '平台记录已删除，CRP 主题已放弃', 'bad'));
+      } else {
+        confirmDialog(
+          '放弃这条提测主题？',
+          '只会在 CRP 上把主题标记为放弃，不动平台里别人创建的提测记录。已提交的构建不会撤回。这个操作不能撤销。',
+          '放弃主题',
+          () => toast('主题已放弃', 'CRP 返回 200', 'bad'));
+      }
       return;
     }
+    if (act === 'project:new') { projectModal(); return; }
+    if (act === 'mgr:new') { managerFormModal(); return; }
+    if (act === 'pkg:new') { packageFormModal(); return; }
+    if (act.startsWith('project:edit:')) { projectModal(act.slice(13)); return; }
+    if (act.startsWith('project:menu:')) { projectModal(act.slice(13)); return; }
+    if (act.startsWith('project:software:')) { projectModal(act.slice(17)); PJS.tab = 'software'; drawProjectModal(); return; }
+    if (act.startsWith('project:start:')) { startRelease(act.slice(14)); return; }
+    if (act.startsWith('project:clone:')) {
+      const src = PROJECTS.find(x => x.key === act.slice(14));
+      if (src) {
+        const key = src.key + '-copy';
+        PROJECTS.push({ ...src, key, name: src.name + '（副本）', chips: [...src.chips] });
+        PROJ_SOFTWARE[key] = (PROJ_SOFTWARE[src.key] || []).map(r => ({ ...r }));
+        renderProjects();
+        toast('项目副本已创建', src.name + '（副本）');
+      }
+      return;
+    }
+    if (act.startsWith('project:delete:')) {
+      const key = act.slice(15);
+      const pj = PROJECTS.find(x => x.key === key);
+      if (pj) confirmDialog('删除这个项目？', '只删平台里的项目配置，不动 CRP 上的任何东西。名下的提测记录会保留，但不再归属这个项目。', '删除项目', () => {
+        const i = PROJECTS.indexOf(pj);
+        if (i >= 0) PROJECTS.splice(i, 1);
+        delete PROJ_SOFTWARE[key];
+        renderProjects();
+        toast('项目已删除', pj.name, 'bad');
+      });
+      return;
+    }
+    if (act.startsWith('mgr:open:')) { projMgrFilter = projMgrFilter === act.slice(9) ? '' : act.slice(9); go('projects'); renderProjects(); return; }
+    if (act.startsWith('mgr:edit:')) { managerFormModal(act.slice(9)); return; }
+    if (act.startsWith('pkg:edit:')) { packageFormModal(act.slice(9)); return; }
+    if (act.startsWith('wh:edit:')) { webhookFormModal(Number(act.slice(8))); return; }
+    if (act.startsWith('wh:test:')) { toast('测试投递已发送', '返回 200，耗时 128 ms'); return; }
+    if (act === 'detail:refresh') { toast('已刷新仓库记录', '5 条记录已关联 CRP，用时 1.2 秒'); return; }
+    if (act === 'detail:export') { toast('快照已导出', '5 个软件包 · 含分支、Commit、代码版本、CRP 版本、架构与结果'); return; }
+    if (act.startsWith('detail:retry:')) {
+      const pkg = act.slice(13);
+      confirmDialog('重新投递 ' + pkg + '？', '只重投这一个软件包，其他包不动。已成功的架构不会重跑，只补没完成的。', '重新投递', () => toast(pkg + ' 已重新投递', 'CRP Topic 29254'));
+      return;
+    }
+    if (act === 'export:run') { toast('已开始导出', '完成后会在右下角再提示一次'); return; }
+    if (act === 'sync:run') {
+      const b = BASELINES[0]; b.at = '刚刚';
+      renderBaselines();
+      toast('已触发同步', '108 条分支已刷新，包版本按需拉取');
+      return;
+    }
+    if (act === 'requeue:run') { toast('队列已重排', '按依赖关系重算，进行中的作业不受影响'); return; }
+    if (act === 'account:open') { accountModal(); return; }
+    if (act.startsWith('job:open:')) { jobModal(act.slice(9)); return; }
+    if (act.startsWith('dep:open:')) { depModal(act.slice(9)); return; }
     if (act.startsWith('toast:')) { toast(act.slice(6)); return; }
   }
 
@@ -2221,8 +2323,557 @@ document.addEventListener('keydown', (e) => {
 
 $('#release-q').addEventListener('input', (e) => { releaseQuery = e.target.value; renderReleases(); });
 $('#proj-q').addEventListener('input', () => renderProjects());
-$('#wh-add').addEventListener('click', openWebhookForm);
-$('.account')?.addEventListener('click', () => toast('账号设置（原型未实现）'));
+$('#wh-add').addEventListener('click', () => webhookFormModal());
+
+/* ============================================================
+   项目 / 项目经理 / 软件包 / Webhook 的编辑弹窗
+   原型也要能真的走完流程，不能停在「未实现」的提示上。
+   ============================================================ */
+
+/** 项目页按项目经理筛选，空串表示不筛。 */
+let projMgrFilter = '';
+
+/** 从项目直接发起提测：打开向导并预选该项目。 */
+function startRelease(key) {
+  const p = PROJECTS.find((x) => x.key === key);
+  if (!p) return;
+  openWizard();
+  WIZ.mgr = p.mgr;
+  WIZ.proj = p.key;
+  drawWizard();
+}
+
+/* ---- 项目：带 tab 的编辑弹窗 ----
+   点项目卡直接进，不再有「...」二级菜单。
+   四个 tab：基本信息 / 软件包清单 / 提测记录 / 危险操作。
+*/
+const PJS = { key: null, tab: 'basic', draft: null };
+
+function projectModal(key) {
+  if (key) {
+    PJS.key = key;
+    PJS.draft = null;
+  } else {
+    PJS.key = null;
+    PJS.draft = {
+      key: '', name: '', mgr: (MANAGERS.find((m) => m.projects > 0) || MANAGERS[0]).name,
+      baseline: BASELINES[0].name, desc: '', chips: [], pkgs: 0, deps: 0,
+    };
+  }
+  PJS.tab = 'basic';
+  drawProjectModal();
+}
+
+function pjsProject() {
+  return PJS.draft || PROJECTS.find((x) => x.key === PJS.key);
+}
+
+function drawProjectModal() {
+  const p = pjsProject();
+  if (!p) return;
+  const isNew = !PJS.key;
+  const rows = PJS.draft ? [] : (PROJ_SOFTWARE[p.key] || []);
+  const related = PJS.draft ? [] : RELEASES.filter((r) => r.project === p.name);
+
+  const tabDefs = [
+    ['basic', '基本信息'],
+    ['software', '软件包清单', rows.length],
+    ['releases', '提测记录', related.length],
+    ['danger', '危险操作'],
+  ];
+  const tabBar = tabDefs.map(([k, t, n]) => `
+    <button class="tab" data-pj-tab="${k}" aria-selected="${PJS.tab === k}">${t}${n === undefined ? '' : `<span class="tab-n num">${n}</span>`}</button>`).join('');
+
+  let body = '';
+
+  if (PJS.tab === 'basic') {
+    body = `
+      <div class="form-row2">
+        <label class="field"><span class="label">项目名称 *</span>
+          <input class="input" id="pf-name" value="${esc(p.name)}" placeholder="例如：桌面核心 V25">
+        </label>
+        <label class="field"><span class="label">项目标识</span>
+          <input class="input" id="pf-key" value="${esc(p.key)}" placeholder="desktop-core" ${isNew ? '' : 'disabled'}>
+        </label>
+      </div>
+      <div class="form-row2">
+        <label class="field"><span class="label">项目经理 *</span>
+          <select class="select" id="pf-mgr">${MANAGERS.filter((m) => m.projects > 0).map((m) => `<option ${m.name === p.mgr ? 'selected' : ''}>${m.name}</option>`).join('')}</select>
+        </label>
+        <label class="field"><span class="label">CRP 基线 *</span>
+          <select class="select" id="pf-base">${BASELINES.map((b) => `<option ${b.name === p.baseline ? 'selected' : ''}>${b.name}</option>`).join('')}</select>
+        </label>
+      </div>
+      <label class="field"><span class="label">项目说明</span>
+        <textarea class="textarea" id="pf-desc" placeholder="这个项目负责的范围">${esc(p.desc || '')}</textarea>
+      </label>
+      <div class="tip">${icon('info')}
+        <div><b>项目里的全部软件包都会在提测时一起提交。</b>顺序按依赖排，用户不能改。基线决定提交到 CRP 的哪条分支。</div>
+      </div>`;
+  }
+
+  if (PJS.tab === 'software') {
+    body = `
+      <div class="pick-list">
+        ${rows.length ? rows.map((r, i) => `
+          <div class="pick" style="cursor:default">
+            <span class="step-n num">${i + 1}</span>
+            <span><span class="pick-t">${r.pkg}</span>
+              <span class="pick-d"> ${r.branch} · 代码版本 ${r.code} · CRP 仓库版本 ${r.repo}${r.updated ? ' · 有更新' : ' · 无变化'}</span></span>
+            <span class="spacer"></span>
+            <button class="btn btn-sm btn-danger" data-ps-remove="${r.pkg}">移除</button>
+          </div>`).join('') : `<div class="empty"><div class="empty-ico">${icon('empty')}</div><div class="empty-t">这个项目还没有软件包</div><div class="empty-d">从下面加一个，或者先去「软件包」页登记。</div></div>`}
+      </div>
+      <div class="form-row2" style="margin-top:16px">
+        <label class="field"><span class="label">添加软件包</span>
+          <select class="select" id="ps-add">${PACKAGES.filter((x) => !rows.some((r) => r.pkg === x.name)).map((x) => `<option value="${x.name}">${x.name} · ${x.ver}</option>`).join('')}</select>
+        </label>
+        <label class="field"><span class="label">&nbsp;</span>
+          <button class="btn" id="ps-add-btn" style="width:100%">${icon('plus')}加入清单</button>
+        </label>
+      </div>
+      <div class="tip">${icon('info')}<div><b>顺序由软件包依赖决定，不按添加顺序。</b>这里只决定「提测哪些包」，排第几位由依赖算。</div></div>`;
+  }
+
+  if (PJS.tab === 'releases') {
+    body = related.length ? `
+      <div class="table-scroll">
+        <table class="grid">
+          <thead><tr><th style="width:22%">提测记录</th><th style="width:14%" class="num">轮次</th><th style="width:14%">状态</th><th style="width:14%" class="num">耗时</th><th style="width:16%">创建人</th><th style="width:20%" class="num">时间</th></tr></thead>
+          <tbody>${related.map((r) => `
+            <tr class="is-clickable" data-act="detail">
+              <td><strong>${r.id}</strong></td>
+              <td class="num">第 ${r.round} 轮</td>
+              <td>${dot(r.st)}</td>
+              <td class="num">${r.cost}</td>
+              <td>${r.by}</td>
+              <td class="num">${r.at}</td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>
+      <div class="tip" style="margin-top:16px">${icon('info')}<div><b>这里只列这个项目的提测。</b>点任意一行进详情。</div></div>`
+      : `<div class="empty"><div class="empty-ico">${icon('empty')}</div><div class="empty-t">这个项目还没有提测</div><div class="empty-d">从项目卡上的「发起提测」开始。</div></div>`;
+  }
+
+  if (PJS.tab === 'danger') {
+    body = isNew ? `<div class="empty"><div class="empty-ico">${icon('info')}</div><div class="empty-t">新建的项目还不能删除</div><div class="empty-d">先保存，再回来。</div></div>`
+      : `
+      <div class="risk" style="margin-bottom:16px">${icon('alert')}
+        <div><b>删除项目会做什么</b><br>只删平台里的项目配置与软件清单，<b>不动 CRP 上的任何东西</b>。名下的提测记录会保留，但不再归属这个项目。</div>
+      </div>
+      <button class="btn btn-danger" data-act="project:delete:${p.key}">删除这个项目</button>`;
+  }
+
+  const foot = isNew
+    ? `<button class="btn" data-close="1">取消</button><button class="btn btn-primary" id="pf-save">创建项目</button>`
+    : (PJS.tab === 'danger'
+        ? `<button class="btn" data-close="1">关闭</button>`
+        : `<button class="btn" data-close="1">取消</button><button class="btn btn-primary" id="pf-save">保存</button>`);
+
+  openModal(`
+    <div class="modal-hd">
+      <h2>${isNew ? '新建项目' : esc(p.name)}</h2>
+      <span class="modal-sub">${isNew ? '项目边界就是提测边界' : p.key}</span>
+      <div class="spacer"></div>
+      <button class="icon-btn" data-close="1">${icon('x')}</button>
+    </div>
+    <div class="tabs" style="padding:0 var(--s5)">${tabBar}</div>
+    <div class="modal-bd">${body}</div>
+    <div class="modal-ft"><div class="spacer"></div>${foot}</div>`, { wide: true });
+
+  // tab 切换
+  $$('[data-pj-tab]').forEach((b) => b.addEventListener('click', () => {
+    // 切走前先把当前 tab 的输入存回草稿，避免丢失
+    persistBasicDraft();
+    PJS.tab = b.dataset.pjTab;
+    drawProjectModal();
+  }));
+
+  // 基本信息保存
+  $('#pf-save')?.addEventListener('click', () => {
+    const name = $('#pf-name').value.trim();
+    const keyv = $('#pf-key').value.trim();
+    if (!name) { toast('项目名称不能为空', '', 'bad'); return; }
+
+    if (isNew) {
+      if (keyv && PROJECTS.some((x) => x.key === keyv)) { toast('项目标识已存在', '', 'bad'); return; }
+      const created = {
+        key: keyv || 'project-' + (PROJECTS.length + 1),
+        name,
+        mgr: $('#pf-mgr').value,
+        baseline: $('#pf-base').value,
+        pkgs: 0, deps: 0,
+        desc: $('#pf-desc').value.trim(),
+        chips: [],
+      };
+      PROJECTS.push(created);
+      PROJ_SOFTWARE[created.key] = [];
+      PJS.draft = null;
+      PJS.key = created.key;
+      closeModal();
+      renderProjects();
+      toast('项目已创建', created.name);
+      return;
+    }
+
+    p.name = name;
+    p.mgr = $('#pf-mgr').value;
+    p.baseline = $('#pf-base').value;
+    p.desc = $('#pf-desc').value.trim();
+    renderProjects();
+    drawProjectModal();
+    toast('项目已保存', p.name);
+  });
+
+  // 软件包清单：移除
+  $$('[data-ps-remove]').forEach((b) => b.addEventListener('click', () => {
+    const arr = PROJ_SOFTWARE[p.key] || [];
+    const i = arr.findIndex((r) => r.pkg === b.dataset.psRemove);
+    if (i >= 0) arr.splice(i, 1);
+    PROJ_SOFTWARE[p.key] = arr;
+    p.pkgs = arr.length;
+    p.chips = arr.map((r) => r.pkg);
+    renderProjects();
+    drawProjectModal();
+  }));
+
+  // 软件包清单：加入
+  $('#ps-add-btn')?.addEventListener('click', () => {
+    const pk = PACKAGES.find((x) => x.name === $('#ps-add')?.value);
+    if (!pk) return;
+    const arr = PROJ_SOFTWARE[p.key] || [];
+    arr.push({ pkg: pk.name, branch: pk.br, code: pk.ver, repo: pk.ver, updated: true, msg: '新增到清单' });
+    PROJ_SOFTWARE[p.key] = arr;
+    p.pkgs = arr.length;
+    p.chips = arr.map((r) => r.pkg);
+    renderProjects();
+    drawProjectModal();
+  });
+}
+
+/** 切 tab 前把基本信息的输入写回草稿，避免用户填一半就丢。 */
+function persistBasicDraft() {
+  if (PJS.tab !== 'basic') return;
+  const p = pjsProject();
+  if (!p) return;
+  const name = $('#pf-name')?.value.trim();
+  if (typeof name === 'string' && name) p.name = name;
+  const desc = $('#pf-desc')?.value;
+  if (typeof desc === 'string') p.desc = desc;
+  const mgr = $('#pf-mgr')?.value;
+  if (mgr) p.mgr = mgr;
+  const base = $('#pf-base')?.value;
+  if (base) p.baseline = base;
+}
+
+/* ---- 项目经理：新建 / 编辑 ---- */
+function managerFormModal(name) {
+  const isNew = !name;
+  const m = isNew ? { name: '', mail: '', ws: '桌面核心组' } : MANAGERS.find((x) => x.name === name);
+  if (!m) return;
+
+  openModal(`
+    <div class="modal-hd"><h2>${isNew ? '新建项目经理' : '编辑项目经理'}</h2>
+      <div class="spacer"></div><button class="icon-btn" data-close="1">${icon('x')}</button></div>
+    <div class="modal-bd">
+      <div class="form-row2">
+        <label class="field"><span class="label">姓名 *</span>
+          <input class="input" id="mf-name" value="${esc(m.name)}" placeholder="输入姓名">
+        </label>
+        <label class="field"><span class="label">邮箱</span>
+          <input class="input" id="mf-mail" value="${esc(m.mail || '')}" placeholder="name@uniontech.com">
+        </label>
+      </div>
+      <label class="field"><span class="label">所属工作区</span>
+        <select class="select" id="mf-ws">
+          ${['桌面核心组', '系统应用组', '安全组'].map((w) => `<option ${w === m.ws ? 'selected' : ''}>${w}</option>`).join('')}
+        </select>
+      </label>
+      <div class="tip">${icon('info')}<div><b>同一个工作区内不能重名。</b>改名只改姓名，不动工作区归属，也不动名下项目。</div></div>
+    </div>
+    <div class="modal-ft"><div class="spacer"></div>
+      <button class="btn" data-close="1">取消</button>
+      <button class="btn btn-primary" id="mf-save">${isNew ? '创建' : '保存'}</button>
+    </div>`);
+
+  $('#mf-save').addEventListener('click', () => {
+    const nm = $('#mf-name').value.trim();
+    if (!nm) { toast('姓名不能为空', '', 'bad'); return; }
+    if (isNew) {
+      if (MANAGERS.some((x) => x.name === nm)) { toast('这个姓名已存在', '', 'bad'); return; }
+      MANAGERS.push({ name: nm, mail: $('#mf-mail').value.trim(), ws: $('#mf-ws').value, projects: 0, active: 0 });
+    } else {
+      const old = m.name;
+      m.name = nm;
+      m.mail = $('#mf-mail').value.trim();
+      m.ws = $('#mf-ws').value;
+      PROJECTS.forEach((p) => { if (p.mgr === old) p.mgr = nm; });
+    }
+    closeModal();
+    renderManagers();
+    renderProjects();
+    toast(isNew ? '项目经理已创建' : '已保存', nm);
+  });
+}
+
+/* ---- 软件包：编辑 ---- */
+function packageFormModal(name) {
+  const isNew = !name;
+  const pkg = isNew ? { name: '', repo: '', crp: '', br: 'master', ver: '', dep: '无依赖', refs: 0 } : PACKAGES.find((x) => x.name === name);
+  if (!pkg) return;
+
+  openModal(`
+    <div class="modal-hd"><h2>${isNew ? '新建软件包' : '编辑软件包'}</h2>
+      <div class="spacer"></div><button class="icon-btn" data-close="1">${icon('x')}</button></div>
+    <div class="modal-bd">
+      <div class="form-row2">
+        <label class="field"><span class="label">deb 包名 *</span>
+          <input class="input" id="kf-name" value="${esc(pkg.name)}" placeholder="dde-file-manager" ${isNew ? '' : 'disabled'}>
+        </label>
+        <label class="field"><span class="label">CRP 项目名 *</span>
+          <input class="input" id="kf-crp" value="${esc(pkg.crp)}" placeholder="v25_filemanager">
+        </label>
+      </div>
+      <label class="field"><span class="label">仓库路径 *</span>
+        <input class="input" id="kf-repo" value="${esc(pkg.repo)}" placeholder="deepin-file-manager">
+      </label>
+      <div class="form-row2">
+        <label class="field"><span class="label">跟踪分支</span>
+          <input class="input" id="kf-br" value="${esc(pkg.br)}" placeholder="master">
+        </label>
+        <label class="field"><span class="label">当前版本</span>
+          <input class="input" id="kf-ver" value="${esc(pkg.ver)}" placeholder="6.0.12">
+        </label>
+      </div>
+      <div class="tip">${icon('info')}<div><b>CRP 项目名可以和 deb 包名不同。</b>提交到 CRP 时按 CRP 项目名找主题，两个名字不一致必须都填对。</div></div>
+    </div>
+    <div class="modal-ft"><div class="spacer"></div>
+      <button class="btn" data-close="1">取消</button>
+      <button class="btn btn-primary" id="kf-save">${isNew ? '登记' : '保存'}</button>
+    </div>`);
+
+  $('#kf-save').addEventListener('click', () => {
+    const nm = $('#kf-name').value.trim();
+    if (!nm) { toast('包名不能为空', '', 'bad'); return; }
+    if (isNew) {
+      if (PACKAGES.some((x) => x.name === nm)) { toast('这个包已登记', '', 'bad'); return; }
+      PACKAGES.push({ name: nm, repo: $('#kf-repo').value.trim(), crp: $('#kf-crp').value.trim(), br: $('#kf-br').value.trim(), ver: $('#kf-ver').value.trim(), dep: '无依赖', refs: 0 });
+    } else {
+      pkg.crp = $('#kf-crp').value.trim();
+      pkg.repo = $('#kf-repo').value.trim();
+      pkg.br = $('#kf-br').value.trim();
+      pkg.ver = $('#kf-ver').value.trim();
+    }
+    closeModal();
+    renderPackages();
+    toast(isNew ? '软件包已登记' : '已保存', nm);
+  });
+}
+
+/* ---- Webhook：新增 / 编辑 ---- */
+function webhookFormModal(index) {
+  const isNew = index === undefined || index === null || Number.isNaN(index);
+  const w = isNew ? { name: '', url: 'https://', ev: '全部事件' } : WEBHOOKS[index];
+  if (!w) return;
+
+  openModal(`
+    <div class="modal-hd"><h2>${isNew ? '新增端点' : '编辑端点'}</h2>
+      <div class="spacer"></div><button class="icon-btn" data-close="1">${icon('x')}</button></div>
+    <div class="modal-bd">
+      <label class="field"><span class="label">名称 *</span>
+        <input class="input" id="wf-name" value="${esc(w.name)}" placeholder="例如 研发群机器人">
+      </label>
+      <label class="field"><span class="label">回调地址 *</span>
+        <input class="input" id="wf-url" value="${esc(w.url)}" placeholder="https://">
+      </label>
+      <label class="field"><span class="label">订阅事件</span>
+        <div class="pick-list">
+          ${['提测创建（release.created）', '构建开始（build.started）', '构建完成（build.success）', '构建失败（build.failed）', '认领失败（build.claim.failed）'].map((e, i) => `
+            <button class="pick" data-ev="${e}" aria-pressed="${i < 2}">
+              <span class="check">${i < 2 ? icon('check') : ''}</span>
+              <span class="pick-t">${e}</span>
+            </button>`).join('')}
+        </div>
+      </label>
+      <div class="tip">${icon('alert')}<div><b>保存后会立即发一次测试请求。</b>密钥只在创建时显示一次。</div></div>
+    </div>
+    <div class="modal-ft"><div class="spacer"></div>
+      <button class="btn" data-close="1">取消</button>
+      <button class="btn btn-primary" id="wf-save">${isNew ? '保存并测试' : '保存'}</button>
+    </div>`);
+
+  $$('[data-ev]').forEach((b) => b.addEventListener('click', () => {
+    const on = b.getAttribute('aria-pressed') === 'true';
+    b.setAttribute('aria-pressed', String(!on));
+    b.querySelector('.check').innerHTML = !on ? icon('check') : '';
+  }));
+
+  $('#wf-save').addEventListener('click', () => {
+    const name = $('#wf-name').value.trim();
+    const url = $('#wf-url').value.trim();
+    if (!name || !url) { toast('名称和地址都要填', '', 'bad'); return; }
+    const picked = $$('[data-ev]').filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset.ev);
+    const ev = picked.length === 5 ? '全部事件' : (picked.join(' ').replace(/（[^）]*）/g, '') || '未订阅');
+    if (isNew) WEBHOOKS.push({ name, url, ev, on: true });
+    else { WEBHOOKS[index].name = name; WEBHOOKS[index].url = url; WEBHOOKS[index].ev = ev; }
+    closeModal();
+    renderWebhooks();
+    toast(isNew ? '端点已创建' : '端点已保存', isNew ? '测试投递返回 200' : name);
+  });
+}
+
+/* ============================================================
+   作业详情、依赖说明、账号设置
+   补掉体检清单里的死链：点了没反应的那些。
+   ============================================================ */
+
+const ARCH_LIST = ['amd64', 'arm64', 'mips64el', 'loongarch64', 'sw64', 'riscv64'];
+
+/** 构建作业详情：每个架构一行，能看到卡在哪个架构上。 */
+function jobModal(name) {
+  const job = QUEUE.find((q) => q.name === name);
+  if (!job) return;
+
+  const done = job.pct;
+  const total = 6;
+  const rows = ARCH_LIST.map((arch, i) => {
+    if (i < done) return { arch, st: 'success', note: '构建成功 · 6 分 12 秒' };
+    if (job.st === 'run' && i === done) return { arch, st: 'building', note: '正在编译' };
+    if (job.st === 'wait' && i === 0) return { arch, st: 'waiting', note: '等上游完成' };
+    return { arch, st: 'waiting', note: '排队中' };
+  });
+
+  openModal(`
+    <div class="modal-hd">
+      <h2>${job.name} <span class="modal-sub num">${job.ver}</span></h2>
+      <div class="spacer"></div>
+      <button class="icon-btn" data-close="1">${icon('x')}</button>
+    </div>
+    <div class="modal-bd">
+      <div class="summary-strip" style="margin-bottom:16px">
+        <div class="summary-cell"><dt>状态</dt><dd>${dot(job.st === 'run' ? 'building' : 'waiting')}</dd></div>
+        <div class="summary-cell"><dt>架构进度</dt><dd class="num">${done}/${total}</dd></div>
+        <div class="summary-cell"><dt>已用时间</dt><dd class="num">${job.b}</dd></div>
+        <div class="summary-cell"><dt>CRP Topic</dt><dd class="num">#29254</dd></div>
+      </div>
+
+      <div class="table-scroll">
+        <table class="grid">
+          <thead><tr><th style="width:26%">架构</th><th style="width:22%">状态</th><th>说明</th></tr></thead>
+          <tbody>${rows.map((r) => `
+            <tr>
+              <td class="col-mono">${r.arch}</td>
+              <td>${dot(r.st)}</td>
+              <td class="muted">${r.note}</td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>
+
+      <div class="tip" style="margin-top:16px">${icon('info')}
+        <div><b>重投只补没完成的架构。</b>已经成功的架构不会重跑，所以重投的耗时取决于还剩几个。</div>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <div class="spacer"></div>
+      <button class="btn" data-close="1">关闭</button>
+      ${job.st === 'run'
+        ? `<button class="btn btn-primary" disabled>构建中，不能重投</button>`
+        : `<button class="btn btn-primary" id="job-retry">重新投递这个包</button>`}
+    </div>`);
+
+  $('#job-retry')?.addEventListener('click', () => {
+    closeModal();
+    toast(`${job.name} 已重新投递`, '只补未完成的架构');
+  });
+}
+
+/** 依赖节点：为什么排在这、为什么要等。 */
+function depModal(name) {
+  const row = DEPS.find((d) => d.name === name);
+  if (!row) return;
+  const upstream = row.n === 1 ? null : DEPS[0].name;
+
+  openModal(`
+    <div class="modal-hd">
+      <h2>${row.name}</h2>
+      <span class="modal-sub">第 ${row.n} 位</span>
+      <div class="spacer"></div>
+      <button class="icon-btn" data-close="1">${icon('x')}</button>
+    </div>
+    <div class="modal-bd">
+      <div class="confirm-card">
+        <div class="cfg-row">
+          <div><small>上游依赖</small><b>${upstream ? upstream : '无，可以直接投递'}</b></div>
+          <div><small>当前状态</small><b>${dot(row.st === 'done' ? 'success' : 'waiting')}</b></div>
+        </div>
+        <div class="cfg-row">
+          <div><small>排序依据</small><b>软件包登记里配的依赖关系</b></div>
+          <div><small>能不能手动提前</small><b>不能，用户改不了顺序</b></div>
+        </div>
+      </div>
+      <div class="tip" style="margin-top:16px">${icon('info')}
+        <div><b>${row.note}</b><br>上游成功之后这一包会自动投递，不需要人再点一次。</div>
+      </div>
+    </div>
+    <div class="modal-ft"><div class="spacer"></div><button class="btn" data-close="1">关闭</button></div>`);
+}
+
+/** 账号设置：对应实现的 /settings/credentials。 */
+function accountModal() {
+  openModal(`
+    <div class="modal-hd">
+      <h2>我的账号</h2>
+      <span class="modal-sub">凭据按人存放，只用来以你的身份调 CRP 与 Gerrit</span>
+      <div class="spacer"></div>
+      <button class="icon-btn" data-close="1">${icon('x')}</button>
+    </div>
+    <div class="modal-bd">
+      <div class="sec-hd"><h3>CRP 账号</h3><span class="hint">提交提测、查 Topic、投递都用这个身份</span></div>
+      <div class="form-row2">
+        <label class="field"><span class="label">用户名（LDAP）</span>
+          <input class="input" id="ac-crp-user" value="zhangdingyuan" placeholder="LDAP 账号">
+        </label>
+        <label class="field"><span class="label">密码</span>
+          <input class="input" type="password" id="ac-crp-pass" value="********" placeholder="密码">
+        </label>
+      </div>
+      <div class="wiz-foot-note" style="padding-top:0">
+        <span class="dot is-ok">已配置 · 最后验证 今天 09:12</span>
+        <button class="text-link" id="ac-crp-save">保存并验证</button>
+      </div>
+
+      <div class="sec-hd" style="margin-top:20px"><h3>Gerrit 账号</h3><span class="hint">查分支、Commit 与 changelog 版本</span></div>
+      <div class="form-row2">
+        <label class="field"><span class="label">用户名</span>
+          <input class="input" id="ac-gr-user" value="zhangdingyuan" placeholder="用户名">
+        </label>
+        <label class="field"><span class="label">HTTP Password</span>
+          <input class="input" type="password" id="ac-gr-pass" placeholder="未配置">
+        </label>
+      </div>
+      <div class="wiz-foot-note" style="padding-top:0">
+        <span class="dot is-wait">未配置 · 查不到分支与 Commit</span>
+        <button class="text-link" id="ac-gr-save">保存并验证</button>
+      </div>
+
+      <div class="tip" style="margin-top:20px">${icon('alert')}
+        <div><b>没配 CRP 账号就用不了这些：</b>创建提测、投递构建、刷新仓库记录。密码加密后存在平台，不会以明文出现在任何接口响应里。</div>
+      </div>
+    </div>
+    <div class="modal-ft"><div class="spacer"></div><button class="btn" data-close="1">关闭</button></div>`);
+
+  $('#ac-crp-save')?.addEventListener('click', () => {
+    const u = $('#ac-crp-user').value.trim();
+    if (!u) { toast('用户名为空', '', 'bad'); return; }
+    toast('CRP 账号已验证', '以 ' + u + ' 的身份登录成功');
+  });
+  $('#ac-gr-save')?.addEventListener('click', () => {
+    const u = $('#ac-gr-user').value.trim();
+    const p = $('#ac-gr-pass').value.trim();
+    if (!u || !p) { toast('用户名与密码都要填', '', 'bad'); return; }
+    toast('Gerrit 账号已验证', '能读到 develop/snipe 的最新 Commit');
+  });
+}
 
 /* ============================================================
    启动

@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "tsx scripts/check-seed-data.ts && next start",
     "worker": "tsx scripts/worker.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -17,6 +17,7 @@
     "test:style": "tsx scripts/style-check/index.ts",
     "test:contrast": "tsx scripts/check-contrast.ts",
     "check:modules": "tsx scripts/check-modules.ts",
+    "check:seed": "tsx scripts/check-seed-data.ts",
     "test:acceptance": "tsx --test --test-concurrency=1 tests/acceptance/coverage.test.ts tests/acceptance/func/*.test.ts tests/acceptance/edge/*.test.ts tests/acceptance/sec/*.test.ts",
     "test:acceptance:ui": "tsx tests/acceptance/run-ui.ts",
     "db:migrate": "prisma migrate deploy",

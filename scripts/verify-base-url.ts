@@ -13,7 +13,7 @@
  *
  * 用法（需要一个 `pnpm db:seed` 过的库与一个跑起来的服务；`--base-url` 不给时读 `E2E_BASE_URL`）：
  *
- *   pnpm build && pnpm start &
+ *   pnpm build && pnpm exec next start &
  *   DATABASE_URL=... pnpm tsx scripts/verify-base-url.ts --base-url=http://127.0.0.1:3000
  *
  * 退出码：0 通过；1 断言失败（打印每一跳与失败理由）；2 参数或环境不对，什么都没查。
