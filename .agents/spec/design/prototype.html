@@ -890,7 +890,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
 
     <nav>
       <div class="nav-group">
-        <div class="nav-label">工作区</div>
+        <div class="nav-label">提测</div>
         <button class="nav-item" data-nav="dashboard" aria-current="page"><svg><use href="#i-dashboard"/></svg><span>工作台</span></button>
         <button class="nav-item" data-nav="releases"><svg><use href="#i-releases"/></svg><span>提测记录</span><span class="nav-count num">12</span></button>
         <button class="nav-item" data-nav="detail"><svg><use href="#i-releases"/></svg><span>提测详情</span></button>
@@ -993,11 +993,6 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
                 <svg><use href="#i-search"/></svg>
                 <input id="release-q" type="search" placeholder="搜索版本、项目或创建人" autocomplete="off">
               </label>
-              <select class="select" id="release-ws">
-                <option>桌面核心</option>
-                <option>窗口管理</option>
-                <option>文件管理</option>
-              </select>
               <span class="result-n" id="release-count"></span>
               <div class="spacer"></div>
               <button class="btn" data-act="export:run"><svg><use href="#i-download"/></svg>导出</button>
@@ -1104,7 +1099,7 @@ progress.is-bad::-webkit-progress-value { background: var(--bad); }
               <div class="panel-hd"><h2>项目经理清单</h2><span class="hint">共 5 人</span></div>
               <div class="panel-bd flush table-scroll">
                 <table class="grid">
-                  <thead><tr><th style="width:26%">姓名</th><th style="width:26%">邮箱</th><th style="width:18%">工作区</th><th style="width:15%" class="num">名下项目</th><th style="width:15%" class="num">进行中提测</th></tr></thead>
+                  <thead><tr><th style="width:24%">姓名</th><th style="width:34%">邮箱</th><th style="width:21%" class="num">名下项目</th><th style="width:21%" class="num">进行中提测</th></tr></thead>
                   <tbody id="mgr-rows"></tbody>
                 </table>
               </div>
@@ -1588,7 +1583,7 @@ function renderProjects() {
       <span class="avatar">${m.name[0]}</span>
       <span style="min-width:0">
         <span class="manager-name">${m.name}</span>
-        <span class="manager-meta">${m.ws}</span>
+        <span class="manager-meta">${m.mail}</span>
       </span>
       <span class="manager-n"><b class="num">${m.projects}</b><span>个项目</span></span>
     </button>`).join('');
@@ -1639,7 +1634,7 @@ function renderManagers() {
       <span class="avatar">${m.name[0]}</span>
       <span style="min-width:0">
         <span class="manager-name">${m.name}</span>
-        <span class="manager-meta">${m.ws}</span>
+        <span class="manager-meta">${m.mail}</span>
       </span>
       <span class="manager-n"><b class="num">${m.projects}</b><span>个项目</span></span>
     </div>`).join('');
@@ -1648,7 +1643,6 @@ function renderManagers() {
     <tr>
       <td><strong>${m.name}</strong></td>
       <td class="col-mono">${m.mail}</td>
-      <td>${m.ws}</td>
       <td class="num">${m.projects}</td>
       <td class="num">${m.active}</td>
     </tr>`).join('');
@@ -2573,12 +2567,7 @@ function managerFormModal(name) {
           <input class="input" id="mf-mail" value="${esc(m.mail || '')}" placeholder="name@uniontech.com">
         </label>
       </div>
-      <label class="field"><span class="label">所属工作区</span>
-        <select class="select" id="mf-ws">
-          ${['桌面核心组', '系统应用组', '安全组'].map((w) => `<option ${w === m.ws ? 'selected' : ''}>${w}</option>`).join('')}
-        </select>
-      </label>
-      <div class="tip">${icon('info')}<div><b>同一个工作区内不能重名。</b>改名只改姓名，不动工作区归属，也不动名下项目。</div></div>
+      <div class="tip">${icon('info')}<div><b>姓名在当前工作区内唯一。</b>其他组的人在他们自己的工作区里添加，这里看不到。</div></div>
     </div>
     <div class="modal-ft"><div class="spacer"></div>
       <button class="btn" data-close="1">取消</button>
@@ -2595,7 +2584,6 @@ function managerFormModal(name) {
       const old = m.name;
       m.name = nm;
       m.mail = $('#mf-mail').value.trim();
-      m.ws = $('#mf-ws').value;
       PROJECTS.forEach((p) => { if (p.mgr === old) p.mgr = nm; });
     }
     closeModal();
