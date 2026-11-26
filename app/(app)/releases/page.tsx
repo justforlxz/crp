@@ -29,7 +29,7 @@ import {
   releaseStatusTone,
   type ReleaseStatusTab,
 } from "@/lib/releases";
-import { resolveWorkspaceScope } from "../workspaceScope";
+import { resolveWorkspaceScope, showsWorkspaceSwitcher } from "../workspaceScope";
 import { ReleaseFilters, type FilterOption } from "./filters";
 import type { ReleaseListCsvRow } from "./listCsv";
 
@@ -115,10 +115,15 @@ export default async function ReleasesPage({ searchParams }: ReleasesPageProps) 
     loadReleaseProjectOptions(scope.active.id),
   ]);
 
-  const workspaceOptions: FilterOption[] = scope.workspaces.map((workspace) => ({
-    value: workspace.slug,
-    label: workspace.name,
-  }));
+  // 只有一个工作区时不给筛选条传候选项：不渲染下拉，页面上（含传给客户端的 props）
+  // 也就不会出现工作区名（MKACG-1017）。
+  const showWorkspace = showsWorkspaceSwitcher(scope.workspaces);
+  const workspaceOptions: FilterOption[] = showWorkspace
+    ? scope.workspaces.map((workspace) => ({
+        value: workspace.slug,
+        label: workspace.name,
+      }))
+    : [];
   const projectOptions: FilterOption[] = [
     { value: "", label: "全部项目" },
     ...projects.map((project) => ({ value: project.id, label: `${project.name}（${project.key}）` })),
@@ -181,6 +186,7 @@ export default async function ReleasesPage({ searchParams }: ReleasesPageProps) 
 
         <ReleaseFilters
           workspaces={workspaceOptions}
+          showWorkspace={showWorkspace}
           projects={projectOptions}
           workspace={filters.workspace}
           project={filters.project}

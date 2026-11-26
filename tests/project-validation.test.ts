@@ -97,6 +97,28 @@ test("项目经理姓名裁掉两端空白", () => {
   assert.equal(parsed.ok ? parsed.value.name : null, "刘洋");
 });
 
+test("项目经理的邮箱裁掉两端空白后原样保存", () => {
+  const parsed = parseManagerInput({ name: "刘洋", email: " liuyang@uniontech.com " });
+
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.ok ? parsed.value.email : "unexpected", "liuyang@uniontech.com");
+});
+
+test("项目经理没填邮箱时保存为 null，不编占位地址", () => {
+  const parsed = parseManagerInput({ name: "刘洋", email: "   " });
+
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.ok ? parsed.value.email : "unexpected", null);
+});
+
+test("项目经理的邮箱格式不对时拒绝", () => {
+  const parsed = parseManagerInput({ name: "刘洋", email: "not-an-email" });
+
+  assert.equal(parsed.ok, false);
+  assert.equal(parsed.ok ? "" : parsed.errors[0].field, "email");
+  assert.match(parsed.ok ? "" : parsed.errors[0].message, /邮箱格式/);
+});
+
 test("跟踪分支不能包含空白字符", () => {
   const parsed = parseProjectSoftwareInput({
     packageId: "package-1",

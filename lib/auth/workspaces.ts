@@ -34,3 +34,16 @@ export function pickActiveWorkspace<T extends { id: string; slug: string }>(
     null
   );
 }
+
+/**
+ * 是否渲染工作区切换器。
+ *
+ * 工作区是数据层的多租户边界，不是界面上的分组维度（MKACG-1017）：账号只属于一个工作区时
+ * 没有可切换的对象，渲染一个只有一项的下拉只会把工作区名写到页面上。只有属于两个以上工作区时
+ * 才出现切换器。
+ *
+ * 与 `pickActiveWorkspace` 同一份来源：这条规则写在五个筛选条里各写一遍，迟早有一处漏掉。
+ */
+export function showsWorkspaceSwitcher(workspaces: readonly unknown[]): boolean {
+  return workspaces.length > 1;
+}

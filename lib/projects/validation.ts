@@ -19,6 +19,8 @@ export type ParseResult<T> =
 /** 项目经理的输入。账号绑定不走表单，见 `service.ts` 的说明。 */
 export type ManagerInput = {
   name: string;
+  /** 联系邮箱；没填就是 `null`。 */
+  email: string | null;
 };
 
 /** 新建与编辑项目共用的输入。 */
@@ -39,6 +41,9 @@ export type ProjectSoftwareInput = {
   packageId: string;
   trackedBranch: string;
 };
+
+/** 邮箱：只做「像不像一个邮箱」的粗校验，真正的可达性不在这里判断。 */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** 项目标识：小写字母或数字开头，只允许小写字母、数字与连字符，例如 `desktop-v25`。 */
 const KEY_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
@@ -110,12 +115,19 @@ export function parseManagerInput(raw: unknown): ParseResult<ManagerInput> {
     label: "项目经理姓名",
     hint: "项目经理姓名不能为空。",
   });
+  // 邮箱可空：没填就是 `null`，不编一个占位地址。
+  const email = readText(record, "email", errors, {
+    required: false,
+    label: "邮箱",
+    pattern: EMAIL_PATTERN,
+    hint: "邮箱格式像 name@uniontech.com。",
+  });
 
   if (errors.length > 0) {
     return { ok: false, errors };
   }
 
-  return { ok: true, value: { name: name as string } };
+  return { ok: true, value: { name: name as string, email } };
 }
 
 /**

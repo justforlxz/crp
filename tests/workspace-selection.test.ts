@@ -13,7 +13,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { pickActiveWorkspace } from "../lib/auth/workspaces";
+import { pickActiveWorkspace, showsWorkspaceSwitcher } from "../lib/auth/workspaces";
 
 const WORKSPACES = [
   { id: "ws-security", slug: "security", name: "测试工作区" },
@@ -61,4 +61,14 @@ test("一个工作区都没有时返回 null", () => {
     pickActiveWorkspace([], { requestedSlug: "security", sessionWorkspaceId: null }),
     null,
   );
+});
+
+test("只有一个工作区时不渲染切换器（MKACG-1017）", () => {
+  assert.equal(showsWorkspaceSwitcher([]), false);
+  assert.equal(showsWorkspaceSwitcher([WORKSPACES[0]]), false);
+});
+
+test("两个以上工作区时才渲染切换器，页面上才有得切", () => {
+  assert.equal(showsWorkspaceSwitcher([WORKSPACES[0], WORKSPACES[1]]), true);
+  assert.equal(showsWorkspaceSwitcher(WORKSPACES), true);
 });

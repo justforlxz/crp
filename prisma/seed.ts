@@ -111,11 +111,31 @@ const USERS = [
   },
 ] as const;
 
-/** 项目经理：刘洋没有平台账号，`user_email` 为空，用来演示「未开通账号的项目经理」。 */
+/**
+ * 项目经理：刘洋没有平台账号，`userEmail` 为空，用来演示「未开通账号的项目经理」。
+ *
+ * `email` 是经理卡第二行与清单表「邮箱」列显示的联系邮箱（MKACG-1017）。刘洋也填一个：
+ * 没有平台账号不等于没有邮箱，卡片不该显示「未填写邮箱」。
+ */
 const PROJECT_MANAGERS = [
-  { name: "李伟", workspaceSlug: "desktop-core", userEmail: "liwei@uniontech.com" },
-  { name: "陈浩", workspaceSlug: "system-apps", userEmail: "chenhao@uniontech.com" },
-  { name: "刘洋", workspaceSlug: "security", userEmail: null },
+  {
+    name: "李伟",
+    workspaceSlug: "desktop-core",
+    userEmail: "liwei@uniontech.com",
+    email: "liwei@uniontech.com",
+  },
+  {
+    name: "陈浩",
+    workspaceSlug: "system-apps",
+    userEmail: "chenhao@uniontech.com",
+    email: "chenhao@uniontech.com",
+  },
+  {
+    name: "刘洋",
+    workspaceSlug: "security",
+    userEmail: null,
+    email: "liuyang@uniontech.com",
+  },
 ] as const;
 
 /** 工作区成员。平台管理员不进 membership。 */
@@ -906,8 +926,8 @@ async function seedProjectManagers(
 
     const row = await prisma.projectManager.upsert({
       where: { workspaceId_name: { workspaceId, name: item.name } },
-      update: { userId },
-      create: { workspaceId, name: item.name, userId },
+      update: { userId, email: item.email },
+      create: { workspaceId, name: item.name, userId, email: item.email },
     });
     ids.set(item.name, row.id);
   }
