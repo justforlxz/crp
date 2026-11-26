@@ -16,9 +16,9 @@ import test from "node:test";
 import { pickActiveWorkspace } from "../lib/auth/workspaces";
 
 const WORKSPACES = [
-  { id: "ws-security", slug: "security", name: "安全组" },
-  { id: "ws-desktop", slug: "desktop-core", name: "桌面核心组" },
-  { id: "ws-system", slug: "system-apps", name: "系统应用组" },
+  { id: "ws-security", slug: "security", name: "测试工作区" },
+  { id: "ws-desktop", slug: "desktop-core", name: "我的工作区" },
+  { id: "ws-system", slug: "system-apps", name: "备用工作区" },
 ] as const;
 
 test("查询串点名的优先于会话记住的", () => {

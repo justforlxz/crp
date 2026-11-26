@@ -157,14 +157,14 @@ pnpm start            # 默认 3000 端口；改端口用 PORT=xxxx pnpm start
 UPDATE app_user SET is_platform_admin = true WHERE email = 'you@uniontech.com';
 ```
 
-刷新 `/dashboard`：平台管理员能看到全部工作区。（本地种子库上会列出「安全组 / 桌面核心组 / 系统应用组」，
+刷新 `/dashboard`：平台管理员能看到全部工作区。（本地种子库上会列出「备用工作区 / 我的工作区 / 测试工作区」，
 那是演示数据，见 3.7；部署实例上应该只有你自己建的那一个。）
 
 3. 建第一个工作区（当前版本没有创建接口，只能手工做）：
 
 ```sql
 INSERT INTO workspace (id, slug, name, created_at, updated_at)
-VALUES (gen_random_uuid(), 'desktop-core', '桌面核心组', now(), now());
+VALUES (gen_random_uuid(), 'desktop-core', '我的工作区', now(), now());
 ```
 
 > 当前版本没有「创建工作区」的接口或页面，第一次初始化只能手工做。**这是一处已知的部署缺口**，见第十一节。
@@ -228,7 +228,7 @@ pnpm check:seed     # 只跑自检，看退出码
 | 干净的真实库 | 退出码 0，正常启动 |
 | 读不到数据库 | 非零退出 —— 自检要是能被「库连不上」绕过，它就等于不存在 |
 
-判定**只看占位凭据**，不看名字：生产环境按 3.6 建的工作区就叫 `desktop-core` / 桌面核心组，
+判定**只看占位凭据**，不看名字：生产环境按 3.6 建的工作区就叫 `desktop-core` / 我的工作区，
 基线同步从 CRP 拉下来的分支就叫 `eagle-1071`，`admin@uniontech.com` 也可能是真实同事的账号。
 拿这些做判定，真实部署会起不来。种子的占位密码哈希与占位签名密钥才是真实数据里不可能出现的值。
 
@@ -921,7 +921,7 @@ select name, arches, synced_at from baseline where name = 'eagle-1071';
 | --- | --- | --- | --- |
 | 1 | 第三节从零部署（3.1 → 3.5）：取代码装依赖 → 起库 → 配 `.env` → `db:migrate` → 构建 → 按 3.7 灌一份种子（复现环境是本地测试环境，允许种子）→ 用 `pnpm exec next start` 启动。**不要用 `pnpm start`**：那是部署入口，会跑种子自检并拒绝种子库 | `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/login` 是 `200`；用种子账号（`admin@uniontech.com`）试登录必须 `401` —— 那是占位密码哈希，登不进去才是对的（见 3.7）；再单独跑一次 `pnpm check:seed`，退出码必须是 `1` 且日志写明检测到种子数据 | 20 分钟 |
 | 2 | `scripts/style-check/container.sh` | 最后一行是 `失败 0 项`，六个页面都显示「通过」；跑完 `.next/` 与 `next-env.d.ts` 的所有者是你自己（`ls -ld .next` 不是 `root`），这样第 6 步的 `next build` 才写得进去（旧版脚本的处理见第七节末尾）。结果与你 `.env` 里配没配 CRP / Gerrit 凭据无关：门禁自己固定取样输入（见第七节「取样结果不看你配了什么凭据」） | 2 分钟（镜像已拉过） |
-| 3 | 按 3.6 注册一个账号并提成平台管理员 | 刷新 `/dashboard`，列出「安全组 / 桌面核心组 / 系统应用组」三个种子工作区；点「切换到这里」进「桌面核心组」，`/releases?workspace=desktop-core` 列出该工作区的 3 条种子提测（三个工作区合计 5 条：安全组 1、桌面核心组 3、系统应用组 1） | 3 分钟 |
+| 3 | 按 3.6 注册一个账号并提成平台管理员 | 刷新 `/dashboard`，列出「备用工作区 / 我的工作区 / 测试工作区」三个种子工作区；点「切换到这里」进「我的工作区」，`/releases?workspace=desktop-core` 列出该工作区的 3 条种子提测（三个工作区合计 5 条：备用工作区 1、我的工作区 3、测试工作区 1） | 3 分钟 |
 | 4 | 不带 token 打三个定时入口：`POST /api/jobs/baseline-sync`、`/build-dispatch`、`/build-poll` | 三个都返回 `401` | 1 分钟 |
 | 5 | 带 `SYNC_JOB_TOKEN` 打 `POST /api/jobs/baseline-sync` | 返回 `200` 且 `list.itemCount > 0`；`/baselines` 页 `eagle-1071` 的架构列是 6 个（`amd64;arm64;i386;loongarch64;mips64el;sw_64`） | 1 分钟 |
 | 6 | `set -a; . ./.env; set +a` 之后跑 `scripts/e2e.sh --with-build-deps`（脚本只读环境变量，不读 `.env`，不导入会直接退出 2） | 退出码 `0`；日志最后有 `提测到达 success`、`AC1 证据：Topic …`；打开那个 Topic 与提测详情页，三个包都是成功、顺序是 `plasma-wayland-protocols → wayland → kwin` | 60–90 分钟（真实构建，别中途打断） |
