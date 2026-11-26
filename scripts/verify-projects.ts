@@ -27,7 +27,7 @@ import {
   parseProjectInput,
   ProjectError,
   removeProjectSoftware,
-  renameManager,
+  updateManager,
   softDeleteProject,
   updateProjectSoftwareBranch,
 } from "../lib/projects";
@@ -560,16 +560,25 @@ async function main(): Promise<void> {
 
   console.log("\n== 项目经理的新建、列表与改名 ==\n");
 
-  const manager = await createManager(core.id, { name: "验证-项目经理" });
+  const manager = await createManager(core.id, {
+    name: "验证-项目经理",
+    email: "verify-manager@uniontech.com",
+  });
   createdManagers.push(manager.id);
 
   await expectReject(
     "同一工作区内项目经理重名被拒绝",
-    () => createManager(core.id, { name: "验证-项目经理" }),
+    () => createManager(core.id, {
+      name: "验证-项目经理",
+      email: "verify-manager@uniontech.com",
+    }),
     "已经有叫「验证-项目经理」的项目经理",
   );
 
-  await renameManager(manager.id, { name: "验证-项目经理改名" });
+  await updateManager(manager.id, {
+    name: "验证-项目经理改名",
+    email: "verify-manager-renamed@uniontech.com",
+  });
   const renamed = (await listManagers(core.id)).find((item) => item.id === manager.id);
   check("改名生效，列表里显示新名字与名下项目数", renamed?.name === "验证-项目经理改名", `${renamed?.name}，名下 ${renamed?.projectCount} 个项目`);
 }

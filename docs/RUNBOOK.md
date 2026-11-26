@@ -13,7 +13,7 @@
 它**不**做的事（不要指望它）：
 
 - 不做 CRP 的转测 / 转发布工作流，只在提测详情页展示 CRP 的 `WorkProgress`；
-- 没有常驻调度进程、没有队列，所有定时推进靠外部定时器打 HTTP 接口（见第五节）；
+- 没有队列；定时推进由常驻的 `worker` 进程自己维护，不依赖宿主机的 cron（见第五节）；
 - 不删除 CRP 的 Topic（CRP 没有这个接口），只能「放弃」（见第十一节）。
 
 页面共 8 个：工作台、项目、项目经理、软件包、基线、提测记录、构建队列、Webhook。
@@ -76,8 +76,7 @@ cp .env.example .env
 | 变量 | 用途 |
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL 连接串；Prisma CLI 与运行时共用 |
-| `CRP_USERNAME` / `CRP_PASSWORD` | CRP 的 LDAP 账号；建 Topic、投递 Release、读工作流进度都要它 |
-| `GERRIT_USERNAME` / `GERRIT_HTTP_PASSWORD` | Gerrit HTTP 凭据；读分支、提交与 `debian/changelog` 要它 |
+| `CREDENTIAL_ENCRYPTION_KEY` | 凭据密文的主密钥，32 字节的 base64。**个人账号不再进环境变量**：每个成员在「我的账号」页配置自己的 CRP 与 Gerrit 账号 |
 | `PACKAGE_API_TOKEN` | `POST /api/packages` 的独立 token；不配则该接口一律 401 |
 | `SYNC_JOB_TOKEN` | `POST /api/jobs/baseline-sync` 的独立 token |
 | `BUILD_DISPATCH_JOB_TOKEN` | `POST /api/jobs/build-dispatch` 的独立 token |
@@ -88,7 +87,7 @@ cp .env.example .env
 | 变量 | 默认 | 用途 |
 | --- | --- | --- |
 | `CRP_BASE_URL` | `https://crp.uniontech.com/api` | CRP 接口前缀 |
-| `CRP_TOKEN_PATH` | `~/.cache/crp/jwt` | CRP 的 JWT 缓存，按 `exp` 自动失效，写成 0600 |
+| `CREDENTIAL_ENCRYPTION_KEY_VERSION` | `1` | 主密钥版本；轮换主密钥时改成新版本号 |
 | `GERRIT_BASE_URL` | `https://gerrit.uniontech.com` | Gerrit 地址 |
 | `SHUTTLE_BASE_URL` | `https://shuttle.uniontech.com/api/shuttle` | Shuttle 地址 |
 | `SHUTTLE_TOKEN` | 空 | 当前用到的三个读接口实测不校验身份，不填也能用 |
@@ -98,6 +97,20 @@ token 的生成方式：
 
 ```bash
 openssl rand -hex 32     # 四个 token 各生成一份，不要复用
+openssl rand -base64 32  # CREDENTIAL_ENCRYPTION_KEY：正好 32 字节，AES-256 用
+```
+
+**主密钥的备份与轮换**（凭据密文靠它解密，丢了所有凭据都解不开）：
+
+1. 生成新密钥，先把它写进部署环境的 `CREDENTIAL_ENCRYPTION_KEY`，同时把
+   `CREDENTIAL_ENCRYPTION_KEY_VERSION` 加一。
+2. 通知所有成员到「我的账号」重新保存一次凭据（保存时会用新版本号重新加密）。
+3. 确认没有人还留着旧版本的密文（`select distinct key_version from user_credential;` 只剩新版本）之后，
+   才把旧密钥从备份里删掉。
+4. 新旧密钥并存期间，旧版本的密文会解密失败并提示「密钥版本不匹配」——那是预期行为，
+   不是数据损坏；让本人重配一次即可。
+
+token 的生成方式（续）：
 ```
 
 `.env` 里的值只给服务端读，不要在前端出现，也不要写进提交信息。
@@ -144,14 +157,14 @@ pnpm start            # 默认 3000 端口；改端口用 PORT=xxxx pnpm start
 UPDATE app_user SET is_platform_admin = true WHERE email = 'you@uniontech.com';
 ```
 
-刷新 `/dashboard`：平台管理员能看到全部工作区。（本地种子库上会列出「安全组 / 桌面核心组 / 系统应用组」，
+刷新 `/dashboard`：平台管理员能看到全部工作区。（本地种子库上会列出「备用工作区 / 我的工作区 / 测试工作区」，
 那是演示数据，见 3.7；部署实例上应该只有你自己建的那一个。）
 
 3. 建第一个工作区（当前版本没有创建接口，只能手工做）：
 
 ```sql
 INSERT INTO workspace (id, slug, name, created_at, updated_at)
-VALUES (gen_random_uuid(), 'desktop-core', '桌面核心组', now(), now());
+VALUES (gen_random_uuid(), 'desktop-core', '我的工作区', now(), now());
 ```
 
 > 当前版本没有「创建工作区」的接口或页面，第一次初始化只能手工做。**这是一处已知的部署缺口**，见第十一节。
@@ -215,7 +228,7 @@ pnpm check:seed     # 只跑自检，看退出码
 | 干净的真实库 | 退出码 0，正常启动 |
 | 读不到数据库 | 非零退出 —— 自检要是能被「库连不上」绕过，它就等于不存在 |
 
-判定**只看占位凭据**，不看名字：生产环境按 3.6 建的工作区就叫 `desktop-core` / 桌面核心组，
+判定**只看占位凭据**，不看名字：生产环境按 3.6 建的工作区就叫 `desktop-core` / 我的工作区，
 基线同步从 CRP 拉下来的分支就叫 `eagle-1071`，`admin@uniontech.com` 也可能是真实同事的账号。
 拿这些做判定，真实部署会起不来。种子的占位密码哈希与占位签名密钥才是真实数据里不可能出现的值。
 
@@ -319,55 +332,86 @@ curl -fsS -X POST http://127.0.0.1:3000/api/packages \
 ---
 
 ## 五、定时任务
+平台自己维护定时任务，不依赖宿主机的 cron 或 systemd timer。另起一个常驻进程 `worker`：按固定频率
+在进程内直接调用三个作业函数（不走 HTTP），与 web 用同一份代码、同一个镜像，只是启动命令不同。
 
-平台没有常驻调度进程。三个接口必须由外部定时器驱动，否则提测会停在「待建 Topic / 投递中 / 构建中」不动。
-
-| 接口 | 建议频率 | 作用 |
+| 作业 | 频率 | 作用 |
 | --- | --- | --- |
-| `POST /api/jobs/baseline-sync` | 每小时 | 刷新 CRP 交付分支清单，并刷新被项目选中且缓存过期（1 小时）的基线软件包版本 |
-| `POST /api/jobs/build-dispatch` | 每 2 分钟 | 把在跑的提测往前推一步：建 Topic、投下一个该投的包。单轮最多 20 条，按 `last_advanced_at` 从旧到新轮流 |
-| `POST /api/jobs/build-poll` | 每 5 分钟 | 回写 Shuttle 构建结果与 CRP 工作流进度，记调度事件流水。单轮最多 50 条，按 `last_polled_at` 轮流 |
+| `baseline-sync` | 每小时 | 刷新 CRP 交付分支清单，并刷新被项目选中且缓存过期（1 小时）的基线软件包版本 |
+| `build-dispatch` | 每 2 分钟 | 把在跑的提测往前推一步：建 Topic、投下一个该投的包。单轮最多 20 条，按 `last_advanced_at` 从旧到新轮流 |
+| `build-poll` | 每 5 分钟 | 回写 Shuttle 构建结果与 CRP 工作流进度，记调度事件流水。单轮最多 50 条，按 `last_polled_at` 轮流 |
 
-crontab 写法（把变量写进 `/etc/crp/cron.env`，权限 0600，由 cron 先 source）：
+### 5.1 启动
 
-```cron
-0  * * * *   . /etc/crp/cron.env && curl -fsS -X POST -H "Authorization: Bearer $SYNC_JOB_TOKEN"          http://127.0.0.1:3000/api/jobs/baseline-sync
-*/2 * * * *  . /etc/crp/cron.env && curl -fsS -X POST -H "Authorization: Bearer $BUILD_DISPATCH_JOB_TOKEN" http://127.0.0.1:3000/api/jobs/build-dispatch
-*/5 * * * *  . /etc/crp/cron.env && curl -fsS -X POST -H "Authorization: Bearer $BUILD_POLL_JOB_TOKEN"     http://127.0.0.1:3000/api/jobs/build-poll
-```
-
-systemd timer 等价写法（三个各一份 `crp-dispatch.service` + `.timer`）：
-
-```ini
-# /etc/systemd/system/crp-dispatch.service
-[Unit]
-Description=CRP 提测平台：推进投递
-
-[Service]
-Type=oneshot
-EnvironmentFile=/etc/crp/cron.env
-ExecStart=/usr/bin/curl -fsS -X POST -H "Authorization: Bearer ${BUILD_DISPATCH_JOB_TOKEN}" http://127.0.0.1:3000/api/jobs/build-dispatch
-```
-
-```ini
-# /etc/systemd/system/crp-dispatch.timer
-[Unit]
-Description=每 2 分钟推进一次投递
-
-[Timer]
-OnBootSec=1min
-OnUnitActiveSec=2min
-
-[Install]
-WantedBy=timers.target
-```
+镜像里留两个启动命令，分别起两个进程（或两个容器），不要塞进同一个容器：
 
 ```bash
-systemctl daemon-reload
-systemctl enable --now crp-dispatch.timer crp-poll.timer crp-sync.timer
+# web：页面与接口
+pnpm start
+
+# worker：常驻定时任务，不监听端口
+pnpm worker
 ```
 
-**判断定时任务活着没有**：看 `build_poll_event` 表有没有新行，或看提测的 `last_advanced_at` / `last_polled_at` 是不是在往前走。
+两份进程必须连同一个库（同一个 `DATABASE_URL`）、配同一套 CRP / Shuttle / Gerrit 凭据 —— 作业调的是
+页面手动触发时调的那几个函数，没有第二份逻辑。worker 不需要额外的端口或卷，也不读写 `.next/`。
+
+worker 用 `tsx` 直接跑 TypeScript（与仓库里其它脚本一致），所以镜像里要装 devDependencies。
+
+### 5.2 集群安全
+
+以后要跑多副本，调度从第一天就是集群安全的：
+
+- 每轮执行前用 Postgres 咨询锁抢占：`pg_try_advisory_lock(<作业固定键>)`，三个作业各用一个固定的键。
+- 抢不到就跳过这一轮，日志写「被其他实例占用」，不排队、不重试。
+- 锁在一条**专用的数据库连接**上持有到作业结束，连接一关锁就自动释放。不用 Prisma 的连接池：
+  池里的连接是共享的，锁会跟着连接漂走。
+- 锁键写在 `lib/jobs/scheduler.ts` 的 `JOB_SPECS` 里。改键等于换一把锁：滚动升级期间新旧副本会
+  各抢各的锁、同时跑同一个作业，所以不要随手改。
+
+### 5.3 日志与失败
+
+每轮一行，启动与退出各一行，都写 stdout：
+
+```text
+[worker] 启动 pid=1234 baseline-sync=每 1 小时（锁键 7310001） build-dispatch=每 2 分钟（锁键 7310002） build-poll=每 5 分钟（锁键 7310003）
+[worker] 作业=build-dispatch 开始=2026-11-25T02:10:00.000Z 耗时=812ms 结果=成功
+[worker] 作业=build-poll 开始=2026-11-25T02:12:00.000Z 耗时=4ms 结果=跳过 原因=被其他实例占用
+[worker] 作业=build-poll 开始=2026-11-25T02:15:00.000Z 耗时=6ms 结果=失败 原因=Error: …
+[worker] 退出 pid=1234 信号=SIGTERM
+```
+
+字段固定：作业名、开始时间、耗时、结果（成功 / 跳过 / 失败）、原因（跳过与失败才有）。单轮失败只影响
+这一轮，worker 不退出，下一轮照常跑。
+
+另外两类不带轮次字段的行也会出现，都不代表进程有问题：
+
+| 日志 | 含义 | 要不要处理 |
+| --- | --- | --- |
+| `[worker] 锁连接出错：…` | 持有锁期间连接被对端断开（Postgres 重启、主备切换、`pg_terminate_backend`、云主机回收空闲连接） | 不用。这一轮按失败收尾，下一轮重开一条连接 |
+| `[worker] 关闭锁连接失败：…` | 本轮作业已经跑完，收尾关连接时出错 | 不用。会话断开后 Postgres 自己释放锁，下一轮重连不会卡住 |
+
+**判断 worker 活着没有**：看有没有新的「每轮」日志；也可以看 `build_poll_event` 表有没有新行，
+或提测的 `last_advanced_at` / `last_polled_at` 是不是在往前走。
+
+停掉 worker（`SIGTERM` 或 `SIGINT`）之后三个作业都不再执行，web 不受影响；反过来停掉 web，
+worker 照常推进提测。
+
+### 5.4 手动触发与排障
+
+三个 HTTP 接口保留下来，只给手动触发与排障用；worker 不依赖它们，删掉也不影响调度。
+
+| 接口 | 鉴权 |
+| --- | --- |
+| `POST /api/jobs/baseline-sync` | `Authorization: Bearer $SYNC_JOB_TOKEN` |
+| `POST /api/jobs/build-dispatch` | `Authorization: Bearer $BUILD_DISPATCH_JOB_TOKEN` |
+| `POST /api/jobs/build-poll` | `Authorization: Bearer $BUILD_POLL_JOB_TOKEN` |
+
+```bash
+curl -fsS -X POST -H "Authorization: Bearer $SYNC_JOB_TOKEN" http://127.0.0.1:3000/api/jobs/baseline-sync
+```
+
+三个 token 只影响这三个接口：不配置时接口一律返回 401。
 
 ---
 
@@ -420,9 +464,9 @@ pnpm db:migrate && pnpm db:seed
 # 2. 样式门禁先跑（它要求纯种子库，演练之后库就不干净了）
 scripts/style-check/container.sh
 
-# 3. 环境变量：DATABASE_URL、CRP_USERNAME、CRP_PASSWORD、GERRIT_USERNAME、
-#    GERRIT_HTTP_PASSWORD、PACKAGE_API_TOKEN、SYNC_JOB_TOKEN、
-#    BUILD_DISPATCH_JOB_TOKEN、BUILD_POLL_JOB_TOKEN（缺一个脚本就直接退出 2）
+# 3. 环境变量：DATABASE_URL、CREDENTIAL_ENCRYPTION_KEY、PACKAGE_API_TOKEN、
+#    SYNC_JOB_TOKEN、BUILD_DISPATCH_JOB_TOKEN、BUILD_POLL_JOB_TOKEN（缺一个脚本就直接退出 2）
+#    另外演练要用一个配好凭据的平台账号：--user <邮箱> 或 CREDENTIAL_USER_EMAIL
 ```
 
 > **样式门禁会在仓库里跑 `next build`，而且容器里是 root。** `scripts/style-check/container.sh`
@@ -514,8 +558,8 @@ snapshot > before.json
 **一、CRP 认证过期。** 用一个错误密码起一份服务，再触发两个定时入口：
 
 ```bash
-rm -f ~/.cache/crp/jwt                     # 有缓存 token 就不会再走登录，先删掉
-CRP_PASSWORD=故意写错 pnpm exec next start -p 3205 &
+# 令牌只缓存在进程内存里，重启服务即可强制重新登录
+pnpm exec next start -p 3205 &
 curl -s -X POST -H "Authorization: Bearer $BUILD_POLL_JOB_TOKEN"   http://127.0.0.1:3205/api/jobs/build-poll
 curl -s -X POST -H "Authorization: Bearer $BUILD_DISPATCH_JOB_TOKEN" http://127.0.0.1:3205/api/jobs/build-dispatch
 ```
@@ -656,9 +700,14 @@ docker run --rm -v "$PWD":/work -w /work mcr.microsoft.com/playwright:v1.65.1-no
 
 **处理**：
 
-1. 核对 `CRP_USERNAME` / `CRP_PASSWORD`；
-2. 删掉 token 缓存强制重新登录：`rm -f ~/.cache/crp/jwt`（或 `CRP_TOKEN_PATH` 指向的那个文件）；
+1. 让该提测的创建者到「我的账号」（`/settings/credentials`）重新保存一次 CRP 账号 ——
+   凭据按人存放，报错的是**创建者**那一份，不是服务端配置；
+2. 如果是服务端没配主密钥，接口会回 `503 credential_key_missing`，那时才需要检查
+   `CREDENTIAL_ENCRYPTION_KEY`；
 3. 手工验一次：`curl -i -X POST -H "Authorization: Bearer $BUILD_POLL_JOB_TOKEN" http://127.0.0.1:3000/api/jobs/build-poll`。
+
+**创建者没配凭据时**：作业不报 500，也不静默成功 —— 该条提测的 `items[].action` 是
+`skipped`，`error` 里是「请先在「我的账号」配置 CRP 账号」，其余提测照常推进。
 
 **不会发生的事**：不会改任何 `release.status` / `snapshot.status` / `crp_work_progress`。查不到不等于构建失败，这一点是设计约束。唯一会动的是 `release.updated_at` / `last_polled_at`（「这一轮看过它了」，防止一直失败的提测占住队首）。
 
@@ -768,7 +817,7 @@ select name, arches, synced_at from baseline where name = 'eagle-1071';
 - [ ] `pnpm typecheck`、`pnpm lint`、`pnpm test` 全部退出码 0
 - [ ] `scripts/style-check/container.sh` 退出码 0，六个覆盖页面与基线一致
 - [ ] `POST /api/jobs/baseline-sync` 返回 200，`list.itemCount > 0`
-- [ ] 三个定时入口都能被 cron 触发（`build_poll_event` 有新行）
+- [ ] web 与 worker 两个启动命令都写进部署（`pnpm start` + `pnpm worker`），worker 的每轮日志在持续产出（`build_poll_event` 有新行）
 - [ ] 不带 token 调三个定时入口都返回 401
 - [ ] 正确凭据下能建 Topic 并投递一个 Release（真实 CRP）
 - [ ] 错误 CRP 密码下，轮询与投递返回可读错误且不改业务状态
@@ -872,7 +921,7 @@ select name, arches, synced_at from baseline where name = 'eagle-1071';
 | --- | --- | --- | --- |
 | 1 | 第三节从零部署（3.1 → 3.5）：取代码装依赖 → 起库 → 配 `.env` → `db:migrate` → 构建 → 按 3.7 灌一份种子（复现环境是本地测试环境，允许种子）→ 用 `pnpm exec next start` 启动。**不要用 `pnpm start`**：那是部署入口，会跑种子自检并拒绝种子库 | `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/login` 是 `200`；用种子账号（`admin@uniontech.com`）试登录必须 `401` —— 那是占位密码哈希，登不进去才是对的（见 3.7）；再单独跑一次 `pnpm check:seed`，退出码必须是 `1` 且日志写明检测到种子数据 | 20 分钟 |
 | 2 | `scripts/style-check/container.sh` | 最后一行是 `失败 0 项`，六个页面都显示「通过」；跑完 `.next/` 与 `next-env.d.ts` 的所有者是你自己（`ls -ld .next` 不是 `root`），这样第 6 步的 `next build` 才写得进去（旧版脚本的处理见第七节末尾）。结果与你 `.env` 里配没配 CRP / Gerrit 凭据无关：门禁自己固定取样输入（见第七节「取样结果不看你配了什么凭据」） | 2 分钟（镜像已拉过） |
-| 3 | 按 3.6 注册一个账号并提成平台管理员 | 刷新 `/dashboard`，列出「安全组 / 桌面核心组 / 系统应用组」三个种子工作区；点「切换到这里」进「桌面核心组」，`/releases?workspace=desktop-core` 列出该工作区的 3 条种子提测（三个工作区合计 5 条：安全组 1、桌面核心组 3、系统应用组 1） | 3 分钟 |
+| 3 | 按 3.6 注册一个账号并提成平台管理员 | 刷新 `/dashboard`，列出「备用工作区 / 我的工作区 / 测试工作区」三个种子工作区；点「切换到这里」进「我的工作区」，`/releases?workspace=desktop-core` 列出该工作区的 3 条种子提测（三个工作区合计 5 条：备用工作区 1、我的工作区 3、测试工作区 1） | 3 分钟 |
 | 4 | 不带 token 打三个定时入口：`POST /api/jobs/baseline-sync`、`/build-dispatch`、`/build-poll` | 三个都返回 `401` | 1 分钟 |
 | 5 | 带 `SYNC_JOB_TOKEN` 打 `POST /api/jobs/baseline-sync` | 返回 `200` 且 `list.itemCount > 0`；`/baselines` 页 `eagle-1071` 的架构列是 6 个（`amd64;arm64;i386;loongarch64;mips64el;sw_64`） | 1 分钟 |
 | 6 | `set -a; . ./.env; set +a` 之后跑 `scripts/e2e.sh --with-build-deps`（脚本只读环境变量，不读 `.env`，不导入会直接退出 2） | 退出码 `0`；日志最后有 `提测到达 success`、`AC1 证据：Topic …`；打开那个 Topic 与提测详情页，三个包都是成功、顺序是 `plasma-wayland-protocols → wayland → kwin` | 60–90 分钟（真实构建，别中途打断） |

@@ -41,10 +41,18 @@ export type CrpCurrentUser = {
   raw: CrpRawUser;
 };
 
-/** `POST /project` 响应里的单个项目。 */
+/** `POST /project` 响应里的单个项目。CRP 还会返回很多字段，这里只列本平台要读的。 */
 export type CrpRawProject = {
   ID: number;
   Name: string;
+  /**
+   * Debian 源码包名。实测可能是空串（例如 `kwindowsystem`），不要假设它非空。
+   *
+   * 它与 `Name` 不是一回事：CRP 项目 `kwin-qtrebuild` 的 `PackageName` 就是 `kwin`。
+   */
+  PackageName?: string | null;
+  /** 仓库地址，形如 `ssh://gerrit.uniontech.com:29418/dde-kwin`。 */
+  RepoUrl?: string | null;
 };
 
 export type CrpProject = {

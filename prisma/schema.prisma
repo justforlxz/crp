@@ -155,6 +155,7 @@ model User {
   createdReleases Release[]        @relation("ReleaseCreatedBy")
   releaseUpdates  ReleaseUpdateRecord[] @relation("ReleaseUpdateOperator")
   sessions        Session[]
+  credentials     UserCredential[]
 
   @@map("app_user")
 }
@@ -201,6 +202,46 @@ model Session {
   @@map("session")
 }
 
+/// 凭据属于哪一套外部系统。一个成员每种系统只能有一份凭据。
+enum CredentialKind {
+  crp
+  gerrit
+
+  @@map("credential_kind")
+}
+
+/// 成员自己的 CRP / Gerrit 凭据（MKACG-986）。
+///
+/// 平台按当前操作人的身份调 CRP 与 Gerrit，不再共用一个环境变量账号：
+/// 共用账号会让 CRP 侧的提交人永远是同一个人，审计链断掉。
+///
+/// 密码只存密文：AES-256-GCM，主密钥来自 `CREDENTIAL_ENCRYPTION_KEY`，AAD 绑定
+/// `user_id + kind`，把 A 的密文挪到 B 名下会解密失败。明文只在内存里活到这一次调用结束。
+model UserCredential {
+  id       String         @id @default(uuid(7))
+  userId   String         @map("user_id")
+  kind     CredentialKind
+  /// 账号名，明文存，用于页面展示。
+  username String
+  /// 密码密文、初始向量与认证标签；三者缺一不可解密。
+  secretCiphertext String @map("secret_ciphertext")
+  secretIv         String @map("secret_iv")
+  secretTag        String @map("secret_tag")
+  /// 主密钥版本，用于轮换：解密时版本对不上直接报错，不拿错密钥硬解。
+  keyVersion Int @map("key_version")
+  /// 最后一次真实验证成功的时间。
+  verifiedAt DateTime? @map("verified_at") @db.Timestamptz(3)
+  /// 最后一次验证失败的原因；成功保存时清空。
+  lastError  String?   @map("last_error")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind])
+  @@map("user_credential")
+}
+
 /// 项目经理：项目归属的载体，归属于一个工作区。
 ///
 /// 未开通平台账号的项目经理也允许存在，所以 `user_id` 可空；账号注销时置空而不删除本行。
@@ -209,6 +250,8 @@ model ProjectManager {
   workspaceId String    @map("workspace_id")
   userId      String?   @map("user_id")
   name        String
+  /// 联系邮箱。项目经理卡与清单表显示它；未填时界面显示「未填写邮箱」。
+  email       String?
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 

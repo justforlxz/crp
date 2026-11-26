@@ -29,11 +29,11 @@
 
 import type { BuildNetwork } from "../build";
 import { prisma } from "../db";
+import { CredentialError } from "../credentials/errors";
 import { CRP_DEFAULT_BASE_URL } from "../integrations/crp";
 import {
-  createGerritClient,
+  createGerritClientForCurrentUser,
   GerritError,
-  readGerritConfig,
   type GerritClient,
 } from "../integrations/gerrit";
 import { buildSoftwareView, type SoftwareEntry } from "../projects/softwareView";
@@ -215,6 +215,79 @@ export function buildSnapshotCsv(packages: readonly ReleaseDetailPackage[]): str
   return `\uFEFF${lines.join("\r\n")}\r\n`;
 }
 
+/**
+ * 快照明细的 7 列（`design.md` 第九节「导出快照」）：每包一行。
+ *
+ * 与 `SNAPSHOT_COLUMNS`（提测单的 11 列）是两份不同的文件，不是同一份文件的两个版本：
+ * 提测单按提测快照表原样导出，明细要多带 CRP 侧版本、架构与构建结果，这三样在快照表里没有。
+ */
+export const SNAPSHOT_DETAIL_COLUMNS = [
+  "软件包",
+  "分支",
+  "Commit",
+  "代码版本",
+  "CRP 仓库版本",
+  "架构",
+  "结果",
+] as const;
+
+/** 逐包的构建状态，直接喂 `loadReleaseBuildStatus().tasks`。 */
+export type SnapshotDetailTask = {
+  packageName: string;
+  /** 阶段名，例如「失败」「构建中」「等待依赖」。 */
+  stage: string;
+  /** 这个包有哪些架构；还没投递时为空数组。 */
+  arches: readonly { arch: string }[];
+};
+
+export type SnapshotDetailInput = {
+  packages: readonly ReleaseDetailPackage[];
+  repositoryRecords: readonly ReleaseDetailRepositoryRecord[];
+  tasks: readonly SnapshotDetailTask[];
+};
+
+/**
+ * 导出这条提测的软件包快照明细。
+ *
+ * 与提测单共用 `snapshotRowCells` 铺「软件包 / 分支 / 代码版本 / Commit」四格 ——
+ * 同一个包在两份文件里不会有两种写法。CRP 仓库版本取 CRP 自己记的那个版本（`crpTag`），
+ * 还没同步过时退回我们提交的 `crpBaseTag`；两样都没有就是破折号，不猜。
+ */
+export function buildSnapshotDetailCsv(input: SnapshotDetailInput): string {
+  const taskByName = new Map(
+    input.tasks.map((task) => [task.packageName, task] as const),
+  );
+  const recordByName = new Map(
+    input.repositoryRecords.map((record) => [record.packageName, record] as const),
+  );
+
+  const lines = [SNAPSHOT_DETAIL_COLUMNS.map((column) => csvCell(column)).join(",")];
+
+  input.packages.forEach((item, index) => {
+    const cells = snapshotRowCells(item, index + 1);
+    const record = recordByName.get(item.packageName);
+    const task = taskByName.get(item.packageName);
+
+    lines.push(
+      [
+        cells[1],
+        cells[2],
+        cells[8],
+        cells[3],
+        record?.crpTag ?? record?.crpBaseTag ?? "—",
+        task === undefined || task.arches.length === 0
+          ? "—"
+          : task.arches.map((arch) => arch.arch).join("、"),
+        task?.stage ?? "—",
+      ]
+        .map(csvCell)
+        .join(","),
+    );
+  });
+
+  return `\uFEFF${lines.join("\r\n")}\r\n`;
+}
+
 /** 按拓扑序排序：上游在前；排不进顺序的包（理论上不会出现）按名字附在末尾。 */
 function orderPackages(
   snapshots: readonly SnapshotRow[],
@@ -240,12 +313,12 @@ export type GerritCommitInfo = { summary: string; authorName: string };
 /** 按仓库路径与提交号读提交信息；单测传假实现，不连真实 Gerrit。 */
 export type CommitInfoReader = (repoPath: string, commitSha: string) => Promise<GerritCommitInfo>;
 
-/** 默认实现：走 A3 的 Gerrit 客户端，凭据按环境变量新建，第一次真正请求时才建。 */
+/** 默认实现：走 A3 的 Gerrit 客户端，按当前登录用户的凭据新建，第一次真正请求时才建。 */
 function defaultCommitInfoReader(): CommitInfoReader {
   let client: GerritClient | null = null;
 
   return async (repoPath, commitSha) => {
-    client ??= createGerritClient(readGerritConfig());
+    client ??= await createGerritClientForCurrentUser();
 
     const commit = await client.getCommit(repoPath, commitSha);
 
@@ -274,9 +347,11 @@ async function readCommitInfo(
     return { ...(await reader(repoPath, commitSha)), error: null };
   } catch (error) {
     const message =
-      error instanceof GerritError ? error.message : "读取 Gerrit 提交信息失败，请稍后重试。";
+      error instanceof GerritError || error instanceof CredentialError
+        ? error.message
+        : "读取 Gerrit 提交信息失败，请稍后重试。";
 
-    if (!(error instanceof GerritError)) {
+    if (!(error instanceof GerritError) && !(error instanceof CredentialError)) {
       console.error(`[releases] 读取提交信息失败（${repoPath}@${commitSha}）`, error);
     }
 
@@ -300,6 +375,11 @@ export type ReleaseDetailOptions = {
   readCommitInfo?: CommitInfoReader;
   /** 替换 CRP 客户端，单测用假实现。 */
   network?: BuildNetwork;
+  /**
+   * 这次读取以谁的身份调 CRP 与 Gerrit。前台传当前登录用户；不传就按当前登录用户。
+   * 单测显式传，不依赖请求上下文。
+   */
+  actorUserId?: string;
   /** CRP 接口前缀，用来拼 Topic 地址；默认取 `CRP_BASE_URL`。 */
   crpBaseUrl?: string;
 };
@@ -316,7 +396,10 @@ export async function loadReleaseDetail(
   options: ReleaseDetailOptions = {},
 ): Promise<ReleaseDetail> {
   // 能不能改、更新历史都复用 A17 的读取：锁定规则只有一份，详情页与更新页不会各说一套。
-  const updateView = await loadReleaseUpdateView(releaseId, { network: options.network });
+  const updateView = await loadReleaseUpdateView(releaseId, {
+    network: options.network,
+    actorUserId: options.actorUserId,
+  });
 
   const release = await prisma.release.findUnique({
     where: { id: releaseId },

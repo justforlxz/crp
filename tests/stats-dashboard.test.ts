@@ -20,13 +20,7 @@ import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 
 import { prisma } from "../lib/db";
-import { RELEASE_TAB_STATUSES } from "../lib/releases";
-import {
-  loadDashboard,
-  recentWindowStart,
-  SETTLED_RELEASE_STATUSES,
-  STATS_WINDOW_DAYS,
-} from "../lib/stats";
+import { loadDashboard, loadNavCounts } from "../lib/stats";
 
 const PREFIX = "zz889s";
 const WORKSPACE_SLUG = `${PREFIX}-workspace`;
@@ -449,64 +443,52 @@ after(async () => {
   await prisma.$disconnect();
 });
 
-test("四张统计卡的数字与数据库 count 一致（AC1）", async () => {
-  const windowStart = recentWindowStart(NOW, STATS_WINDOW_DAYS);
-
-  const [weekCount, projectCount, view] = await Promise.all([
-    prisma.release.count({
-      where: { project: { workspaceId: fixture.workspaceId }, createdAt: { gte: windowStart } },
-    }),
-    prisma.project.count({ where: { workspaceId: fixture.workspaceId, deletedAt: null } }),
-    loadDashboard(fixture.workspaceId, { now: NOW }),
-  ]);
-
-  assert.equal(view.cards.weekReleaseCount, weekCount);
-  assert.equal(view.cards.projectCount, projectCount);
-  assert.equal(view.cards.weekReleaseCount, 5);
-  // 甲、乙、丙三个项目；已软删的那个不算。
-  assert.equal(view.cards.projectCount, 3);
-  // 「等待构建」不直接等于 `build_task.status = 'pending'` 的行数：库里 4 条 pending 里，
-  // 一条属于被换掉的旧轮、一条属于已取消的提测（见下一条用例），真正在等构建的是 2 条。
-  assert.equal(view.cards.waitingBuildCount, 2);
-});
-
-test("被换掉的旧轮、已取消的提测里残留的待开始任务不算「等待构建」", async () => {
-  const [pendingTotal, view] = await Promise.all([
-    prisma.buildTask.count({
-      where: { release: { project: { workspaceId: fixture.workspaceId } }, status: "pending" },
+test("四张统计卡按提测状态计数，与数据库 groupBy 一致（AC1、FUNC-01）", async () => {
+  const [statusRows, view] = await Promise.all([
+    prisma.release.groupBy({
+      by: ["status"],
+      where: { project: { workspaceId: fixture.workspaceId } },
+      _count: { _all: true },
     }),
     loadDashboard(fixture.workspaceId, { now: NOW }),
   ]);
 
-  // 残留任务确实在库里：r3、r5 是当前轮在等构建，另外两条一条属于 superseded 的旧轮、
-  // 一条属于 abandoned 的提测。只按状态数字，卡片会永久多算这两条，而且它们不会被轮询推进。
-  assert.equal(pendingTotal, 4);
-  assert.equal(view.cards.waitingBuildCount, 2);
+  const countOf = (predicate: (status: string) => boolean): number =>
+    statusRows.reduce((sum, row) => (predicate(row.status) ? sum + row._count._all : sum), 0);
+
+  assert.equal(view.cards.inProgressReleases, countOf((status) => status === "dispatching" || status === "building"));
+  assert.equal(view.cards.succeededReleases, countOf((status) => status === "success"));
+  assert.equal(view.cards.failedReleases, countOf((status) => status === "failed" || status === "partial_failure"));
+  assert.equal(view.cards.waitingReleases, countOf((status) => status === "pending"));
+
+  // 库内主工作区 8 条：成功 1、失败 1、已放弃 2、构建中 2、排队中 1、换过包的构建中 1。
+  assert.equal(view.cards.inProgressReleases, 2);
+  assert.equal(view.cards.succeededReleases, 2);
+  assert.equal(view.cards.failedReleases, 1);
+  assert.equal(view.cards.waitingReleases, 1);
 });
 
-test("「已有结论」的提测状态与提测列表页签同口径", () => {
-  // 记录列表「成功」「失败」两个页签覆盖的状态，必须就是成功率分母用的那一组。
-  assert.deepEqual(
-    [...SETTLED_RELEASE_STATUSES].sort(),
-    [...RELEASE_TAB_STATUSES.success, ...RELEASE_TAB_STATUSES.failed].sort(),
-  );
-});
+test("统计卡按状态计，不按时间窗收窄：把参照时刻挪远，数字不变", async () => {
+  // 四张卡回答的是「现在有多少条在跑 / 成了 / 败了 / 等着」，没有「本周」这个口径，
+  // 所以参照时刻挪到所有提测之后，数字也不该变（改了就会和 FUNC-01 的期望值对不上）。
+  const view = await loadDashboard(fixture.workspaceId, {
+    now: new Date("2026-12-31T00:00:00Z"),
+  });
 
-test("成功率的分母只算已有结论的提测，窗口外的不计入（MUST、SHOULD 口径）", async () => {
-  const view = await loadDashboard(fixture.workspaceId, { now: NOW });
-
-  // 本周 5 条：成功 1、失败 1、已放弃 1、构建中 1、排队中 1。
-  // 分母 3（成功 + 失败 + 已放弃），成功 1。
-  assert.deepEqual(view.cards.weekSuccessRate, { percent: 33, success: 1, settled: 3 });
+  assert.equal(view.cards.inProgressReleases, 2);
+  assert.equal(view.cards.succeededReleases, 2);
+  assert.equal(view.cards.failedReleases, 1);
+  assert.equal(view.cards.waitingReleases, 1);
 });
 
 test("换成别的工作区后数字与清单都只来自那个工作区（AC2）", async () => {
   const view = await loadDashboard(fixture.otherWorkspaceId, { now: NOW });
 
-  assert.equal(view.cards.weekReleaseCount, 2);
-  assert.equal(view.cards.waitingBuildCount, 1);
-  assert.equal(view.cards.projectCount, 1);
-  assert.deepEqual(view.cards.weekSuccessRate, { percent: 100, success: 1, settled: 1 });
+  // 别的工作区两条：已成功 1、构建中 1。四张卡按状态计，与主工作区互不影响。
+  assert.equal(view.cards.inProgressReleases, 1);
+  assert.equal(view.cards.succeededReleases, 1);
+  assert.equal(view.cards.failedReleases, 0);
+  assert.equal(view.cards.waitingReleases, 0);
 
   assert.equal(view.recentReleases.length, 2);
   assert.equal(view.recentReleases[0]?.version, versionOf("other-building"));
@@ -520,17 +502,6 @@ test("换成别的工作区后数字与清单都只来自那个工作区（AC2�
   for (const releaseId of fixture.releaseIds) {
     assert.equal(foreignIds.has(releaseId), false, releaseId);
   }
-});
-
-test("本周一条提测都没有时成功率为空，不显示 0%", async () => {
-  // 参照时刻挪到所有提测的 7 天之后，「本周」就没有任何提测了。
-  // 0% 会被读成「全失败」，所以这时必须是空。
-  const view = await loadDashboard(fixture.workspaceId, {
-    now: new Date("2026-12-31T00:00:00Z"),
-  });
-
-  assert.equal(view.cards.weekReleaseCount, 0);
-  assert.deepEqual(view.cards.weekSuccessRate, { percent: null, success: 0, settled: 0 });
 });
 
 test("未配软件清单的项目出现在配置待办里，配了的不出现（AC3）", async () => {
@@ -585,8 +556,11 @@ test("最近提测的每一行都带得出状态与来源的中文名", async ()
   );
 
   assert.equal(building?.statusLabel, "构建中");
+  assert.equal(building?.statusTone, "is-run");
   assert.equal(building?.sourceLabel, "平台创建");
   assert.equal(building?.projectName, `${PREFIX} 项目甲`);
+  // 最近提测表要显示这一轮的软件包数。
+  assert.equal(building?.packageCount, 1);
 });
 
 test("构建队列摘要最多 5 条，只含未完结提测里的包", async () => {
@@ -604,26 +578,49 @@ test("构建队列摘要最多 5 条，只含未完结提测里的包", async ()
   assert.equal(buildingTask?.releaseVersion, versionOf("building"));
 });
 
-test("项目提测概况：本周提测数与最近一次提测都在，软删的项目不出现", async () => {
+test("项目提测概况：经理、软件包数、依赖数、最近一次提测都在，软删的项目不出现", async () => {
   const view = await loadDashboard(fixture.workspaceId, { now: NOW });
   const byKey = new Map(view.projects.map((project) => [project.key, project]));
 
   assert.equal(byKey.has(`${PREFIX}-proj-d`), false);
 
   const withSoftware = byKey.get(`${PREFIX}-proj-a`);
-  assert.equal(withSoftware?.weekReleaseCount, 3);
+  assert.equal(withSoftware?.managerName, MANAGER_NAME);
+  assert.equal(withSoftware?.packageCount, 2);
+  assert.equal(withSoftware?.dependencyCount, 1);
   assert.equal(withSoftware?.latestVersion, versionOf("building"));
   assert.equal(withSoftware?.latestStatusLabel, "构建中");
+  assert.equal(withSoftware?.latestStatusTone, "is-run");
 
   const withoutSoftware = byKey.get(`${PREFIX}-proj-b`);
-  assert.equal(withoutSoftware?.weekReleaseCount, 1);
+  assert.equal(withoutSoftware?.packageCount, 0);
+  assert.equal(withoutSoftware?.dependencyCount, 0);
   assert.equal(withoutSoftware?.latestVersion, versionOf("abandoned"));
   assert.equal(withoutSoftware?.latestStatusLabel, "已放弃");
+  assert.equal(withoutSoftware?.latestStatusTone, "is-wait");
 
   const withCycle = byKey.get(`${PREFIX}-proj-c`);
-  assert.equal(withCycle?.weekReleaseCount, 1);
+  assert.equal(withCycle?.packageCount, 2);
+  // 互相依赖的两条边都算：环上的两个包各有一条依赖。
+  assert.equal(withCycle?.dependencyCount, 2);
   assert.equal(withCycle?.latestVersion, versionOf("pending"));
   assert.equal(withCycle?.latestStatusLabel, "排队中");
+});
+
+test("侧栏徽标：提测总数与未跑完的提测数，都只算这个工作区", async () => {
+  const [main, other] = await Promise.all([
+    loadNavCounts(fixture.workspaceId),
+    loadNavCounts(fixture.otherWorkspaceId),
+  ]);
+
+  // 主工作区 8 条：成功 2、失败 1、已放弃 2、构建中 2、排队中 1。
+  assert.equal(main.releases, 8);
+  // 未跑完 = 排队中 1 + 构建中 2（含换过包那条）。
+  assert.equal(main.queue, 3);
+
+  // 别的工作区两条：构建中 1、成功 1。
+  assert.equal(other.releases, 2);
+  assert.equal(other.queue, 1);
 });
 
 test("一次读出这批数字的时刻，页面标「数据截至」用它", async () => {

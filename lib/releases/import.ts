@@ -26,9 +26,6 @@
 import type { BuildNetwork } from "../build";
 import { prisma } from "../db";
 import {
-  createCrpClient,
-  createCrpClientFromEnv,
-  CRP_DEFAULT_BASE_URL,
   CrpError,
   WORK_PROGRESS_TRANSFERRED_TO_TEST,
   type CrpClient,
@@ -36,6 +33,7 @@ import {
   type CrpTopic,
 } from "../integrations/crp";
 import { GerritError, GerritNotFoundError, isCommitSha } from "../integrations/gerrit";
+import { resolveReleaseCrpClient } from "./crpClient";
 import { createGerritReader, type GerritReader } from "./gerrit";
 import {
   mapCrpBuildState,
@@ -69,10 +67,15 @@ export type ReleaseImportOptions = {
   projectId: string;
   /** CRP 侧的主题 ID。 */
   topicId: number;
-  /** 读 Gerrit 用；单测注入假实现，生产代码不传，按环境变量建。 */
+  /** 读 Gerrit 用；单测注入假实现，生产代码不传，按当前登录用户（或下面的 `actorUserId`）建。 */
   reader?: GerritReader;
   /** 注入用的网络接线，与 A12 / A17 同一形状。 */
   network?: BuildNetwork;
+  /**
+   * 这次导入以谁的身份调 CRP 与 Gerrit。前台接口传当前登录用户；不传就按当前登录用户。
+   * 单测显式传，不依赖请求上下文。
+   */
+  actorUserId?: string;
 };
 
 export type ImportReleaseFromTopicOptions = ReleaseImportOptions & {
@@ -214,17 +217,8 @@ async function loadUsableProject(projectId: string): Promise<ReleaseProjectDetai
 }
 
 /** 建 CRP 客户端；单测用注入的 `fetch`，生产按环境变量。 */
-function resolveCrp(network: BuildNetwork | undefined): ImportCrpApis {
-  if (network?.crpFetch === undefined) {
-    return createCrpClientFromEnv(process.env);
-  }
-
-  return createCrpClient({
-    baseUrl: network.crpBaseUrl ?? CRP_DEFAULT_BASE_URL,
-    token: network.crpToken ?? "injected",
-    tokenPath: null,
-    fetchImpl: network.crpFetch,
-  });
+async function resolveCrp(options: ReleaseImportOptions): Promise<ImportCrpApis> {
+  return resolveReleaseCrpClient(options);
 }
 
 /** 把 CRP 客户端的失败翻成能显示的话；401 与网络问题都归到这里。 */
@@ -641,8 +635,8 @@ async function buildImportPlan(
   options: ReleaseImportOptions,
 ): Promise<ImportPlan> {
   const project = await loadUsableProject(options.projectId);
-  const crp = resolveCrp(options.network);
-  const reader = options.reader ?? createGerritReader();
+  const crp = await resolveCrp(options);
+  const reader = options.reader ?? createGerritReader(undefined, options.actorUserId);
   const { topic, branchName } = await assertTopicImportable(crp, project, options.topicId);
 
   const releases = await callCrp("读主题里的 Release", () => crp.listReleases(topic.id));
@@ -954,7 +948,7 @@ export async function importReleaseFromTopic(
   }
 
   // 6. 导入后立刻落一次 CRP 工作流进度：已转测（>= 20）的记录 A17 不再允许改包。
-  const progress = await readWorkProgress(resolveCrp(options.network), plan.topic.id);
+  const progress = await readWorkProgress(await resolveCrp(options), plan.topic.id);
 
   if (progress.workProgress !== null) {
     await prisma.release.update({

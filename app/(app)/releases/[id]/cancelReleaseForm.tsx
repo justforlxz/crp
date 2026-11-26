@@ -13,7 +13,9 @@
  * 为什么用客户端组件而不是直接放表单：二次确认要一次点击才展开，这需要一点状态；
  * 这里是页面里唯一需要状态的地方，不引入别的机制。
  *
- * 确认框用原型的 `.modal` 结构（MKACG-972）：外层 + 头部 + 主体 + 底部操作区。
+ * 确认框用原型的 `.modal` 结构（MKACG-972）：外层 + 头部 + 主体 + 底部操作区，
+ * 并挂到 `document.body` 上（`./detailModal`）—— 顶栏的 `backdrop-filter` 会给 `fixed` 后代
+ * 建立包含块，不脱离顶栏时遮罩只有 55px 高、弹窗头部跑到视口上方。
  * 点遮罩、点右上角 ×、按 Esc、点「取消」都收起确认框，行为与改版前一致。
  *
  * 只有「能不能取消」由页面判定，这个组件不重复判断：页面在不能取消时根本不会渲染它。
@@ -21,7 +23,7 @@
 
 import { useState } from "react";
 
-import { Modal } from "@/components/modal";
+import { DetailModal } from "./detailModal";
 
 export function CancelReleaseForm({
   releaseId,
@@ -29,7 +31,10 @@ export function CancelReleaseForm({
   topicName,
   releaseCount,
   action,
+  label,
 }: {
+  /** 按钮文案。由页面按来源给：这里恒为「取消提测」，与锁定态那个禁用按钮同一个字符串。 */
+  label: string;
   releaseId: string;
   /** CRP 上的 Topic ID；还没投递过时为 `null`。 */
   topicId: string | null;
@@ -46,23 +51,23 @@ export function CancelReleaseForm({
     return (
       <button
         type="button"
-        className="btn btn-danger-outline"
+        className="btn btn-danger"
         onClick={() => setConfirming(true)}
       >
-        取消提测
+        {label}
       </button>
     );
   }
 
   return (
-    <Modal
+    <DetailModal
       className="modal"
       title={`确认取消 Topic ${topicId ?? "（尚未建）"}`}
       onClose={() => setConfirming(false)}
       footer={
         <form action={action}>
           <input type="hidden" name="releaseId" value={releaseId} />
-          <button type="button" className="btn btn-secondary" onClick={() => setConfirming(false)}>
+          <button type="button" className="btn" onClick={() => setConfirming(false)}>
             取消
           </button>{" "}
           <button type="submit" className="btn btn-danger">
@@ -81,6 +86,6 @@ export function CancelReleaseForm({
         <li>不可撤销。</li>
         <li>与「放弃提测主题」不同：本操作会删掉 CRP 上的 Release，放弃主题一条都不会删。</li>
       </ul>
-    </Modal>
+    </DetailModal>
   );
 }

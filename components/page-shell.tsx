@@ -1,38 +1,63 @@
 "use client";
 
 /**
- * 页面外壳（A19）：侧栏导航 + 内容区容器 + 当前页高亮。
+ * 全站外壳：侧栏 + 顶栏 + 画布（界面规范 v2 第二节、第七节）。
  *
- * 全站只有这一处定义外层结构，页面只交出内容，不自己写 `<body>` / `<main>`：
+ * 原型把外壳写成三层，这里照搬，不做合并：
  *
- * - `AppNav` 由 `app/(app)/layout.tsx` 挂一次，`usePathname()` 决定哪一项高亮；
- * - `PageShell` 由每个 `page.tsx` 收敛内容：有标题就先出 `<h1>`，登录注册另用 `variant="auth"`；
- * - 样式只从 `app/globals.css` 来，这里不写任何内联 `style`。
+ * - `.shell` 是整页的网格（216px 侧栏 + 内容区），由 `app/(app)/layout.tsx` 挂一次；
+ * - `.sidebar` 是侧栏（品牌、两组导航、底部账号区），也由 layout 挂一次；
+ * - `.topbar` + `.canvas` 属于**每个页面**：页面标题住在顶栏，所以标题、一句话说明与主操作
+ *   只能由页面交给 `PageShell`，再由它渲染成顶栏与内容区。内容区不再放 `<h1>`（design.md 第三条）。
  *
- * 为什么是客户端组件：高亮要跟着当前网址走，而 App Router 的服务端 layout 拿不到路径。
+ * 为什么侧栏是客户端组件：高亮要跟着当前网址走，而服务端的 layout 拿不到路径。
+ * 徽标数字由 layout 在服务端查好再交下来（`lib/stats/nav.ts`），这里只负责显示。
  */
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
-/** 侧栏导航项：地址与显示名。顺序就是用户在页面上的阅读顺序。 */
-export const APP_NAV: ReadonlyArray<{ href: string; label: string }> = [
-  { href: "/dashboard", label: "工作台" },
-  { href: "/projects", label: "项目" },
-  { href: "/managers", label: "项目经理" },
-  { href: "/packages", label: "软件包" },
-  { href: "/baselines", label: "基线" },
-  { href: "/releases", label: "提测记录" },
-  { href: "/queue", label: "构建队列" },
-  { href: "/webhooks", label: "Webhook" },
+import { Icon, type IconName } from "./icons";
+import type { NavCounts } from "@/lib/stats/nav";
+
+type NavItem = {
+  href: string;
+  label: string;
+  icon: IconName;
+  /** 要显示徽标时取哪个数字；不写就是不显示徽标。 */
+  countKey?: keyof NavCounts;
+};
+
+type NavGroup = { label: string; items: readonly NavItem[] };
+
+/** 侧栏的两组导航。顺序就是用户在页面上的阅读顺序，与原型一致。 */
+export const APP_NAV: readonly NavGroup[] = [
+  {
+    label: "工作区",
+    items: [
+      { href: "/dashboard", label: "工作台", icon: "dashboard" },
+      { href: "/releases", label: "提测记录", icon: "releases", countKey: "releases" },
+      { href: "/queue", label: "构建队列", icon: "queue", countKey: "queue" },
+    ],
+  },
+  {
+    label: "配置",
+    items: [
+      { href: "/projects", label: "项目", icon: "projects" },
+      { href: "/managers", label: "项目经理", icon: "managers" },
+      { href: "/packages", label: "软件包", icon: "packages" },
+      { href: "/baselines", label: "基线", icon: "baselines" },
+      { href: "/webhooks", label: "Webhook", icon: "webhook" },
+    ],
+  },
 ];
 
 /**
  * 当前地址是否落在这一项上。
  *
- * 只认「完全相等」或「后面紧跟一个 `/`」：`/releases` 不该把 `/releases/new` 之外的
- * 前缀相近地址（例如将来的 `/releases-archive`）也算进来。
+ * 只认「完全相等」或「后面紧跟一个 `/`」：`/releases` 不该把 `/releases-archive` 这类
+ * 前缀相近的地址也算进来，但 `/releases/new` 与 `/releases/<id>` 都算提测记录。
  */
 function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -49,6 +74,13 @@ export type SidebarAccountInfo = {
   email: string;
 };
 
+/** 头像里的那个字：取显示名的第一个字符，没有名字就用邮箱首字母。 */
+function avatarText(account: SidebarAccountInfo): string {
+  const first = Array.from(account.displayName.trim())[0] ?? Array.from(account.email)[0] ?? "?";
+
+  return first.toUpperCase();
+}
+
 /** 退出登录：撤销会话后回登录页。放在侧栏底部，任何受保护页面都点得到。 */
 function LogoutButton() {
   const router = useRouter();
@@ -63,100 +95,156 @@ function LogoutButton() {
   }
 
   return (
-    <button
-      type="button"
-      className="btn btn-secondary btn-sm app-sidebar__logout"
-      onClick={handleClick}
-      disabled={pending}
-    >
-      {pending ? "退出中…" : "退出登录"}
+    <button type="button" className="nav-item" onClick={handleClick} disabled={pending}>
+      <Icon name="arrow-left" />
+      <span>{pending ? "退出中…" : "退出登录"}</span>
     </button>
   );
 }
 
-/** 侧栏底部的账号区：账号名、角色、邮箱与退出登录。 */
+/**
+ * 侧栏底部的账号区：头像、账号名、角色与退出登录。
+ *
+ * 账号块本身是**去凭据页的入口**（`/settings/credentials`）：CRP 与 Gerrit 凭据按人存放，
+ * 配置与验证都在那一页（MKACG-986）。原型把它画成一个弹窗，是因为原型只有一个 HTML 文件；
+ * 实现里那一页已经存在，这里只补入口，不再把表单复制一份进来（MKACG-1012）。
+ */
 function SidebarAccount({ account }: { account: SidebarAccountInfo }) {
   return (
-    <div className="app-sidebar__account" data-style-anchor="sidebar.account">
-      <p className="app-sidebar__account-name">{account.displayName}</p>
-      <p className="app-sidebar__account-meta">{account.roleLabel}</p>
-      <p className="app-sidebar__account-meta">{account.email}</p>
+    <div className="sidebar-foot" data-style-anchor="sidebar.account">
+      <Link
+        className="account"
+        href="/settings/credentials"
+        title={`${account.email} · 我的账号`}
+      >
+        <span className="avatar" aria-hidden="true">
+          {avatarText(account)}
+        </span>
+        <div>
+          <div className="account-name">{account.displayName}</div>
+          <div className="account-role">{account.roleLabel}</div>
+        </div>
+      </Link>
       <LogoutButton />
     </div>
   );
 }
 
 /**
- * 受保护页面的侧栏。只有 `(app)` 路由组挂它，登录注册页走 PageShell 的 auth 版式。
+ * 受保护页面的侧栏。只有 `(app)` 路由组挂它，登录注册页走 `PageShell` 的 auth 版式。
  *
  * `account` 为 `null` 表示这次渲染还没拿到会话（未登录时页面自己会跳登录页）：
- * 导航照常出，账号区不出。
+ * 导航照常出，账号区不出。`counts` 为 `null` 时徽标不显示 —— 宁可不显示，也不填一个猜的数字。
  */
-export function AppNav({ account }: { account: SidebarAccountInfo | null }) {
+export function AppNav({
+  account,
+  counts,
+}: {
+  account: SidebarAccountInfo | null;
+  counts: NavCounts | null;
+}) {
   const pathname = usePathname() ?? "";
 
   return (
-    <aside className="app-sidebar">
-      <p className="app-sidebar__brand">CRP 提测平台</p>
+    <aside className="sidebar">
+      <div className="brand">
+        <div className="brand-mark" aria-hidden="true">
+          <Icon name="logo" />
+        </div>
+        <div>
+          <div className="brand-name">提测平台</div>
+          <div className="brand-sub">Release Hub</div>
+        </div>
+      </div>
+
       <nav aria-label="主导航">
-        <ul className="app-nav__list">
-          {APP_NAV.map((item) => (
-            <li key={item.href}>
-              <Link
-                className="app-nav__link"
-                href={item.href}
-                aria-current={isActive(pathname, item.href) ? "page" : undefined}
-                data-style-anchor={`nav.${item.href.slice(1)}`}
-              >
-                {item.label}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        {APP_NAV.map((group) => (
+          <div className="nav-group" key={group.label}>
+            <div className="nav-label">{group.label}</div>
+            {group.items.map((item) => {
+              const count = item.countKey === undefined ? null : (counts?.[item.countKey] ?? null);
+
+              return (
+                <Link
+                  key={item.href}
+                  className="nav-item"
+                  href={item.href}
+                  aria-current={isActive(pathname, item.href) ? "page" : undefined}
+                  data-style-anchor={`nav.${item.href.slice(1)}`}
+                >
+                  <Icon name={item.icon} />
+                  <span>{item.label}</span>
+                  {count === null ? null : <span className="nav-count num">{count}</span>}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
+
       {account === null ? null : <SidebarAccount account={account} />}
     </aside>
   );
 }
 
 export type PageShellProps = {
-  /** 页面标题，对应页面原来的那一行 `<h1>`。可以是节点，例如带标识的标题。 */
+  /** 页面标题，住在顶栏（design.md 第三节第三条）。 */
   title: ReactNode;
-  /** 标题右侧的操作区，例如刷新按钮。 */
+  /** 顶栏里那句说明，缺省不显示。 */
+  description?: ReactNode;
+  /** 顶栏右侧的主操作。 */
   actions?: ReactNode;
   /**
    * 版式：
-   * - `default`：受保护页面，内容占满内容区；
-   * - `auth`：登录、注册与占位页，内容收在一张居中卡片里。
+   * - `default`：受保护页面，顶栏 + 内容区；
+   * - `auth`：登录、注册，只有一张居中的窄卡片，没有顶栏与侧栏。
    */
   variant?: "default" | "auth";
   children: ReactNode;
 };
 
-/** 单个页面的内容容器。页面根元素只有它，不许自己写 `<main>`。 */
-export function PageShell({ title, actions, variant = "default", children }: PageShellProps) {
-  const header = (
-    <div className="page__header">
-      <h1>{title}</h1>
-      {actions === undefined ? null : <div className="page__actions">{actions}</div>}
-    </div>
-  );
-
+/**
+ * 单个页面的外壳。页面根元素只有它，不许自己写 `<header>` / `<main>`。
+ *
+ * 内容区顺序：`.canvas`（内边距 24px 32px 80px）→ `.wrap`（最大宽 1400px 居中）→ 页面内容。
+ */
+export function PageShell({
+  title,
+  description,
+  actions,
+  variant = "default",
+  children,
+}: PageShellProps) {
   if (variant === "auth") {
     return (
-      <main className="page page--auth">
-        <section className="card">
-          {header}
-          {children}
-        </section>
+      <main className="canvas">
+        <div className="wrap">
+          <div className="page page--auth">
+            <div className="panel">
+              <div className="panel-hd">
+                <h2>{title}</h2>
+              </div>
+              <div className="panel-bd">{children}</div>
+            </div>
+          </div>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="page">
-      {header}
-      {children}
-    </main>
+    <>
+      <header className="topbar">
+        <div className="topbar-title">{title}</div>
+        {description === undefined ? null : <div className="topbar-desc">{description}</div>}
+        <div className="topbar-actions">{actions}</div>
+      </header>
+
+      <main className="canvas">
+        <div className="wrap">
+          <div className="page">{children}</div>
+        </div>
+      </main>
+    </>
   );
 }

@@ -49,6 +49,22 @@ export type QueueTaskRow = {
    * 投递成功之后快照不再是「待投递」，这里就是空：标记随状态收敛，不回头改历史流水。
    */
   dispatchFailure: DispatchFailureMarker | null;
+  /**
+   * 每个架构的构建状态。作业详情弹窗按它一行一个架构地铺开；
+   * 还没投递（因此还没有 Shuttle 作业）时是空数组，弹窗要说清「还不知道有几个架构」。
+   */
+  arches: BuildArchView[];
+  /** 已完成 / 全部架构数；没有作业时为空。与 `progressPercent` 同一份算法，两处不会打架。 */
+  archProgress: { done: number; total: number } | null;
+  /** 因上游失败被阻断时，那个上游包的包名；不是被阻断的为空。弹窗据此说明「先重投上游」。 */
+  blockedBy: string | null;
+  /**
+   * 这次提测的 CRP Topic ID；还没建 Topic 时为空。
+   *
+   * Topic 属于提测，但作业详情弹窗是从「一个包的作业」打开的，两页都得能拿到它，
+   * 所以挂在这一行上，不要求调用方自己再去找提测。
+   */
+  topicId: string | null;
 };
 
 /** 一条提测的队列视图：依赖拓扑 + 它下面每个包的进展。 */
@@ -132,6 +148,7 @@ type QueueReleaseSource = {
   crpWorkProgress: number | null;
   crpWorkProgressLabel: string | null;
   crpWorkProgressSyncedAt: Date | null;
+  crpTopicId: string | null;
   project: { name: string };
   snapshots: Array<{
     id: string;
@@ -189,6 +206,7 @@ export async function loadBuildQueueData(
       crpWorkProgress: true,
       crpWorkProgressLabel: true,
       crpWorkProgressSyncedAt: true,
+      crpTopicId: true,
       project: { select: { name: true } },
       // 只取当前轮：A17 会把旧轮标成 superseded，那些行不参与队列。
       snapshots: {
@@ -204,7 +222,8 @@ export async function loadBuildQueueData(
               finishedAt: true,
               blockedBySnapshotId: true,
               statusReason: true,
-              jobs: { select: { arch: true, status: true } },
+              // 架构按名字排：弹窗逐行铺开时顺序稳定，不随插入顺序跳。
+              jobs: { select: { arch: true, status: true }, orderBy: { arch: "asc" } },
             },
           },
         },
@@ -269,13 +288,15 @@ export function buildQueueView(data: BuildQueueSnapshot): BuildQueueView {
       }
 
       const blockedBySnapshotId = snapshot.buildTask?.blockedBySnapshotId ?? null;
+      // 阻断原因指向兄弟快照，页面与弹窗要的是包名；同一个值给阶段名与这一行共用。
+      const blockedBy =
+        blockedBySnapshotId === null
+          ? null
+          : (packageNameBySnapshotId.get(blockedBySnapshotId) ?? "未知上游");
       const stage = queueStageOf({
         snapshotStatus: snapshot.status,
         upstreamReady: waitingFor.length === 0,
-        blockedBy:
-          blockedBySnapshotId === null
-            ? null
-            : (packageNameBySnapshotId.get(blockedBySnapshotId) ?? "未知上游"),
+        blockedBy,
       });
 
       return {
@@ -295,6 +316,13 @@ export function buildQueueView(data: BuildQueueSnapshot): BuildQueueView {
           snapshot.status === "pending"
             ? (data.dispatchFailures.get(snapshot.id) ?? null)
             : null,
+        arches: (snapshot.buildTask?.jobs ?? []).map((job) => ({
+          arch: job.arch,
+          status: job.status,
+        })),
+        archProgress: jobProgress(snapshot.buildTask?.jobs ?? null),
+        blockedBy,
+        topicId: release.crpTopicId,
       } satisfies QueueTaskRow;
     });
 
@@ -363,6 +391,10 @@ export type BuildStatusTaskView = {
   releaseVersion: string;
   /** 阶段名，与队列页同一套说法。 */
   stage: string;
+  /** 阶段分类（与队列页统计卡同一份），详情页判定「能不能单独重投」用它。 */
+  phase: StagePhase;
+  /** 被哪个上游阻断；不是被阻断的为 `null`。 */
+  blockedBy: string | null;
   /** CRP 侧 Release ID；还没投递时为空。 */
   crpReleaseId: string | null;
   /** Shuttle 侧构建任务 ID；还没查到时为空。 */
@@ -466,19 +498,24 @@ export async function loadReleaseBuildStatus(
       const waitingFor = (upstreams.get(snapshot.packageName) ?? []).filter(
         (name) => statusByName.get(name) !== "success",
       );
+      // 阻断原因与阶段名用的是同一个上游包名，算一次就好。
+      const blockedBy =
+        blockedBySnapshotId === null
+          ? null
+          : (packageNameBySnapshotId.get(blockedBySnapshotId) ?? "未知上游");
+      const stage = queueStageOf({
+        snapshotStatus: snapshot.status,
+        upstreamReady: waitingFor.length === 0,
+        blockedBy,
+      });
 
       return {
         snapshotId: snapshot.id,
         packageName: snapshot.packageName,
         releaseVersion: snapshot.releaseVersion,
-        stage: queueStageOf({
-          snapshotStatus: snapshot.status,
-          upstreamReady: waitingFor.length === 0,
-          blockedBy:
-            blockedBySnapshotId === null
-              ? null
-              : (packageNameBySnapshotId.get(blockedBySnapshotId) ?? "未知上游"),
-        }).name,
+        stage: stage.name,
+        phase: stage.phase,
+        blockedBy,
         crpReleaseId: snapshot.repositoryRecord?.crpReleaseId ?? null,
         shuttleTaskId: snapshot.buildTask?.shuttleTaskId ?? null,
         arches: (snapshot.buildTask?.jobs ?? []).map((job) => ({
@@ -555,24 +592,3 @@ function progressPercentOf(
   return progress === null ? null : Math.round((progress.done / progress.total) * 100);
 }
 
-/**
- * 耗时写成给人看的一句话。
- *
- * 构建动辄几十分钟，秒级精度没有意义，所以只到分钟：不足一分钟的给人「不到 1 分钟」。
- */
-export function formatDuration(durationMs: number | null): string {
-  if (durationMs === null) {
-    return "—";
-  }
-
-  const totalMinutes = Math.floor(durationMs / 60_000);
-
-  if (totalMinutes < 1) {
-    return "不到 1 分钟";
-  }
-
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-
-  return hours === 0 ? `${minutes} 分钟` : `${hours} 小时 ${minutes} 分钟`;
-}

@@ -40,31 +40,35 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
 
   return (
     <form onSubmit={handleSubmit} noValidate>
-      <label className="field-label" htmlFor="email">
-        邮箱
+      <label className="field">
+        <span className="label">邮箱</span>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          autoComplete="username"
+          required
+          className="input"
+        />
       </label>
-      <input
-        id="email"
-        name="email"
-        type="email"
-        autoComplete="username"
-        required
-        className="input"
-      />
 
-      <label className="field-label" htmlFor="password">
-        密码
+      <label className="field">
+        <span className="label">密码</span>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autoComplete="current-password"
+          required
+          className="input"
+        />
       </label>
-      <input
-        id="password"
-        name="password"
-        type="password"
-        autoComplete="current-password"
-        required
-        className="input"
-      />
 
-      {error === null ? null : <p className="alert alert--error">{error}</p>}
+      {error === null ? null : (
+        <p className="risk" role="alert">
+          {error}
+        </p>
+      )}
 
       <button type="submit" className="btn btn-primary btn-block" disabled={pending}>
         {pending ? "登录中…" : "登录"}

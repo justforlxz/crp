@@ -1,7 +1,4 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import test from "node:test";
 import { createPublicKey } from "node:crypto";
 
@@ -9,9 +6,13 @@ import {
   CRP_PUBLIC_KEY,
   encryptPassword,
   isJwtExpired,
+} from "../lib/integrations/crp/auth";
+import {
+  clearAllCachedTokens,
+  clearCachedToken,
   readCachedToken,
   writeCachedToken,
-} from "../lib/integrations/crp/auth";
+} from "../lib/integrations/crp/tokenCache";
 
 /** 造一个只有 exp 声明的 JWT，够用即可。 */
 function makeJwt(expSeconds: number): string {
@@ -21,11 +22,9 @@ function makeJwt(expSeconds: number): string {
   return `header.${payload}.signature`;
 }
 
-/** 临时目录放在家目录下，不用 /tmp。 */
-function tempDir(): string {
-  const root = join(homedir(), ".cache", "crp-tests");
-  mkdirSync(root, { recursive: true });
-  return mkdtempSync(join(root, "auth-"));
+/** 一小时后过期的 token。 */
+function freshJwt(): string {
+  return makeJwt(Math.floor(Date.now() / 1000) + 3600);
 }
 
 test("加密结果是 1024 位密钥的一个块，且 base64 可解码", () => {
@@ -59,50 +58,64 @@ test("结构不是 JWT 时按过期处理，不把坏 token 发出去", () => {
   assert.equal(isJwtExpired("", Date.now()), true);
 });
 
-test("token 缓存写成 0600，内容是可用的 token", () => {
-  const dir = tempDir();
-  const path = join(dir, "nested", "token");
-  const jwt = makeJwt(Math.floor(Date.now() / 1000) + 3600);
-  try {
-    writeCachedToken(path, jwt);
+test("令牌按人分键：两个人各拿各的，互不覆盖", () => {
+  clearAllCachedTokens();
+  const jwtA = freshJwt();
+  const jwtB = freshJwt();
 
-    assert.equal(readFileSync(path, "utf8"), jwt);
-    assert.equal(statSync(path).mode & 0o777, 0o600);
-    assert.equal(readCachedToken(path), jwt);
+  try {
+    writeCachedToken("user-a", jwtA);
+    writeCachedToken("user-b", jwtB);
+
+    assert.equal(readCachedToken("user-a"), jwtA);
+    assert.equal(readCachedToken("user-b"), jwtB);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    clearAllCachedTokens();
   }
 });
 
-test("覆盖已有缓存文件后权限仍是 0600", () => {
-  const dir = tempDir();
-  const path = join(dir, "token");
-  const jwt = makeJwt(Math.floor(Date.now() / 1000) + 3600);
+test("没有缓存的账号返回 null，不会拿到别人的令牌", () => {
+  clearAllCachedTokens();
+  const jwt = freshJwt();
+
   try {
-    writeFileSync(path, "old");
-    chmodSync(path, 0o644);
+    writeCachedToken("user-a", jwt);
 
-    writeCachedToken(path, jwt);
-
-    assert.equal(statSync(path).mode & 0o777, 0o600);
-    assert.equal(readCachedToken(path), jwt);
+    assert.equal(readCachedToken("user-b"), null);
+    assert.equal(readCachedToken("never-cached"), null);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    clearAllCachedTokens();
   }
 });
 
-test("缓存里是过期 token、坏 token 或空文件时返回 null", () => {
-  const dir = tempDir();
-  const path = join(dir, "token");
+test("过期或结构不对的令牌读出来是 null，并顺手从缓存里丢掉", () => {
+  clearAllCachedTokens();
+
   try {
-    assert.equal(readCachedToken(path), null);
+    writeCachedToken("user-a", makeJwt(1));
+    assert.equal(readCachedToken("user-a"), null);
 
-    writeFileSync(path, makeJwt(1));
-    assert.equal(readCachedToken(path), null);
-
-    writeFileSync(path, "   ");
-    assert.equal(readCachedToken(path), null);
+    writeCachedToken("user-b", "not-a-jwt");
+    assert.equal(readCachedToken("user-b"), null);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    clearAllCachedTokens();
+  }
+});
+
+test("清掉一个人的令牌不牵连别人", () => {
+  clearAllCachedTokens();
+  const jwtA = freshJwt();
+  const jwtB = freshJwt();
+
+  try {
+    writeCachedToken("user-a", jwtA);
+    writeCachedToken("user-b", jwtB);
+
+    clearCachedToken("user-a");
+
+    assert.equal(readCachedToken("user-a"), null);
+    assert.equal(readCachedToken("user-b"), jwtB);
+  } finally {
+    clearAllCachedTokens();
   }
 });

@@ -1337,6 +1337,74 @@ test("重试时某个包的旧 Release 删不掉，只影响它自己，不留�
   assert.equal(recovered.advance.packageName, pkgName("a"));
 });
 
+test("点名重投只动点名的那个包，没点名的失败包保持原状", async () => {
+  const state = newFakeCrp();
+  const network = networkOf(state);
+  const releaseId = await createIndependentRelease("retry-one");
+
+  await advanceRelease(releaseId, { network });
+  await advanceRelease(releaseId, { network });
+  await advanceRelease(releaseId, { network });
+
+  setBuild(state, pkgName("a"), "UPLOAD_GIVEUP", "FAILED");
+  setBuild(state, pkgName("d"), "UPLOAD_GIVEUP", "FAILED");
+  const failed = await advanceRelease(releaseId, { network });
+
+  assert.equal(failed.status, "failed");
+
+  const retried = await retryFailedTasks(releaseId, {
+    network,
+    packageNames: [pkgName("d")],
+  });
+
+  // 只有 d 被重置：a 的失败原样留着，等用户自己决定什么时候重投它。
+  assert.deepEqual(retried.resetPackageNames, [pkgName("d")]);
+  assert.deepEqual(retried.unblockedPackageNames, []);
+  assert.deepEqual(retried.failures, []);
+
+  // a 还失败着，调度器不会在失败之后继续投递：这次推进把 d 重新标成「因 a 失败而阻断」。
+  assert.equal(retried.advance.action, "finished");
+  assert.deepEqual(
+    retried.advance.blocked.map((item) => [item.packageName, item.blockedByName]),
+    [[pkgName("d"), pkgName("a")]],
+  );
+
+  assert.equal((await snapshotStatuses(releaseId)).get(pkgName("a")), "failed");
+
+  // 再把 a 重投：它的下游（b、c 与刚才被阻断的 d）一起放开，两个包重新进入投递。
+  const second = await retryFailedTasks(releaseId, {
+    network,
+    packageNames: [pkgName("a")],
+  });
+
+  assert.deepEqual(second.resetPackageNames, [pkgName("a")]);
+  assert.deepEqual(second.unblockedPackageNames.sort(), [
+    pkgName("b"),
+    pkgName("c"),
+    pkgName("d"),
+  ]);
+  assert.equal(second.advance.action, "dispatched");
+  assert.equal(second.advance.packageName, pkgName("a"));
+});
+
+test("点名重投一个还在等上游的包不算失败，只把调度推进一格", async () => {
+  const state = newFakeCrp();
+  const network = networkOf(state);
+  const releaseId = await createReleaseWithChain("retry-waiting");
+
+  // 只投了 a：b、c 都在「等待依赖」，一个构建任务都还没有。
+  await advanceRelease(releaseId, { network });
+
+  const retried = await retryFailedTasks(releaseId, {
+    network,
+    packageNames: [pkgName("b")],
+  });
+
+  assert.deepEqual(retried.resetPackageNames, []);
+  assert.deepEqual(retried.unblockedPackageNames, []);
+  assert.deepEqual(retried.failures, []);
+});
+
 // ---------------------------------------------------------------------------
 // 投递中断后的恢复：不能留下只会进、不会出的「投递中」
 // ---------------------------------------------------------------------------

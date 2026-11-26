@@ -42,13 +42,7 @@ export default async function NewReleasePage({ searchParams }: NewReleasePagePro
   }
 
   return (
-    <PageShell
-      title="创建提测"
-      // 提测记录列表页属 A13（阶段 10），在那之前「从 CRP 导入」的入口挂在这里。
-      actions={
-        <Link href={`/releases/import${scope.query}`}>从 CRP 导入已有提测主题</Link>
-      }
-    >
+    <PageShell title="创建提测" description="三步：项目归属 → 检查仓库更新 → 确认提测">
       <ReleaseWizard projects={projects} />
     </PageShell>
   );

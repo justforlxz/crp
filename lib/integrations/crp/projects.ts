@@ -21,7 +21,11 @@ import { listReleases } from "./releases";
  */
 export async function searchProjects(
   transport: CrpTransport,
-  { name, branchId }: { name: string; branchId: number },
+  {
+    name,
+    branchId,
+    perPage = 0,
+  }: { name: string; branchId: number; perPage?: number },
 ): Promise<CrpProject[]> {
   if (name.trim() === "") {
     throw new CrpInvalidParameterError("查软件包必须给名字：name 为空");
@@ -32,7 +36,7 @@ export async function searchProjects(
     path: "/project",
     body: {
       page: 0,
-      perPage: 0,
+      perPage,
       projectGroupID: 0,
       newCommit: false,
       archived: false,

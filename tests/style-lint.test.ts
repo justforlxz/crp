@@ -86,7 +86,7 @@ test("没有 :root 时设计变量是空表，不抛错", () => {
   assert.deepEqual(readCssVariables(".card { color: red; }"), {});
 });
 
-test("裸 <table> 指开标签上没带 .data-table 的那些", () => {
+test("裸 <table> 指开标签上没带表模块类的那些", () => {
   const source = `
     <div className="table-scroll">
       <table className="data-table">
@@ -102,6 +102,23 @@ test("裸 <table> 指开标签上没带 .data-table 的那些", () => {
 
   assert.equal(hits.length, 1);
   assert.equal(hits[0]?.line, 7);
+});
+
+test("界面规范 v2 的 table.grid 也算带了表模块类", () => {
+  const source = `
+    <div className="table-scroll">
+      <table className="grid cols-releases">
+        <tbody><tr><td>ok</td></tr></tbody>
+      </table>
+    </div>
+  `;
+
+  assert.deepEqual(findBareTables(source), []);
+});
+
+test("只有别的类、或者类名只是 substring 时仍然算裸表", () => {
+  assert.equal(findBareTables(`<table className="data-table-wrap" />`).length, 1);
+  assert.equal(findBareTables(`<table className="table" />`).length, 1);
 });
 
 test("内联 style 只看对象写法，普通 style 属性不算", () => {

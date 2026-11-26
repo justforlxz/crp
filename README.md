@@ -89,6 +89,8 @@ lib/releases/abandon.ts(209,9): error TS2322: Type '"abandon_topic"' is not assi
 | 命令 | 作用 |
 | --- | --- |
 | `pnpm dev` | 启动开发服务器 |
+| `pnpm build` / `pnpm start` | 生产构建 / 启动生产服务 |
+| `pnpm worker` | 常驻调度进程：按固定频率跑基线同步、投递推进、构建轮询三条作业（每小时 / 每 2 分钟 / 每 5 分钟）。与 web 同镜像、不同启动命令；不监听端口，停机后三条作业一起停，见 [docs/RUNBOOK.md](docs/RUNBOOK.md) 第五节 |
 | `pnpm build` / `pnpm start` | 生产构建 / 启动生产服务。`pnpm start` 先跑种子自检：库里有种子数据就以非零退出、不起服务（见 docs/RUNBOOK.md 第 3.7 节） |
 | `pnpm lint` | ESLint 检查 |
 | `pnpm typecheck` | TypeScript 类型检查（`tsc --noEmit`） |
@@ -100,7 +102,7 @@ lib/releases/abandon.ts(209,9): error TS2322: Type '"abandon_topic"' is not assi
 | `pnpm check:seed` | 部署实例的种子自检（`scripts/check-seed-data.ts`）：退出码 0 通过、1 检测到种子数据或读不到库 |
 | `pnpm db:studio` | 打开 Prisma Studio |
 | `pnpm tsx scripts/verify-baseline-sync.ts` | 用真实 CRP 与 Shuttle 跑一次基线同步，打印分支条数对照、`eagle-1071` 里 `kwin` 的版本对照与本次请求明细，会写库 |
-| `pnpm tsx scripts/verify-gerrit.ts` | 用真实 Gerrit 复核分支、提交与 `debian/changelog` 读取，需要先配好 `GERRIT_*` 三项 |
+| `pnpm tsx scripts/verify-gerrit.ts --user <邮箱>` | 用真实 Gerrit 复核分支、提交与 `debian/changelog` 读取，用这个账号在「我的账号」里配置的凭据 |
 | `pnpm tsx scripts/verify-projects.ts` | 用真实数据库验收项目经理与项目：归属校验、共用基线、复制不带提交历史、软删后提测记录仍可查；只动自己建的临时行 |
 | `pnpm tsx scripts/verify-webhook.ts` | 本机起一个 Webhook 接收端点，验收投递、签名与重试，约 15 秒 |
 | `pnpm tsx scripts/verify-webhook-signature.ts` | 独立复算某次投递的签名，参数见 `docs/WEBHOOK.md` |
@@ -142,19 +144,12 @@ lib/releases/abandon.ts(209,9): error TS2322: Type '"abandon_topic"' is not assi
 
 **手动刷新**：`/baselines` 页面的「立即同步」按钮，需要登录；强制重拉被项目选中基线的版本，不看缓存是否过期。
 
-**定时刷新**：外部定时器每小时 POST 一次接口，本仓库不引入队列或常驻调度进程。
+**定时刷新**：由 `pnpm worker` 里的 `baseline-sync` 作业每小时调一次，不引入队列，也不需要宿主机配 cron。
+手动补跑用同一个接口（鉴权见 [docs/RUNBOOK.md](docs/RUNBOOK.md) 第五节）：
 
 ```bash
-# cron
-0 * * * * curl -fsS -X POST -H "Authorization: Bearer $SYNC_JOB_TOKEN" \
+curl -fsS -X POST -H "Authorization: Bearer $SYNC_JOB_TOKEN" \
   http://localhost:3000/api/jobs/baseline-sync
-
-# systemd timer（/etc/systemd/system/baseline-sync.service + .timer）
-# [Service]
-# ExecStart=/usr/bin/curl -fsS -X POST -H "Authorization: Bearer <token>" \
-#   http://localhost:3000/api/jobs/baseline-sync
-# [Timer]
-# OnCalendar=hourly
 ```
 
 **失败时的行为**：同步失败只写本次 `sync_run`（状态、结束时间、错误摘要），`baseline` 与
@@ -175,12 +170,11 @@ lib/releases/abandon.ts(209,9): error TS2322: Type '"abandon_topic"' is not assi
 | 4 | 否则投递**一个**上游已全部成功的包（串行，不并发投递依赖链） |
 | 5 | 全部成功 → `success`；有成功也有失败 → `partial_failure`；一个都没成功 → `failed` |
 
-**定时推进**：外部定时器每隔几分钟 POST 一次接口，把在跑的提测各往前推一步。
-本仓库不引入队列，也不依赖进程内定时器。
+**定时推进**：由 `pnpm worker` 里的 `build-dispatch` 作业每 2 分钟把在跑的提测各往前推一步，不引入队列。
+手动补跑用同一个接口：
 
 ```bash
-# cron：每 2 分钟推一次
-*/2 * * * * curl -fsS -X POST -H "Authorization: Bearer $BUILD_DISPATCH_JOB_TOKEN" \
+curl -fsS -X POST -H "Authorization: Bearer $BUILD_DISPATCH_JOB_TOKEN" \
   http://localhost:3000/api/jobs/build-dispatch
 ```
 
@@ -204,13 +198,12 @@ lib/releases/abandon.ts(209,9): error TS2322: Type '"abandon_topic"' is not assi
 | 调度事件流水 | `recordPollEvent()`、`listPollEvents(workspaceId)` |
 | 提测详情页的只读区块组件 | `components/build-status.tsx` 的 `BuildStatusBlock` |
 
-**定时轮询**：外部定时器每隔几分钟 POST 一次接口。已完结的提测（`success`、`partial_failure`、
-`failed`、`abandoned`）自动不再轮询，一条请求都不发。单轮最多处理 50 条，挑活按
+**定时轮询**：由 `pnpm worker` 里的 `build-poll` 作业每 5 分钟轮询一次。已完结的提测（`success`、
+`partial_failure`、`failed`、`abandoned`）自动不再轮询，一条请求都不发。单轮最多处理 50 条，挑活按
 `release.lastPolledAt` 从旧到新（为空的最先），活跃提测更多时各条轮流轮到，最新投递的下一轮就会被轮到。
 
 ```bash
-# cron：每 5 分钟轮询一次
-*/5 * * * * curl -fsS -X POST -H "Authorization: Bearer $BUILD_POLL_JOB_TOKEN" \
+curl -fsS -X POST -H "Authorization: Bearer $BUILD_POLL_JOB_TOKEN" \
   http://localhost:3000/api/jobs/build-poll
 ```
 
@@ -393,13 +386,10 @@ CI 里的 `验收用例` job **非阻断**（`continue-on-error: true`）：用�
 | 变量 | 必需 | 含义 |
 | --- | --- | --- |
 | `DATABASE_URL` | 是 | PostgreSQL 连接串，Prisma CLI 与应用运行共用。格式 `postgresql://<用户>:<密码>@<主机>:<端口>/<库名>?schema=public` |
+| `CREDENTIAL_ENCRYPTION_KEY` | 用凭据功能时必需 | 凭据密文的主密钥，32 字节的 base64（`openssl rand -base64 32`）。个人账号**不再**放环境变量，每个成员在「我的账号」（`/settings/credentials`）配置自己的 CRP 与 Gerrit 账号 |
+| `CREDENTIAL_ENCRYPTION_KEY_VERSION` | 否 | 主密钥版本，默认 `1`；轮换时加一，见 [docs/RUNBOOK.md](docs/RUNBOOK.md) |
 | `GERRIT_BASE_URL` | 否 | Gerrit 服务地址，默认 `https://gerrit.uniontech.com` |
-| `GERRIT_USERNAME` | Gerrit 集成必需 | Gerrit 用户名 |
-| `GERRIT_HTTP_PASSWORD` | Gerrit 集成必需 | Gerrit HTTP 凭据密码，在 Gerrit 网页 Settings → HTTP Credentials 生成 |
-| `CRP_USERNAME` | 用 CRP 写接口时必需 | CRP 登录用的 LDAP 账号 |
-| `CRP_PASSWORD` | 用 CRP 写接口时必需 | 上述账号的 LDAP 密码；登录前用 CRP 的公钥加密，不落盘 |
 | `CRP_BASE_URL` | 否 | CRP 接口前缀，默认 `https://crp.uniontech.com/api` |
-| `CRP_TOKEN_PATH` | 否 | CRP token 缓存文件，默认 `~/.cache/crp/jwt`，权限 0600 |
 | `PACKAGE_API_TOKEN` | 用 `POST /api/packages` 时必需 | 外部系统提交软件包用的独立 token，与用户会话无关；没配置时该接口一律返回 401。接口细节见 [docs/API.md](docs/API.md) |
 | `SYNC_JOB_TOKEN` | 用 `POST /api/jobs/baseline-sync` 时必需 | 定时任务触发基线同步用的独立 token，与用户会话、`PACKAGE_API_TOKEN` 都无关；没配置时该接口一律返回 401 |
 | `BUILD_DISPATCH_JOB_TOKEN` | 用 `POST /api/jobs/build-dispatch` 时必需 | 定时任务推进提测投递用的独立 token；这个接口会真的向 CRP 建 Topic、发 Release，没配置时一律返回 401 |

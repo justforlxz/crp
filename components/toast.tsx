@@ -1,24 +1,27 @@
 "use client";
 
 /**
- * 原型的 `.toast` 轻提示（MKACG-972）：操作成功/失败的反馈用它呈现，数秒后自动消失。
+ * 轻提示（界面规范 v2 第七节 `.toast`）：操作结果的反馈，数秒后自己消失。
  *
- * 为什么 `className` 由调用方给：`.toast` 是 `.agents/spec/design/modules.json` 里的**全局模块**，
- * 而 `pnpm check:modules` 只从页面源码里读 `className`。模块名藏在组件内部，门禁就看不到它。
- * 所以页面自己写 `className="toast alert alert--info"`（成功/信息）或 `"toast alert alert--error"`
- * （失败）—— 模块表达「这是一条会自己消失的提示」，视觉沿用已有的 `.alert`。
+ * 类名由页面给出：成功写 `"toast ok"`，失败写 `"toast bad"`（原型 `.toast.ok` / `.toast.bad`）。
+ * 图标跟着无障碍角色走 —— `role="alert"` 是「失败要立刻播报」，配警告号；其余配勾。
+ * 这样页面只描述一次档位（类名 + 角色），组件不用再从字符串里猜。
  *
- * 消失是直接隐藏，不做淡出（design.md 第九节「不加动效」）。`message` 一变就重新计时，
- * 所以后续操作产生的提示不会被上一条的计时提前收走，多条提示也能同时存在（各占一个实例）。
+ * 停留 4.2 秒（design.md 第四节「轻提示」）。消失是直接移除，不做淡出 —— 第九节「不加动画」。
+ * `message` 一变就重新计时，所以后续操作产生的提示不会被上一条的计时提前收走。
+ *
+ * 多条提示同时存在时由调用方摆进 `.toast-stack` 里（原型是右下角的竖排容器）。
  */
 
 import { useEffect, useState } from "react";
 
-/** 提示停留时长（毫秒）：数秒后自动消失，不需要用户点。 */
-export const TOAST_VISIBLE_MS = 4000;
+import { Icon } from "./icons";
+
+/** 提示停留时长（毫秒）：design.md 第四节的 4.2 秒。 */
+export const TOAST_VISIBLE_MS = 4200;
 
 export type ToastProps = {
-  /** 原型模块名与视觉档位，由页面给出，例如 `"toast alert alert--info"`。 */
+  /** 原型模块名与视觉档位，由页面给出：`"toast ok"` 或 `"toast bad"`。 */
   className: string;
   /** 提示内容；`null` 表示这次没有提示，什么都不渲染。 */
   message: string | null;
@@ -45,10 +48,10 @@ export function Toast({ className, message, role = "status" }: ToastProps) {
     return null;
   }
 
-
   return (
     <div className={className} role={role}>
-      {message}
+      <Icon name={role === "alert" ? "alert" : "check"} />
+      <div>{message}</div>
     </div>
   );
 }

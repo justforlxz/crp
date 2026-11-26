@@ -24,13 +24,11 @@ import {
 } from "../build";
 import { prisma } from "../db";
 import {
-  createCrpClient,
-  createCrpClientFromEnv,
-  CRP_DEFAULT_BASE_URL,
   WORK_PROGRESS_TRANSFERRED_TO_TEST,
   workProgressLabel,
   type CrpClient,
 } from "../integrations/crp";
+import { resolveReleaseCrpClient } from "./crpClient";
 import { ReleaseError } from "./service";
 
 /** 放弃主题用到的两个 CRP 能力。 */
@@ -42,28 +40,23 @@ type AbandonCrpApis = Pick<CrpClient, "getTopicWorkflow" | "abandonTopic">;
  * 读进度与放弃主题都会发请求，它们要能在 `crp_call_log` 里查到，
  * 写法与 `lib/releases/update.ts` 的同名函数一致。
  */
-function resolveCrp(
+async function resolveCrp(
   releaseId: string,
-  network: BuildNetwork | undefined,
-): AbandonCrpApis {
+  options: AbandonTopicOptions,
+): Promise<AbandonCrpApis> {
   const recorder = createCrpCallRecorder(releaseId);
 
-  if (network?.crpFetch === undefined) {
-    return createCrpClientFromEnv(process.env, { onRequest: recorder.observe });
-  }
-
-  return createCrpClient({
-    baseUrl: network.crpBaseUrl ?? CRP_DEFAULT_BASE_URL,
-    token: network.crpToken ?? "injected",
-    tokenPath: null,
-    fetchImpl: network.crpFetch,
-    onRequest: recorder.observe,
-  });
+  return resolveReleaseCrpClient(options, recorder.observe);
 }
 
 export type AbandonTopicOptions = {
   /** 注入用：单测换掉 CRP 的网络层，其余代码照旧。 */
   network?: BuildNetwork;
+  /**
+   * 这次放弃以谁的身份调 CRP。前台接口传当前登录用户；不传就按当前登录用户。
+   * 单测显式传，不依赖请求上下文。
+   */
+  actorUserId?: string;
 };
 
 /** 一次成功放弃的结果。 */
@@ -166,7 +159,7 @@ export async function abandonReleaseTopic(
     throw new ReleaseError("这个主题已经放弃了，不能重复放弃。", 409);
   }
 
-  const crp = resolveCrp(releaseId, options.network);
+  const crp = await resolveCrp(releaseId, options);
   const topicId = release.crpTopicId;
 
   let workProgress: number;
@@ -237,7 +230,7 @@ export async function loadCrpTopicName(
   }
 
   try {
-    return (await resolveReadClient(network).getTopic(Number(topicId))).name;
+    return (await (await resolveReadClient(network)).getTopic(Number(topicId))).name;
   } catch (error) {
     console.error(`[releases] 读 CRP 主题名失败（topic ${topicId}）`, error);
 
@@ -246,15 +239,6 @@ export async function loadCrpTopicName(
 }
 
 /** 只读请求用的客户端：不挂调用记录，也不改任何状态。 */
-function resolveReadClient(network: BuildNetwork | undefined): CrpClient {
-  if (network?.crpFetch === undefined) {
-    return createCrpClientFromEnv(process.env);
-  }
-
-  return createCrpClient({
-    baseUrl: network.crpBaseUrl ?? CRP_DEFAULT_BASE_URL,
-    token: network.crpToken ?? "injected",
-    tokenPath: null,
-    fetchImpl: network.crpFetch,
-  });
+async function resolveReadClient(network: BuildNetwork | undefined): Promise<CrpClient> {
+  return resolveReleaseCrpClient({ network });
 }

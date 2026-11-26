@@ -19,7 +19,7 @@
  *
  * 进程重启不丢进度：进度只存在数据库里（`release`、`release_package_snapshot`、
  * `release_repository_record`、`build_task`），下一轮从库里读出来继续推。
- * 外部定时器反复 `POST /api/jobs/build-dispatch`，用户手动触发走
+ * worker 每 2 分钟调一次 `runBuildDispatch()`，用户手动触发走
  * `POST /api/releases/{id}/dispatch`，两条入口调的是同一个 `advanceRelease`。
  *
  * 投递参数全部取自快照（分支、Commit、提测版本），不回查仓库当前状态（MUST）：
@@ -29,7 +29,7 @@
 import { prisma } from "../db";
 import {
   createCrpClient,
-  createCrpClientFromEnv,
+  createCrpClientForUser,
   CRP_DEFAULT_BASE_URL,
   CrpBusinessError,
   CrpInvalidParameterError,
@@ -115,9 +115,42 @@ export type BuildNetwork = {
 };
 
 export type BuildOptions = {
-  /** 注入用。生产代码不传，按环境变量建客户端（缺凭据会直接报错，不退回匿名）。 */
+  /** 注入用。生产代码不传，按人建客户端（缺凭据会直接报错，不退回匿名）。 */
   network?: BuildNetwork;
+  /**
+   * 这次调用以谁的身份去调 CRP。
+   *
+   * 前台（页面点「投递」「重试」）传当前登录用户；后台作业不传，按这条提测的创建者
+   * （`release.created_by_id`）—— 作业没有登录会话，契约要求它代表数据所有者
+   * （`.agents/spec/product/credentials.md` 第六节）。
+   */
+  actorUserId?: string;
 };
+
+/**
+ * 这次调用用谁的凭据：显式给了就用它，没给就用这条提测的创建者。
+ *
+ * 后台作业走的是「没给」这条路：定时器不代表任何人，只能代表数据所有者。
+ */
+export async function resolveActorUserId(
+  releaseId: string,
+  options: BuildOptions,
+): Promise<string> {
+  if (options.actorUserId !== undefined) {
+    return options.actorUserId;
+  }
+
+  const release = await prisma.release.findUnique({
+    where: { id: releaseId },
+    select: { createdById: true },
+  });
+
+  if (release === null) {
+    throw new BuildError("提测记录不存在。", 404);
+  }
+
+  return release.createdById;
+}
 
 /**
  * 投递与轮询用到的那几个 CRP 与 Shuttle 能力。
@@ -153,17 +186,22 @@ type Resolved = {
  * 导出给 `lib/build` 内的轮询层（A14）复用：它只多需要一项 `getTopicWorkflow`，
  * 不该为此再写一份建客户端的代码，也不该绕开调用记录。
  */
-export function resolveClients(releaseId: string, options: BuildOptions): Resolved {
+export async function resolveClients(
+  releaseId: string,
+  options: BuildOptions,
+): Promise<Resolved> {
   const recorder = createCrpCallRecorder(releaseId);
   const network = options.network;
 
   const crp: DispatchApis["crp"] =
     network?.crpFetch === undefined
-      ? createCrpClientFromEnv(process.env, { onRequest: recorder.observe })
+      ? await createCrpClientForUser(await resolveActorUserId(releaseId, options), {
+          onRequest: recorder.observe,
+        })
       : createCrpClient({
           baseUrl: network.crpBaseUrl ?? CRP_DEFAULT_BASE_URL,
           token: network.crpToken ?? "injected",
-          tokenPath: null,
+          tokenKey: null,
           fetchImpl: network.crpFetch,
           onRequest: recorder.observe,
         });
@@ -257,7 +295,7 @@ const FINAL_RELEASE_STATES: ReadonlySet<ReleaseStateName> = new Set<ReleaseState
   "abandoned",
 ]);
 
-/** 还要继续推进的提测状态：外部定时器按这三个状态挑活干。 */
+/** 还要继续推进的提测状态：worker 的 `build-dispatch` 作业按这三个状态挑活干。 */
 export const ACTIVE_RELEASE_STATES: readonly ReleaseStateName[] = [
   "pending",
   "dispatching",
@@ -407,7 +445,7 @@ export async function pollReleaseBuilds(
   releaseId: string,
   options: BuildOptions = {},
 ): Promise<PollSummary> {
-  const { clients } = resolveClients(releaseId, options);
+  const { clients } = await resolveClients(releaseId, options);
 
   const release = await prisma.release.findUnique({
     where: { id: releaseId },
@@ -678,7 +716,7 @@ export async function advanceRelease(
   releaseId: string,
   options: BuildOptions = {},
 ): Promise<AdvanceResult> {
-  const resolved = resolveClients(releaseId, options);
+  const resolved = await resolveClients(releaseId, options);
   const loaded = await loadRelease(releaseId);
   const status = loaded.status as ReleaseStateName;
 
@@ -700,7 +738,10 @@ export async function advanceRelease(
 
   await releaseStaleClaims(releaseId);
 
-  const polled = await pollReleaseBuilds(releaseId, { network: options.network });
+  const polled = await pollReleaseBuilds(releaseId, {
+    network: options.network,
+    actorUserId: options.actorUserId,
+  });
   const fresh = await loadRelease(releaseId);
   const chain = await loadChain(fresh);
   const evaluation = evaluateChain(chain);
@@ -1323,6 +1364,12 @@ export type RetryResult = {
   advance: AdvanceResult;
 };
 
+/** 重投的入参。`packageNames` 点名单个包：详情页一次只重投一个包，不许退化成整单重投。 */
+export type RetryOptions = BuildOptions & {
+  /** 只处理这些包；不给就是整包（原有行为，接口的 `action=retry` 走这一支）。 */
+  packageNames?: readonly string[];
+};
+
 /**
  * 重投失败的构建任务。
  *
@@ -1338,12 +1385,15 @@ export type RetryResult = {
  * 一次提测里可能有多个失败包，逐个处理、逐个记账：某个包的旧 Release 删不掉（CRP 连不上、
  * 已经被人手工删了）不中断其它包，原因汇总到返回体的 `failures` 里。提测状态在处理前就放回
  * `dispatching`，所以哪怕中途出意外，定时器也会继续推进它，不会卡在终局状态里。
+ *
+ * 给了 `packageNames` 就只在点名的包里做上面三步：详情页的「重新投递」一次只处理一个包。
+ * 一个可重置的包都没有时不算失败，推进一次就返回（那个包可能还在等上游，等上游成功会自动投递）。
  */
 export async function retryFailedTasks(
   releaseId: string,
-  options: BuildOptions = {},
+  options: RetryOptions = {},
 ): Promise<RetryResult> {
-  const resolved = resolveClients(releaseId, options);
+  const resolved = await resolveClients(releaseId, options);
   const release = await loadRelease(releaseId);
 
   if (release.crpTopicId === null) {
@@ -1351,19 +1401,49 @@ export async function retryFailedTasks(
   }
 
   // 先只挑出要做的事，不动任何数据：一个可重试的包都没有时，状态不该有任何变化。
+  // 点名了包就只在这些包里挑：详情页的「重新投递」一次只处理一个包，不能退化成整单重投。
+  const only = options.packageNames === undefined ? null : new Set(options.packageNames);
+  const inScope = (snapshot: { packageName: string }): boolean =>
+    only === null || only.has(snapshot.packageName);
+
   const failedTargets = release.snapshots.filter(
     (snapshot) =>
+      inScope(snapshot) &&
       snapshot.buildTask !== null &&
       snapshot.buildTask.blockedBySnapshotId === null &&
       snapshot.buildTask.status === "failed",
   );
-  const blockedTargets = release.snapshots.filter(
-    (snapshot) =>
-      snapshot.buildTask !== null && snapshot.buildTask.blockedBySnapshotId !== null,
-  );
+
+  // 被阻断的包要跟着放开：它们自己没构建过，卡住只是因为上游这个包失败。
+  // 点名时放开的是**被点名那些包的下游** —— 只重投一个包时，跟它无关的失败链路一根都不能动。
+  const retriedSnapshotIds = new Set(failedTargets.map((snapshot) => snapshot.id));
+  const blockedTargets = release.snapshots.filter((snapshot) => {
+    const blockedBy = snapshot.buildTask?.blockedBySnapshotId ?? null;
+
+    if (blockedBy === null) {
+      return false;
+    }
+
+    return only === null || retriedSnapshotIds.has(blockedBy);
+  });
 
   if (failedTargets.length === 0 && blockedTargets.length === 0) {
-    throw new BuildError("这次提测没有失败的构建任务，不需要重试。", 409);
+    if (only === null) {
+      throw new BuildError("这次提测没有失败的构建任务，不需要重试。", 409);
+    }
+
+    // 点名了包却没东西可重置（例如这个包还在等上游）：不是错误，直接推进一次，
+    // 上游这段时间刚好成功的话它会被投出去；没有就原样等着。调用方按推进结果给出提示。
+    return {
+      releaseId,
+      resetPackageNames: [],
+      unblockedPackageNames: [],
+      failures: [],
+      advance: await advanceRelease(releaseId, {
+        network: options.network,
+        actorUserId: options.actorUserId,
+      }),
+    };
   }
 
   const now = new Date();
@@ -1430,7 +1510,10 @@ export async function retryFailedTasks(
     }
   }
 
-  const advance = await advanceRelease(releaseId, { network: options.network });
+  const advance = await advanceRelease(releaseId, {
+    network: options.network,
+    actorUserId: options.actorUserId,
+  });
 
   return { releaseId, resetPackageNames, unblockedPackageNames, failures, advance };
 }
@@ -1462,7 +1545,7 @@ export async function cancelRelease(
   releaseId: string,
   options: BuildOptions = {},
 ): Promise<CancelResult> {
-  const { clients } = resolveClients(releaseId, options);
+  const { clients } = await resolveClients(releaseId, options);
   const release = await loadRelease(releaseId);
 
   if (release.status === "abandoned") {

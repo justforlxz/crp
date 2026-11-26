@@ -1,8 +1,8 @@
 /**
  * 构建状态的定时轮询（A14）：把「谁在等谁」实时写进库里，页面只读库。
  *
- * 本仓库没有常驻调度进程，也不引入队列：外部定时器（cron / systemd timer）每 N 分钟
- * POST 一次 `/api/jobs/build-poll`；队列页的「手动刷新」调的是同一个 `runBuildPoll()`。
+ * 调度由常驻的 `pnpm worker` 进程自己维护：`build-poll` 作业每 5 分钟直接调用
+ * `runBuildPoll()` 一次；队列页的「手动刷新」调的是同一个函数。
  * **MUST NOT 用前端轮询驱动状态写入**：页面永远是只读的，写入只发生在服务端这里。
  *
  * 一轮轮询对每条**未完结**的提测做三件事：
@@ -80,6 +80,11 @@ export type BuildPollOptions = {
   trigger: BuildPollTrigger;
   /** 注入用，测试替换网络实现。 */
   network?: BuildNetwork;
+  /**
+   * 这次轮询以谁的身份调 CRP。前台手动刷新传当前登录用户；定时任务不传，
+   * 按每条提测的创建者（`.agents/spec/product/credentials.md` 第六节）。
+   */
+  actorUserId?: string;
   /** 单轮最多轮询多少条提测，防止一次拉太多把请求拖过超时。 */
   limit?: number;
 };
@@ -212,7 +217,10 @@ async function syncWorkProgress(
     };
   }
 
-  const { clients } = resolveClients(release.id, { network: options.network });
+  const { clients } = await resolveClients(release.id, {
+    network: options.network,
+    actorUserId: options.actorUserId,
+  });
 
   try {
     const workflow = await clients.crp.getTopicWorkflow(topicId);
@@ -347,7 +355,10 @@ async function pollOne(
   let pollRateLimited = false;
 
   try {
-    polled = await pollReleaseBuilds(release.id, { network: options.network });
+    polled = await pollReleaseBuilds(release.id, {
+      network: options.network,
+      actorUserId: options.actorUserId,
+    });
   } catch (error) {
     pollError = errorSummary(error);
     pollRateLimited = error instanceof CrpRateLimitedError;

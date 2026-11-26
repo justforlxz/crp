@@ -158,9 +158,9 @@ curl -i -X POST http://localhost:3000/api/packages \
 
 ## POST /api/jobs/baseline-sync
 
-基线同步的定时入口。本仓库没有常驻调度进程，也没有队列或额外的调度服务：外部定时器
-（cron 或 systemd timer）每小时 POST 一次这个地址即可。页面上的「立即同步」按钮调的是
-同一段同步逻辑（`runBaselineSync()`），不是第二份实现。
+基线同步的定时入口。调度由常驻的 `pnpm worker` 进程自己维护（`baseline-sync` 作业每小时跑一次），
+本仓库没有队列，也不需要宿主机配 cron 或 systemd timer。页面上的「立即同步」按钮调的是
+同一段同步逻辑（`runBaselineSync()`），不是第二份实现；这个接口留给手动触发与排障。
 
 ### 鉴权
 
@@ -214,8 +214,7 @@ Authorization: Bearer <SYNC_JOB_TOKEN>
 ### 示例
 
 ```bash
-# 每小时跑一次（crontab 写法）
-0 * * * * curl -fsS -X POST -H "Authorization: Bearer $SYNC_JOB_TOKEN" \
+# 手动补跑一次（每小时的调度由 pnpm worker 负责）
   http://localhost:3000/api/jobs/baseline-sync
 ```
 
@@ -487,7 +486,7 @@ Release ID」就是 `packages`。A13 的提测详情页合入后，这些字段�
   5 分钟（抢占有效期）后的下一次推进会把它退回待投递，先问 CRP 是不是已经收下这个包：
   收下了就补写记录（不再发第二条），没收到才重新投递。
 
-后续步骤由外部定时器调 `POST /api/jobs/build-dispatch` 推进。
+后续步骤由 worker 的 `build-dispatch` 作业推进（手动补跑用 `POST /api/jobs/build-dispatch`）。
 
 ### 返回体
 
@@ -551,7 +550,8 @@ CRP 没有删除 Topic 的接口，所以「取消」只能是删 Release + 放�
 
 ## POST /api/jobs/build-dispatch
 
-投递的定时入口。本仓库没有常驻调度进程，也没有队列：外部定时器每隔几分钟 POST 一次，把在跑的
+投递的定时入口。调度由常驻的 `pnpm worker` 进程自己维护（`build-dispatch` 作业每 2 分钟跑一次），
+本仓库没有队列。这个接口留给手动触发与排障，把在跑的
 提测（`pending`、`dispatching`、`building`）各往前推一步。
 
 ### 鉴权
@@ -606,14 +606,14 @@ Authorization: Bearer <BUILD_DISPATCH_JOB_TOKEN>
 ### 示例
 
 ```bash
-# 每 2 分钟推一次（crontab 写法）
-*/2 * * * * curl -fsS -X POST -H "Authorization: Bearer $BUILD_DISPATCH_JOB_TOKEN" \
+# 手动补跑一次（每 2 分钟的调度由 pnpm worker 负责）
   http://localhost:3000/api/jobs/build-dispatch
 ```
 
 ## POST /api/jobs/build-poll
 
-构建状态轮询的定时入口。本仓库没有常驻调度进程，也没有队列：外部定时器每隔几分钟 POST 一次，
+构建状态轮询的定时入口。调度由常驻的 `pnpm worker` 进程自己维护（`build-poll` 作业每 5 分钟跑一次），
+本仓库没有队列。这个接口留给手动触发与排障，
 把在跑的提测（`pending`、`dispatching`、`building`）各轮询一遍 —— 回写 Shuttle 的构建结果与
 CRP 的工作流进度（`release.crpWorkProgress`），并把这一轮做的事记进调度事件流水。
 
@@ -687,8 +687,7 @@ Authorization: Bearer <BUILD_POLL_JOB_TOKEN>
 ### 示例
 
 ```bash
-# 每 5 分钟轮询一次（crontab 写法）
-*/5 * * * * curl -fsS -X POST -H "Authorization: Bearer $BUILD_POLL_JOB_TOKEN" \
+# 手动补跑一次（每 5 分钟的调度由 pnpm worker 负责）
   http://localhost:3000/api/jobs/build-poll
 ```
 
@@ -816,7 +815,7 @@ Authorization: Bearer <BUILD_POLL_JOB_TOKEN>
    `dispatching`，由定时器按原快照参数重投，缺的产物会被补回来（不会留下「显示成功、CRP 缺包」）；
 5. 一个事务里写新轮、把旧轮标 `superseded` 并指向新轮（不物理删除）、提测轮次加一、
    状态回到 `dispatching`、写一行留痕；
-6. 事务提交后调 `advanceRelease` 推进一次，剩下的由外部定时器接着推。
+6. 事务提交后调 `advanceRelease` 推进一次，剩下的由 worker 接着推。
 
 补包不会重投无关的已成功包：只有 `append` 里新加的包与 `replace` 的那条链会重新投递。
 
@@ -863,7 +862,7 @@ Authorization: Bearer <BUILD_POLL_JOB_TOKEN>
 ```
 
 `advanceError` 不为空表示更新**已经提交**、但紧接着的那次推进没成功（例如 CRP 临时连不上）：
-提测状态已经回到 `dispatching`，外部定时器会继续推进，重试整次更新反而会重复换包。
+提测状态已经回到 `dispatching`，worker 会继续推进，重试整次更新反而会重复换包。
 
 ### 状态码
 
@@ -1243,4 +1242,162 @@ curl -fsS -X POST -b cookie.txt -H "content-type: application/json" \
 
 ```bash
 curl -fsS -b cookie.txt -OJ "http://localhost:3000/api/releases/01a1ee26-…/export"
+```
+
+## GET / POST / DELETE /api/settings/credentials
+
+「我的账号」页（`/settings/credentials`）的接口：读写**当前登录用户自己**的 CRP 与 Gerrit 凭据。
+契约见 [`.agents/spec/product/credentials.md`](../.agents/spec/product/credentials.md) 第八节。
+
+### 鉴权
+
+用户会话（Cookie），登录即可。账号从会话取，请求体里给不了别人的 ID —— 凭据属于个人，
+不存在「管理别人的凭据」。
+
+### 请求体（POST）
+
+```json
+{ "kind": "crp", "username": "alice", "secret": "……" }
+```
+
+- `kind`：`crp` 或 `gerrit`，其余值 400。
+- `username` / `secret` 不能为空。
+- **保存前会用这组凭据真实登录一次**：CRP 走 `POST /login`，Gerrit 走 `GET /a/projects/`。
+  验证不通过返回 422 与原因，库里不留新记录；已有凭据的人验证失败时只把原因记进
+  `last_error`，不动原来的账号名与密文。
+
+### 返回体
+
+```json
+{
+  "kind": "crp",
+  "label": "CRP 账号",
+  "configured": true,
+  "username": "alice",
+  "verifiedAt": "2026-11-24T08:30:00.000Z",
+  "lastError": null
+}
+```
+
+**响应里永远没有密码、密文、初始向量与认证标签。** 查询时就不读这些列，不是靠上层过滤。
+
+`GET` 返回 `{ "credentials": [ ... ] }`，顺序固定为 CRP、Gerrit 两项，未配置的项
+`configured: false`、其余字段为 `null`。`DELETE ?kind=crp` 删掉这一类凭据，返回
+`{ "kind": "crp", "configured": false }`；本来就没有也算成功。
+
+### 状态码
+
+| 状态码 | `error.code` | 什么情况 |
+| --- | --- | --- |
+| `200` / `201` | — | 读取 / 保存成功 |
+| `400` | `invalid_json` / `invalid_payload` | 请求体不是 JSON / 字段不合法 |
+| `401` | `unauthenticated` | 未登录 |
+| `409` | `credential_missing` | 这个账号还没配这一类凭据（消息里带配置页地址） |
+| `409` | `credential_decrypt_failed` | 库里有密文但解不开（主密钥换了或密文被改过），需要本人重配 |
+| `422` | `credential_verify_failed` | 真实登录验证没通过，`message` 是失败原因 |
+| `503` | `credential_key_missing` | 服务端没配 `CREDENTIAL_ENCRYPTION_KEY` |
+
+### 示例
+
+```bash
+curl -fsS -b cookie.txt http://localhost:3000/api/settings/credentials
+
+curl -fsS -X POST -b cookie.txt -H 'Content-Type: application/json' \
+  -d '{"kind":"crp","username":"alice","secret":"……"}' \
+  http://localhost:3000/api/settings/credentials
+
+curl -fsS -X DELETE -b cookie.txt \
+  'http://localhost:3000/api/settings/credentials?kind=gerrit'
+```
+
+## GET /api/crp/projects
+
+当场问一次 CRP：这个名字在 CRP 里对应哪些项目。用于登记软件包时确认「CRP 项目名到底叫什么」，
+不写库 —— 这个接口不产生任何 `package` / `baseline` 行。
+
+### 鉴权
+
+用户会话（Cookie），登录即可，不区分工作区角色：查的是 CRP 的数据，不是本平台的数据。
+未登录返回 `401`。
+
+CRP 的调用身份是**当前登录用户**自己的 CRP 凭据（在「我的账号」里配置）。没配凭据时
+在发出任何 CRP 请求之前就返回 `409 credential_missing`，消息里带配置页地址。
+
+### 查询参数
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `q` | 是 | 关键词。去掉首尾空白后长度必须 ≥ 1，否则 `400 query_required`，**且不向 CRP 发请求**。 |
+| `limit` | 否 | 最多要几条，`1..100`，默认 `100`。不合法时退回默认值，超过 100 压到 100。 |
+| `branchId` | 否 | CRP 的交付分支 ID，默认 `0`。**CRP 在这个接口上忽略它**（四个不同分支返回的内容完全一致），传了只为对齐 CRP 的请求格式。 |
+
+CRP 只支持按名字模糊查，`page` 参数被服务端忽略（翻页拿到的是同一批），`perPage` 超过 100 仍是
+100 条。所以没有「列出全部 CRP 项目」这种用法。
+
+### 返回体
+
+```json
+{
+  "items": [
+    { "crpProjectName": "kwin-qtrebuild", "packageName": "kwin",
+      "repoUrl": "ssh://git@gitlabwh.uniontech.com/wuhan/kelvinu-porting/kwin-5.15.5.5.git",
+      "exact": true },
+    { "crpProjectName": "dde-kwin", "packageName": "dde-kwin",
+      "repoUrl": "ssh://gerrit.uniontech.com:29418/dde-kwin", "exact": false }
+  ],
+  "truncated": false,
+  "query": "kwin"
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `items[].crpProjectName` | CRP 里的项目名，登记时填进「CRP 项目名」。 |
+| `items[].packageName` | CRP 里这一项的 Debian 源码包名。**可能是空串**（实测 `kwindowsystem` 就是空），不要假设它非空。 |
+| `items[].repoUrl` | CRP 登记的仓库地址。与软件包的 `repoPath` 不是一回事：`repoPath` 是 Gerrit 仓库路径（`deepin-kde/kwin`），要用前先去掉协议与主机。 |
+| `items[].exact` | `packageName` 与 `q` 忽略大小写后完全相等。模糊匹配里只有它才是「就是这个名字」。 |
+| `truncated` | CRP 返回满 100 条：还有更多没拿到，该换个更具体的关键词。 |
+| `query` | 实际使用的关键词（已去掉首尾空白）。 |
+
+排序规则：`exact` 为真的排最前，其余按 `crpProjectName` 长度升序，长度相同按名字排
+（同样的输入永远同样的顺序）。
+
+**不返回 CRP 的原始对象。** 精简到上面四个字段，其余字段（`Branches`、`BuildArgs`、`Arches` 等）
+不出这个接口。
+
+### 缓存
+
+同一关键词（连同 `limit` / `branchId`）60 秒内复用结果，进程内缓存，最多 200 条，超了淘汰最旧的。
+用户每敲一个字就打一次 CRP 既慢又容易触发限流，这层缓存就是为了避免这件事。缓存只在进程里，
+重启即失效，不落盘。
+
+### 状态码
+
+| 状态码 | `error.code` | 什么情况 | 用户看到的话 |
+| --- | --- | --- | --- |
+| `200` | — | 查询成功（包括「一条都没有」） | — |
+| `400` | `query_required` | `q` 去空白后为空 | 「请输入要搜索的项目名」 |
+| `401` | `unauthenticated` | 未登录 | 「请先登录」 |
+| `409` | `credential_missing` | 这个账号还没配 CRP 凭据 | 消息里带「我的账号」配置页地址 |
+| `502` | `crp_unavailable` | CRP 回 5xx、连不上，或拒绝了这组凭据 | 「CRP 暂时不可用」/「CRP 拒绝了这次查询的凭据……」 |
+| `503` | `crp_rate_limited` | CRP 限流（429） | 「CRP 限流，约 N 秒后再试」，带 `retryAfter` |
+| `503` | `credential_key_missing` | 服务端没配 `CREDENTIAL_ENCRYPTION_KEY` | 运维处理 |
+| `504` | `crp_timeout` | 等 CRP 响应超时 | 「CRP 响应超时」 |
+
+限流时 `error.retryAfter` 是秒数，同一个值也写进 `Retry-After` 响应头：
+
+```json
+{ "error": { "code": "crp_rate_limited", "message": "CRP 限流，约 42 秒后再试", "retryAfter": 42 } }
+```
+
+**CRP 的原始报错不会透给前端**（里面有英文原文与内部路径），只进服务端日志。
+
+### 示例
+
+```bash
+# 查 kwin 在 CRP 里的项目
+curl -fsS -b cookie.txt 'http://localhost:3000/api/crp/projects?q=kwin'
+
+# 只要前 10 条
+curl -fsS -b cookie.txt 'http://localhost:3000/api/crp/projects?q=kwin&limit=10'
 ```

@@ -73,9 +73,9 @@ const BASELINES = [
 ] as const;
 
 const WORKSPACES = [
-  { slug: "desktop-core", name: "桌面核心组" },
-  { slug: "system-apps", name: "系统应用组" },
-  { slug: "security", name: "安全组" },
+  { slug: "desktop-core", name: "我的工作区" },
+  { slug: "system-apps", name: "备用工作区" },
+  { slug: "security", name: "测试工作区" },
 ] as const;
 
 const USERS = [
@@ -111,11 +111,31 @@ const USERS = [
   },
 ] as const;
 
-/** 项目经理：刘洋没有平台账号，`user_email` 为空，用来演示「未开通账号的项目经理」。 */
+/**
+ * 项目经理：刘洋没有平台账号，`userEmail` 为空，用来演示「未开通账号的项目经理」。
+ *
+ * `email` 是经理卡第二行与清单表「邮箱」列显示的联系邮箱（MKACG-1017）。刘洋也填一个：
+ * 没有平台账号不等于没有邮箱，卡片不该显示「未填写邮箱」。
+ */
 const PROJECT_MANAGERS = [
-  { name: "李伟", workspaceSlug: "desktop-core", userEmail: "liwei@uniontech.com" },
-  { name: "陈浩", workspaceSlug: "system-apps", userEmail: "chenhao@uniontech.com" },
-  { name: "刘洋", workspaceSlug: "security", userEmail: null },
+  {
+    name: "李伟",
+    workspaceSlug: "desktop-core",
+    userEmail: "liwei@uniontech.com",
+    email: "liwei@uniontech.com",
+  },
+  {
+    name: "陈浩",
+    workspaceSlug: "system-apps",
+    userEmail: "chenhao@uniontech.com",
+    email: "chenhao@uniontech.com",
+  },
+  {
+    name: "刘洋",
+    workspaceSlug: "security",
+    userEmail: null,
+    email: "liuyang@uniontech.com",
+  },
 ] as const;
 
 /** 工作区成员。平台管理员不进 membership。 */
@@ -698,21 +718,21 @@ type WebhookEndpointSeed = {
 const WEBHOOK_ENDPOINTS: readonly WebhookEndpointSeed[] = [
   {
     workspaceSlug: "desktop-core",
-    name: "桌面核心组提测结果",
+    name: "我的工作区提测结果",
     url: "https://hooks.example.com/crp/desktop-core",
     secret: "seed-webhook-secret-desktop-core",
     eventTypes: ["release.created", "build.succeeded", "build.failed"],
     enabled: true,
-    description: "桌面核心组的提测结果通知",
+    description: "我的工作区的提测结果通知",
   },
   {
     workspaceSlug: "system-apps",
-    name: "系统应用组构建失败",
+    name: "备用工作区构建失败",
     url: "https://hooks.example.com/crp/system-apps",
     secret: "seed-webhook-secret-system-apps",
     eventTypes: ["build.failed"],
     enabled: false,
-    description: "系统应用组只订阅失败事件",
+    description: "备用工作区只订阅失败事件",
   },
 ];
 
@@ -825,6 +845,8 @@ const EXPECTED_COUNTS: { table: string; expected: number; count: () => Promise<n
   { table: "webhook_endpoint", expected: 2, count: () => prisma.webhookEndpoint.count() },
   { table: "webhook_delivery", expected: 3, count: () => prisma.webhookDelivery.count() },
   { table: "sync_run", expected: 4, count: () => prisma.syncRun.count() },
+  // 凭据是运行时数据：成员在「我的账号」里配置，种子不写，干净库上必须是 0 条。
+  { table: "user_credential", expected: 0, count: () => prisma.userCredential.count() },
 ];
 
 // ---------------------------------------------------------------------------
@@ -904,8 +926,8 @@ async function seedProjectManagers(
 
     const row = await prisma.projectManager.upsert({
       where: { workspaceId_name: { workspaceId, name: item.name } },
-      update: { userId },
-      create: { workspaceId, name: item.name, userId },
+      update: { userId, email: item.email },
+      create: { workspaceId, name: item.name, userId, email: item.email },
     });
     ids.set(item.name, row.id);
   }

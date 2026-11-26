@@ -26,6 +26,8 @@ export {
   findReleaseScope,
   loadReleaseDispatch,
   pollReleaseBuilds,
+  resolveActorUserId,
+  resolveClients,
   retryFailedTasks,
   type AdvanceResult,
   type BuildOptions,
@@ -35,6 +37,7 @@ export {
   type PollSummary,
   type ReleaseDispatchView,
   type ReleaseStateName,
+  type RetryOptions,
   type RetryResult,
 } from "./service";
 
@@ -74,7 +77,6 @@ export {
 
 export {
   buildQueueView,
-  formatDuration,
   loadBuildQueue,
   loadBuildQueueData,
   loadReleaseBuildStatus,
@@ -88,6 +90,8 @@ export {
   type QueueReleaseView,
   type QueueTaskRow,
 } from "./queue";
+
+export { formatDuration } from "./duration";
 
 export {
   buildStatusLabel,

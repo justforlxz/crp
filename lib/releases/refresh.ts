@@ -11,6 +11,7 @@
  */
 
 import { getBaselineVersion } from "../baselines";
+import { CredentialError } from "../credentials/errors";
 import { GerritError } from "../integrations/gerrit";
 import { createGerritReader, type GerritCommitOption, type GerritReader } from "./gerrit";
 import type { ReleaseProjectDetail, ReleaseProjectPackage } from "./service";
@@ -45,7 +46,8 @@ export type SelectionResult = {
 
 /** 把 Gerrit 的失败翻成能显示的话。 */
 function gerritMessage(error: unknown): string {
-  if (error instanceof GerritError) {
+  // 凭据相关的错误自带「去哪儿配置」的指引，原样显示；翻译成兜底文案会让人无从下手。
+  if (error instanceof GerritError || error instanceof CredentialError) {
     return error.message;
   }
 

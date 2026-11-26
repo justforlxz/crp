@@ -10,15 +10,17 @@
  * | `releases.ts` | 投递、查询、删除、重试 Release |
  * | `projects.ts` | 按软件包名解析 `ProjectID` |
  * | `workflow.ts` | `WorkProgress` 数值与标签 |
- * | `config.ts` | 环境变量、默认值、路径展开 |
+ * | `config.ts` | 设置（地址、超时、重试）与按人取凭据 |
+ * | `tokenCache.ts` | 按人分键的进程内令牌缓存 |
  *
  * 三条贯穿全模块的约定：
  *
- * 1. 凭据只从环境变量来，token 缓存写磁盘时 0600；错误消息不含请求头。
+ * 1. 凭据按人从数据库取（见 `lib/credentials`），令牌只按人缓存在进程内存；错误消息不含请求头。
  * 2. 错误分四类抛（网络 / 认证 / 业务拒绝 / 参数非法），见 errors.ts。
  * 3. 每个接口的真实请求与响应都记在同目录 FINDINGS.md 里。
  */
 
+import { currentActorUserId } from "../../credentials/current";
 import { readCrpConfig } from "./config";
 import {
   CrpBusinessError,
@@ -177,20 +179,41 @@ export function createCrpClient(options: CrpClientOptions = {}): CrpClient {
   };
 }
 
-/** 按环境变量建客户端；凭据缺失时直接抛参数错误。 */
-export function createCrpClientFromEnv(
+/**
+ * 按某个人的凭据建客户端。
+ *
+ * 没配凭据时 `readCrpConfig()` 抛 `CredentialMissingError`，此时一个 CRP 请求都还没发出去
+ * （CRED-6）。后台作业传该提测的创建者，前台接口传当前登录用户。
+ */
+export async function createCrpClientForUser(
+  userId: string,
+  overrides: Omit<
+    CrpClientOptions,
+    "baseUrl" | "username" | "password" | "tokenKey"
+  > = {},
   source: Record<string, string | undefined> = process.env,
-  overrides: Omit<CrpClientOptions, "baseUrl" | "username" | "password" | "tokenPath"> = {},
-): CrpClient {
-  const config = readCrpConfig(source);
+): Promise<CrpClient> {
+  const config = await readCrpConfig(userId, source);
 
   return createCrpClient({
     ...overrides,
     baseUrl: config.baseUrl,
     username: config.username,
     password: config.password,
-    tokenPath: config.tokenPath,
+    tokenKey: config.tokenKey,
     timeoutMs: overrides.timeoutMs ?? config.timeoutMs,
     retries: overrides.retries ?? config.retries,
   });
+}
+
+/** 按当前登录用户的凭据建客户端：页面与前台接口的默认做法。 */
+export async function createCrpClientForCurrentUser(
+  overrides: Omit<
+    CrpClientOptions,
+    "baseUrl" | "username" | "password" | "tokenKey"
+  > = {},
+): Promise<CrpClient> {
+  const userId = await currentActorUserId();
+
+  return createCrpClientForUser(userId, overrides);
 }

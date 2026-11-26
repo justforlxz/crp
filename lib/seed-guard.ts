@@ -9,10 +9,10 @@
  *
  * ## 为什么判定只看「占位凭据」
  *
- * 种子里的工作区名（`desktop-core` / 桌面核心组）、基线名（`eagle-1071` 等）与账号邮箱
+ * 种子里的工作区名（`desktop-core` / 我的工作区）、基线名（`eagle-1071` 等）与账号邮箱
  * 在真实库里**本来就会出现**：
  *
- * - RUNBOOK 3.6 让生产环境手工建的第一个工作区就叫 `desktop-core` / 桌面核心组；
+ * - RUNBOOK 3.6 让生产环境手工建的第一个工作区就叫 `desktop-core` / 我的工作区；
  * - 基线同步从 CRP 拉下来的分支就叫 `eagle-1071`、`snipe-2500u2`；
  * - `admin@uniontech.com` 这类邮箱是真实同事的账号。
  *
@@ -34,9 +34,9 @@ export const SEED_WEBHOOK_SECRET_PREFIX = "seed-webhook-secret-";
 
 /** 种子里的工作区。`prisma/seed.ts` 的 `WORKSPACES`。 */
 export const SEED_WORKSPACES = [
-  { slug: "desktop-core", name: "桌面核心组" },
-  { slug: "system-apps", name: "系统应用组" },
-  { slug: "security", name: "安全组" },
+  { slug: "desktop-core", name: "我的工作区" },
+  { slug: "system-apps", name: "备用工作区" },
+  { slug: "security", name: "测试工作区" },
 ] as const;
 
 /** 种子里的四条基线。`prisma/seed.ts` 的 `BASELINES`。 */
@@ -120,7 +120,7 @@ export function detectSeedData(snapshot: SeedGuardSnapshot): SeedFinding[] {
   // 以下三条只作为证据：名字与邮箱在真实库里本来就会出现（见文件头）。
   //
   // 工作区要求**三个种子工作区同时存在**才算命中：生产环境按 RUNBOOK 3.6 手工建的那一个
-  // 就叫 `desktop-core` / 桌面核心组，只看单个必然误报。
+  // 就叫 `desktop-core` / 我的工作区，只看单个必然误报。
   const seededWorkspaces = snapshot.workspaces.filter((item) =>
     SEED_WORKSPACES.some((seed) => seed.slug === item.slug && seed.name === item.name),
   );

@@ -12,6 +12,7 @@ import { Prisma } from "../../generated/prisma/client";
 import { listBaselines } from "../baselines";
 import { baselineState, type BaselineState } from "../baselines/status";
 import { prisma } from "../db";
+import { RELEASE_TAB_STATUSES } from "../releases/list";
 import { baselineBlockReason } from "./baselineGate";
 import { buildSoftwareView, type SoftwareEntry, type SoftwareView } from "./softwareView";
 import type { ManagerInput, ProjectInput } from "./validation";
@@ -73,6 +74,27 @@ export type ProjectCard = {
   baseline: { id: string; name: string; syncedAt: Date | null };
   updatedAt: Date;
   software: SoftwareView;
+};
+
+/**
+ * 一张经理卡要的数据：`listManagers()` 的行就是它。
+ *
+ * 项目经理页与项目页的卡片共用这一份，两处的第二行（邮箱）与「名下项目」数因此不会一边一个样。
+ */
+export type ManagerCardData = {
+  id: string;
+  name: string;
+  /** 联系邮箱；没填就是 `null`。 */
+  email: string | null;
+  userId: string | null;
+  projectCount: number;
+  /**
+   * 名下项目里还在进行中的提测数。
+   *
+   * 不按项目的 `deletedAt` 过滤：已软删项目的提测仍会出现在提测记录页，这里与那一页保持同一
+   * 范围。所以卡片上可能出现「名下项目 0 / 进行中提测 1」—— 项目删了，在跑的提测还没结束。
+   */
+  activeReleaseCount: number;
 };
 
 function toSoftwareEntries(row: ProjectRow): SoftwareEntry[] {
@@ -183,29 +205,65 @@ export function findManagerRef(
   });
 }
 
-/** 工作区里的项目经理，带名下项目数（不含软删）。 */
-export function listManagers(workspaceId: string): Promise<
-  Array<{ id: string; name: string; userId: string | null; projectCount: number }>
-> {
-  return prisma.projectManager
-    .findMany({
-      where: { workspaceId },
-      select: {
-        id: true,
-        name: true,
-        userId: true,
-        _count: { select: { projects: { where: { deletedAt: null } } } },
+/**
+ * 「进行中」的提测状态：还没出结果的那几个。
+ *
+ * 直接取提测记录页「排队中」「构建中」两个页签覆盖的状态，两处口径只有一份。
+ * 从 `lib/releases/list.ts` 直接引，不走 `lib/releases` 的 barrel —— barrel 会拉上
+ * `lib/releases/service.ts`，而它反过来 import 本模块。
+ */
+const IN_PROGRESS_RELEASE_STATUSES = [
+  ...RELEASE_TAB_STATUSES.queued,
+  ...RELEASE_TAB_STATUSES.building,
+] as const;
+
+/** 工作区里的项目经理，带名下项目数（不含软删）与进行中的提测数。 */
+export async function listManagers(workspaceId: string): Promise<ManagerCardData[]> {
+  const managers = await prisma.projectManager.findMany({
+    where: { workspaceId },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      userId: true,
+      _count: { select: { projects: { where: { deletedAt: null } } } },
+    },
+    orderBy: { name: "asc" },
+  });
+
+  // 「进行中提测」按项目经理名下项目的提测算：Prisma 的 `_count` 不能穿两层关系，
+  // 所以按项目再查一次，在内存里按经理汇总。
+  //
+  // 这里**不**加 `deletedAt: null`：已软删项目的提测仍在提测记录页可见，两处的范围要一致。
+  // 与上面「名下项目」的 `deletedAt: null` 不同是故意的 —— 一个数「还在管的项目」，
+  // 一个数「还在跑的提测」，项目删了不会让在跑的提测停下。
+  const projects = await prisma.project.findMany({
+    where: { projectManagerId: { in: managers.map((manager) => manager.id) } },
+    select: {
+      projectManagerId: true,
+      _count: {
+        select: { releases: { where: { status: { in: [...IN_PROGRESS_RELEASE_STATUSES] } } } },
       },
-      orderBy: { name: "asc" },
-    })
-    .then((rows) =>
-      rows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        userId: row.userId,
-        projectCount: row._count.projects,
-      })),
+    },
+  });
+
+  const activeByManager = new Map<string, number>();
+
+  for (const project of projects) {
+    activeByManager.set(
+      project.projectManagerId,
+      (activeByManager.get(project.projectManagerId) ?? 0) + project._count.releases,
     );
+  }
+
+  return managers.map((manager) => ({
+    id: manager.id,
+    name: manager.name,
+    email: manager.email,
+    userId: manager.userId,
+    projectCount: manager._count.projects,
+    activeReleaseCount: activeByManager.get(manager.id) ?? 0,
+  }));
 }
 
 /**
@@ -394,13 +452,14 @@ async function withIdentityConflict<T>(
 // 项目经理
 // ---------------------------------------------------------------------------
 
+/** 新建项目经理：姓名在当前工作区内唯一（数据库唯一约束兜底），邮箱可空。 */
 export async function createManager(
   workspaceId: string,
   input: ManagerInput,
 ): Promise<{ id: string }> {
   try {
     return await prisma.projectManager.create({
-      data: { workspaceId, name: input.name },
+      data: { workspaceId, name: input.name, email: input.email },
       select: { id: true },
     });
   } catch (error) {
@@ -411,7 +470,8 @@ export async function createManager(
   }
 }
 
-export async function renameManager(managerId: string, input: ManagerInput): Promise<void> {
+/** 编辑项目经理：姓名与邮箱一起写；工作区归属与名下项目不动。 */
+export async function updateManager(managerId: string, input: ManagerInput): Promise<void> {
   const manager = await prisma.projectManager.findUnique({
     where: { id: managerId },
     select: { workspaceId: true },
@@ -424,7 +484,7 @@ export async function renameManager(managerId: string, input: ManagerInput): Pro
   try {
     await prisma.projectManager.update({
       where: { id: managerId },
-      data: { name: input.name },
+      data: { name: input.name, email: input.email },
     });
   } catch (error) {
     if (isUniqueViolation(error)) {

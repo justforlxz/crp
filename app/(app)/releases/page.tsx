@@ -1,21 +1,22 @@
 /**
- * 提测记录列表（A13，MKACG-964 按原型移植模块）。
+ * 提测记录列表：按状态看、按项目与工作区筛、按版本 / 项目 / 创建人搜。
  *
- * 三件事：按状态页签看、按项目与工作区筛、按编号 / 版本 / Topic 搜。每行标出来源（平台创建 /
- * 从 CRP 导入），点进去是详情页，右侧可以导出这一条的快照表。
+ * 结构与类名照 `.agents/spec/design/prototype.html` 的提测记录页：
  *
- * 结构与 class 名来自 `.agents/spec/design/prototype.html` 的提测记录页：
- * `.page-tabs`、`.filters` + `.field` + `.search-field` + `.filter-spacer`、`.card table-card` +
- * `.table-scroll` + `.table-footer`、`.empty`、`.primary-cell` / `.secondary` / `.mono` / `.pill`。
+ * ```
+ * .panel
+ *   .tabs      五个页签，每个带 .tab-n 计数
+ *   .filters   .search + .select × 2 + .result-n + 导出
+ *   .table-scroll > table.grid
+ *   .empty     没有符合条件的行时出现，带「清除筛选」
+ * ```
  *
- * 原型的表头有 8 列，其中「CRP 基线」不在 `ReleaseListRow` 里，取它要改列表查询（超出本单
- * 「不改数据查询」的边界），所以这一列省略，其余列的单元格结构照原型。
- *
- * 页签的归并规则、标签、条数统计都在 `lib/releases/list.ts`，这个页面只负责摆位置。
- * 筛选全在查询串里，刷新、收藏、退回都还停在同一个视图。
+ * 页签的归并规则、标签、条数统计都在 `lib/releases/list.ts`；筛选与搜索由 `./filters.tsx`
+ * 写回网址后由这一页重新查一遍，所以「页签上的数字」与「点进去看到的行」永远出自同一次查询。
  */
 import Link from "next/link";
 
+import { Icon } from "@/components/icons";
 import { PageShell } from "@/components/page-shell";
 import {
   loadReleaseList,
@@ -25,10 +26,12 @@ import {
   RELEASE_TAB_LABELS,
   releaseSourceLabel,
   releaseStatusLabel,
-  releaseStatusPillClass,
+  releaseStatusTone,
   type ReleaseStatusTab,
 } from "@/lib/releases";
-import { resolveWorkspaceScope } from "../workspaceScope";
+import { resolveWorkspaceScope, showsWorkspaceSwitcher } from "../workspaceScope";
+import { ReleaseFilters, type FilterOption } from "./filters";
+import type { ReleaseListCsvRow } from "./listCsv";
 
 // 提测状态一直在变，页面不做静态化。
 export const dynamic = "force-dynamic";
@@ -42,41 +45,33 @@ type ReleasesPageProps = {
   }>;
 };
 
-type ListFilters = {
-  workspace: string;
-  status: ReleaseStatusTab;
-  project: string;
-  q: string;
-};
-
-function formatTime(value: Date): string {
-  return `${value.toISOString().replace("T", " ").slice(0, 19)} UTC`;
-}
-
-/** 当前筛选拼成链接；切换页签或翻筛选都不丢掉其余条件。 */
-function listHref(filters: ListFilters, patch: Partial<ListFilters> = {}): string {
-  const merged = { ...filters, ...patch };
+/** 页签切换只改状态，其余筛选条件原样带着走。 */
+function tabHref(
+  filters: { workspace: string; project: string; q: string },
+  status: ReleaseStatusTab,
+): string {
   const params = new URLSearchParams();
 
-  if (merged.workspace !== "") {
-    params.set("workspace", merged.workspace);
+  params.set("workspace", filters.workspace);
+
+  if (status !== "all") {
+    params.set("status", status);
   }
 
-  if (merged.status !== "all") {
-    params.set("status", merged.status);
+  if (filters.project !== "") {
+    params.set("project", filters.project);
   }
 
-  if (merged.project !== "") {
-    params.set("project", merged.project);
+  if (filters.q !== "") {
+    params.set("q", filters.q);
   }
 
-  if (merged.q !== "") {
-    params.set("q", merged.q);
-  }
+  return `/releases?${params.toString()}`;
+}
 
-  const query = params.toString();
-
-  return query === "" ? "/releases" : `/releases?${query}`;
+/** 表格与导出文件共用的时间写法：按 UTC 到分钟。 */
+function formatTime(value: Date): string {
+  return `${value.toISOString().replace("T", " ").slice(0, 16)} UTC`;
 }
 
 export default async function ReleasesPage({ searchParams }: ReleasesPageProps) {
@@ -85,18 +80,25 @@ export default async function ReleasesPage({ searchParams }: ReleasesPageProps) 
 
   if (scope.active === null) {
     return (
-      <PageShell title="提测记录">
-        <div className="card panel">
-          <div className="empty">
-            这个账号还不属于任何工作区，先请平台管理员把账号加入工作区。当前登录：
-            {scope.account.displayName}
+      <PageShell title="提测记录" description="按状态、项目与关键字查看">
+        <div className="panel">
+          <div className="panel-bd">
+            <div className="empty">
+              <div className="empty-ico" aria-hidden="true">
+                <Icon name="empty" />
+              </div>
+              <div className="empty-t">还没有加入任何工作区</div>
+              <div className="empty-d">
+                先请平台管理员把账号加入工作区。当前登录：{scope.account.displayName}
+              </div>
+            </div>
           </div>
         </div>
       </PageShell>
     );
   }
 
-  const filters: ListFilters = {
+  const filters = {
     workspace: scope.active.slug,
     status: parseStatusTab(query.status),
     project: query.project?.trim() ?? "",
@@ -113,9 +115,38 @@ export default async function ReleasesPage({ searchParams }: ReleasesPageProps) 
     loadReleaseProjectOptions(scope.active.id),
   ]);
 
+  // 只有一个工作区时不给筛选条传候选项：不渲染下拉，页面上（含传给客户端的 props）
+  // 也就不会出现工作区名（MKACG-1017）。
+  const showWorkspace = showsWorkspaceSwitcher(scope.workspaces);
+  const workspaceOptions: FilterOption[] = showWorkspace
+    ? scope.workspaces.map((workspace) => ({
+        value: workspace.slug,
+        label: workspace.name,
+      }))
+    : [];
+  const projectOptions: FilterOption[] = [
+    { value: "", label: "全部项目" },
+    ...projects.map((project) => ({ value: project.id, label: `${project.name}（${project.key}）` })),
+  ];
+
+  // 导出用的行与表格里的行一一对应，就在下面同一个 map 里拼出来。
+  const csvRows: ReleaseListCsvRow[] = list.rows.map((row) => ({
+    version: row.version,
+    projectName: row.projectName,
+    projectKey: row.projectKey,
+    revision: row.revision,
+    packageCount: row.packageCount,
+    statusLabel: releaseStatusLabel(row.status),
+    createdByName: row.createdByName,
+    createdAt: formatTime(row.createdAt),
+  }));
+
+  const clearHref = tabHref({ workspace: filters.workspace, project: "", q: "" }, "all");
+
   return (
     <PageShell
       title="提测记录"
+      description={`共 ${String(list.counts.all)} 条，${String(list.counts.failed)} 条需要处理`}
       actions={
         <>
           <Link
@@ -125,161 +156,105 @@ export default async function ReleasesPage({ searchParams }: ReleasesPageProps) 
           >
             从 CRP 导入
           </Link>
-          <Link className="btn primary" href={`/releases/new${scope.query}`}>
-            ＋ 创建提测
+          <Link className="btn btn-primary" href={`/releases/new${scope.query}`}>
+            <Icon name="plus" />
+            创建提测
           </Link>
         </>
       }
     >
-      <p data-style-anchor="releases.intro">
-        一次提测对应 CRP 的一个 Topic。列表里能按状态、项目与关键字找，点进详情能看这次提测固化了
-        哪些软件包的哪个 Commit；快照只追加不改写，唯一的变更入口是详情页的「更新提测」。
-      </p>
-
-      <div className="page-tabs" data-style-anchor="releases.status-tabs">
-        {RELEASE_STATUS_TABS.map((tab) => (
-          <Link
-            key={tab}
-            className={tab === filters.status ? "active" : undefined}
-            href={listHref(filters, { status: tab })}
-            aria-current={tab === filters.status ? "page" : undefined}
-          >
-            {RELEASE_TAB_LABELS[tab]}（{list.counts[tab]}）
-          </Link>
-        ))}
-      </div>
-
-      <form method="get" action="/releases" className="filters" data-style-anchor="releases.filters">
-        <input type="hidden" name="status" value={filters.status} />
-
-        <label htmlFor="release-workspace-filter" className="small-note">
-          工作区
-        </label>
-        <select
-          id="release-workspace-filter"
-          className="field"
-          name="workspace"
-          defaultValue={filters.workspace}
+      <div className="panel" data-style-anchor="releases.table">
+        <div
+          className="tabs"
+          role="tablist"
+          aria-label="按状态筛选"
+          data-style-anchor="releases.status-tabs"
         >
-          {scope.workspaces.map((workspace) => (
-            <option key={workspace.id} value={workspace.slug}>
-              {workspace.name}
-            </option>
+          {RELEASE_STATUS_TABS.map((tab) => (
+            <Link
+              key={tab}
+              className="tab"
+              role="tab"
+              href={tabHref(filters, tab)}
+              aria-selected={tab === filters.status}
+            >
+              {RELEASE_TAB_LABELS[tab]}
+              <span className="tab-n num">{list.counts[tab]}</span>
+            </Link>
           ))}
-        </select>
-
-        <label htmlFor="release-project-filter" className="small-note">
-          项目
-        </label>
-        <select
-          id="release-project-filter"
-          className="field"
-          name="project"
-          defaultValue={filters.project}
-        >
-          <option value="">全部项目</option>
-          {projects.map((project) => (
-            <option key={project.id} value={project.id}>
-              {project.name}（{project.key}）
-            </option>
-          ))}
-        </select>
-
-        <div className="search-field">
-          <span aria-hidden="true">⌕</span>
-          <input
-            id="release-keyword"
-            type="search"
-            name="q"
-            defaultValue={filters.q}
-            aria-label="搜索提测记录"
-            placeholder="提测版本、项目标识或 CRP Topic 编号"
-          />
         </div>
 
-        <button type="submit" className="btn primary sm">
-          筛选
-        </button>
-        <Link className="text-link" href={listHref(filters, { project: "", q: "", status: "all" })}>
-          清空条件
-        </Link>
+        <ReleaseFilters
+          workspaces={workspaceOptions}
+          showWorkspace={showWorkspace}
+          projects={projectOptions}
+          workspace={filters.workspace}
+          project={filters.project}
+          keyword={filters.q}
+          status={filters.status}
+          total={list.counts.all}
+          shown={list.rows.length}
+          rows={csvRows}
+        />
 
-        <div className="filter-spacer" />
-
-        <span className="small-note" data-style-anchor="releases.count">
-          共 {list.rows.length} 条记录
-          {filters.status === "all" ? null : ` · 页签：${RELEASE_TAB_LABELS[filters.status]}`}
-          {filters.q === "" ? null : ` · 关键字「${filters.q}」`}
-        </span>
-      </form>
-
-      <div className="card table-card" data-style-anchor="releases.table">
-        <div className="table-wrap table-scroll">
-          <table className="data-table">
+        <div className="table-scroll">
+          <table className="grid cols-releases">
             <thead>
               <tr>
-                <th>提测记录 / CRP Topic</th>
+                <th>提测记录</th>
                 <th>所属项目</th>
-                <th>轮次</th>
-                <th>软件包</th>
+                <th className="num">轮次</th>
+                <th className="num">软件包</th>
                 <th>状态</th>
-                <th>创建人 / 时间</th>
-                <th>操作</th>
+                <th>创建人</th>
+                <th className="num">创建时间</th>
               </tr>
             </thead>
             <tbody>
               {list.rows.map((row) => (
                 <tr key={row.id}>
                   <td>
-                    <div className="primary-cell">
-                      <Link href={`/releases/${row.id}${scope.query}`} className="mono">
-                        {row.version}
-                      </Link>
-                    </div>
-                    <div className="secondary">
+                    <Link href={`/releases/${row.id}${scope.query}`}>
+                      <strong>{row.version}</strong>
+                    </Link>
+                    <span className="cell-sub">
                       {row.crpTopicId === null ? "未关联 Topic" : row.crpTopicId} ·{" "}
                       {releaseSourceLabel(row.source)}
-                    </div>
+                    </span>
                   </td>
                   <td>
                     {row.projectName}
-                    <div className="secondary mono">{row.projectKey}</div>
+                    <span className="cell-sub col-mono">{row.projectKey}</span>
                   </td>
-                  <td>第 {row.revision} 轮</td>
-                  <td>{row.packageCount} 个软件包</td>
-                  <td data-style-anchor="releases.row-status">
-                    <span className={releaseStatusPillClass(row.status)}>{releaseStatusLabel(row.status)}</span>
-                  </td>
+                  <td className="num">第 {row.revision} 轮</td>
+                  <td className="num">{row.packageCount} 个</td>
                   <td>
-                    {row.createdByName}
-                    <div className="secondary">{formatTime(row.createdAt)}</div>
+                    <span
+                      className={`dot ${releaseStatusTone(row.status)}`}
+                      data-style-anchor="releases.row-status"
+                    >
+                      {releaseStatusLabel(row.status)}
+                    </span>
                   </td>
-                  <td>
-                    <Link className="btn sm" href={`/releases/${row.id}${scope.query}`}>
-                      查看
-                    </Link>
-                    {" "}
-                    <a className="text-link" href={`/api/releases/${row.id}/export`}>
-                      导出
-                    </a>
-                  </td>
+                  <td>{row.createdByName}</td>
+                  <td className="num">{formatTime(row.createdAt)}</td>
                 </tr>
               ))}
-              {list.rows.length === 0 ? (
-                <tr>
-                  <td colSpan={7}>
-                    <div className="empty" data-style-anchor="releases.empty">
-                      这个条件下的提测记录是空的。
-                    </div>
-                  </td>
-                </tr>
-              ) : null}
             </tbody>
           </table>
-        </div>
-        <div className="table-footer">
-          <span>显示 {list.rows.length} 条记录</span>
-          <span>快照只追加不改写 · 变更入口在详情页的「更新提测」</span>
+
+          {list.rows.length === 0 ? (
+            <div className="empty" data-style-anchor="releases.empty">
+              <div className="empty-ico" aria-hidden="true">
+                <Icon name="empty" />
+              </div>
+              <div className="empty-t">没有符合条件的提测</div>
+              <div className="empty-d">换个关键词，或切到「全部」看看。</div>
+              <Link className="btn btn-sm" href={clearHref}>
+                清除筛选
+              </Link>
+            </div>
+          ) : null}
         </div>
       </div>
     </PageShell>

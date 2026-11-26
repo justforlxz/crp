@@ -6,7 +6,7 @@
  * 1. **纯种子库必须被判定为种子数据**，否则部署实例会带着演示数据对外服务；
  * 2. **真实库必须通过**，否则每次部署都起不来。
  *
- * 第 2 条不是「顺手加一个」：种子里的工作区名（`desktop-core` / 桌面核心组）与基线名
+ * 第 2 条不是「顺手加一个」：种子里的工作区名（`desktop-core` / 我的工作区）与基线名
  * （`eagle-1071` 等）在真实库里**本来就会出现** —— RUNBOOK 3.6 让生产环境手工建的工作区
  * 就叫这个名字，基线同步从 CRP 拉下来的分支也叫这个名字。所以判定不能只看名字，
  * 只能看真实数据里不可能出现的值：种子写死的占位密码哈希与占位 Webhook 签名密钥。
@@ -59,7 +59,7 @@ function realSnapshot(): SeedGuardSnapshot {
         passwordHash: "$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHQ$0f3aQ9m4h1kR2xYbV7cW8g",
       },
     ],
-    workspaces: [{ slug: "desktop-core", name: "桌面核心组" }],
+    workspaces: [{ slug: "desktop-core", name: "我的工作区" }],
     baselines: [{ name: "eagle-1071", description: "V20 桌面专业版交付分支" }],
     webhookEndpoints: [
       {
@@ -212,4 +212,15 @@ test("指纹常量与 prisma/seed.ts 一致：种子改了而自检没跟上时�
       `种子端点的签名密钥「${secret}」不是占位前缀，自检认不出来`,
     );
   }
+});
+
+test("种子工作区用中性显示名，slug 保持原样（URL 与验收用例依赖 slug）", () => {
+  assert.deepEqual(
+    SEED_WORKSPACES.map((item) => [item.slug, item.name]),
+    [
+      ["desktop-core", "我的工作区"],
+      ["system-apps", "备用工作区"],
+      ["security", "测试工作区"],
+    ],
+  );
 });

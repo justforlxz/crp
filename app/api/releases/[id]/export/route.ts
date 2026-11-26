@@ -1,24 +1,26 @@
 /**
- * 导出这条提测的软件包提交快照为 CSV（A13）。
+ * 导出这条提测的软件包快照明细（A13；MKACG-1011 按 `design.md` 第九节改成明细）。
  *
- * 列与详情页的快照表一一对应（`SNAPSHOT_COLUMNS`，11 列，顺序一致），行就是详情页上那 N 行，
- * 顺序也一样：页面与这份文件用的是同一个取数函数与同一个铺格子的函数。
+ * 每包一行，7 列：软件包、分支、Commit、代码版本、CRP 仓库版本、架构、结果 —— 与
+ * `SNAPSHOT_DETAIL_COLUMNS` 同源，也与提测单（`buildSnapshotCsv` 的 11 列）共用「软件包 / 分支 /
+ * 代码版本 / Commit」四格的铺法，同一个包在两份文件里的写法不会分叉。
+ *
+ * 架构与结果来自 `loadReleaseBuildStatus`：这是详情页构建状态区块同一份读取，所以导出的
+ * 「结果」与页面上看到的一致，不是另算一套。
+ *
  * 导出永远只包含这一条提测的内容，不会把整个工作区的记录一起倒出来。
  *
  * 鉴权走用户会话：工作区从提测归属查出，不采信查询串里传来的工作区；提测不存在与没权限
  * 一律 404，不泄露这条提测是否存在。
- *
- * 提交说明与提交人这两列要读 Gerrit。读不到时留空，导出仍然成功 —— 一个外部系统读不到，
- * 不该让整份文件下不来。
  */
 
 import { NextResponse } from "next/server";
 
 import { errorJson } from "@/lib/auth/http";
 import { requireRole } from "@/lib/auth/server";
-import { findReleaseScope } from "@/lib/build";
+import { findReleaseScope, loadReleaseBuildStatus } from "@/lib/build";
 import {
-  buildSnapshotCsv,
+  buildSnapshotDetailCsv,
   loadReleaseDetail,
   ReleaseError,
   type ReleaseDetail,
@@ -69,13 +71,23 @@ export async function GET(
     throw error;
   }
 
-  return new NextResponse(buildSnapshotCsv(detail.packages), {
-    headers: {
-      "content-type": "text/csv; charset=utf-8",
-      "content-disposition": contentDisposition(
-        `${detail.project.key}-${detail.version}-r${detail.revision}.csv`,
-      ),
-      "cache-control": "no-store",
+  // 构建状态读不到（提测记录刚被删）不该让整份文件下不来：架构与结果那两列留破折号，其余照常。
+  const buildStatus = await loadReleaseBuildStatus(id);
+
+  return new NextResponse(
+    buildSnapshotDetailCsv({
+      packages: detail.packages,
+      repositoryRecords: detail.repositoryRecords,
+      tasks: buildStatus?.tasks ?? [],
+    }),
+    {
+      headers: {
+        "content-type": "text/csv; charset=utf-8",
+        "content-disposition": contentDisposition(
+          `${detail.project.key}-${detail.version}-r${detail.revision}-snapshots.csv`,
+        ),
+        "cache-control": "no-store",
+      },
     },
-  });
+  );
 }

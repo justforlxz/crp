@@ -118,6 +118,7 @@ export {
   releaseSourceLabel,
   releaseStatusLabel,
   releaseStatusPillClass,
+  releaseStatusTone,
   type ReleaseListQuery,
   type ReleaseListResult,
   type ReleaseListRow,
@@ -127,9 +128,11 @@ export {
 
 export {
   buildSnapshotCsv,
+  buildSnapshotDetailCsv,
   crpTopicUrl,
   loadReleaseDetail,
   SNAPSHOT_COLUMNS,
+  SNAPSHOT_DETAIL_COLUMNS,
   snapshotRowCells,
   type CommitInfoReader,
   type GerritCommitInfo,

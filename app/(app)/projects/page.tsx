@@ -1,24 +1,27 @@
 /**
- * 项目页（MKACG-971 按原型移植模块结构）。
+ * 项目页（MKACG-971 / MKACG-984 按原型重做，MKACG-1010 换成四 tab 弹窗）。
  *
- * 分区照 `.agents/spec/design/prototype.html` 的项目页与 `design.md` §8：
- * `.section-title` 项目经理 → `.manager-grid` 内多个 `.manager-card` →
- * `.section-title` 项目列表 → `.filters` 内 `.search-field` → `.grid.project-grid` 内多个
- * `.project-card`（卡内 `.project-software-chips` 列清单）→ `.tip`。
+ * 分区照 `.agents/spec/design/prototype.html` 的项目页与 `design.md` 第七节：
  *
- * 项目与项目经理都以卡片呈现，不再摊成表格行：卡片的字段全部来自 `listProjectCards()` /
- * `listManagers()` 已有的数据，不为这张页面新增查询字段。搜索只按项目名过滤，条件放查询串里，
- * 刷新、退回都还停在同一个视图。
+ *   `.sec-hd` + `.manager-grid` 经理卡 → `.sec-hd`（带 `.search`）+ `.project-grid` 项目卡 → `.tip`
+ *
+ * 项目与项目经理都以卡片呈现，页面里没有承载这两类数据的 table 元素（FUNC-10）。
+ * 卡片的字段全部来自 `listProjectCards()` / `listManagers()` 已有的数据，不为这张页面新增查询字段。
+ *
+ * 这一页只取数，交互在 `projectsView.tsx`（客户端）：点项目卡直接打开四 tab 的宽版弹窗，
+ * 卡上不再有「...」或「编辑」二级入口。弹窗的提测记录 tab 要「只列这个项目的提测」，
+ * 所以这里用 `loadReleaseList()` 取一次工作区的全部提测，按 `projectId` 分好组再交下去 ——
+ * 与提测记录列表同一份数据、同一套状态口径，tab 上的计数不会和点进去看到的行对不上。
  */
 
-import Link from "next/link";
-
 import { PageShell } from "@/components/page-shell";
-import { listManagers, listProjectCards } from "@/lib/projects";
-import { ManagerGrid } from "../managers/managerGrid";
-import { resolveWorkspaceScope } from "../workspaceScope";
+import { listPackages } from "@/lib/packages";
+import { listManagers, listProjectCards, listBaselineChoices } from "@/lib/projects";
+import { loadReleaseList } from "@/lib/releases";
+import { resolveWorkspaceScope, showsWorkspaceSwitcher } from "../workspaceScope";
 import { filterProjectsByName } from "./filter";
-import { ProjectGrid } from "./projectGrid";
+import { groupReleasesByProject, type PackageChoice } from "./modalModel";
+import { ProjectsView } from "./projectsView";
 
 // 项目数据随配置与提测变化，页面不做静态化。
 export const dynamic = "force-dynamic";
@@ -42,103 +45,58 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
     );
   }
 
-  const [projects, managers] = await Promise.all([
+  const [projects, managers, baselines, packages, releaseList] = await Promise.all([
     listProjectCards(scope.active.id),
     listManagers(scope.active.id),
+    listBaselineChoices(),
+    listPackages(),
+    loadReleaseList({ workspaceId: scope.active.id, tab: "all" }),
   ]);
   const keyword = query.q?.trim() ?? "";
   const visible = filterProjectsByName(projects, keyword);
 
+  // 软件包清单 tab 只用得到这几列：弹窗里逐行画「分支 · 当前版本 · 上次提测」，
+  // 整行 Prisma 记录（含时间戳与计数）不必过客户端边界。
+  const packageChoices: PackageChoice[] = packages.map((item) => ({
+    id: item.id,
+    name: item.name,
+    repoPath: item.repoPath,
+    currentVersion: item.currentVersion,
+    defaultBranch: item.defaultBranch,
+  }));
+
+  const releasesByProject = groupReleasesByProject(releaseList.rows);
+
+  // 只有一个工作区时不给筛选条传候选项：不渲染下拉，页面上（含传给客户端的 props）
+  // 也就不会出现工作区名（MKACG-1017）。
+  const showWorkspace = showsWorkspaceSwitcher(scope.workspaces);
+  const workspaceChoices = showWorkspace
+    ? scope.workspaces.map((workspace) => ({ slug: workspace.slug, name: workspace.name }))
+    : [];
+
   return (
     <PageShell title="项目">
-      <p>
-        一个项目就是一个提测归属单位：固定一位项目经理、一个 CRP 基线、一份软件清单。
-        依赖只在软件包上维护，项目里不重复配置。
-      </p>
-
-      <p>
-        工作区：
-        {scope.workspaces.map((workspace) => (
-          <span key={workspace.id}>
-            <Link href={`/projects?workspace=${encodeURIComponent(workspace.slug)}`}>
-              {workspace.name}
-            </Link>
-            {workspace.id === scope.active?.id ? "（当前）" : null}{" "}
-          </span>
-        ))}
-      </p>
-
-      <p>
-        <Link href={`/projects/new${scope.query}`}>新建项目</Link>
-        {"　"}
-        <Link href={`/managers${scope.query}`}>项目经理</Link>
-      </p>
-
-      {query.error === undefined ? null : (
-        <p className="alert alert--error" role="alert">
-          操作失败：{query.error}
-        </p>
-      )}
-      {query.notice === undefined ? null : (
-        <p className="alert alert--info" role="status">
-          {query.notice}
-        </p>
-      )}
-
-      <div className="section-title">
-        <b>项目经理</b>
-        <small>项目创建时必须分配一位项目经理；创建提测时先选择项目经理，再从其负责的项目中选择。</small>
-      </div>
-      <ManagerGrid managers={managers} />
-
-      <div className="section-title section-gap">
-        <b>项目列表</b>
-        <small>项目只维护软件包清单和默认跟踪分支；构建依赖从软件包记录读取。</small>
-      </div>
-
-      <form method="get" action="/projects" className="filters">
-        <input type="hidden" name="workspace" value={scope.active.slug} />
-
-        <div className="search-field">
-          <span aria-hidden="true">⌕</span>
-          <input
-            type="search"
-            name="q"
-            defaultValue={keyword}
-            aria-label="搜索项目"
-            placeholder="搜索项目名称"
-          />
-        </div>
-
-        <button type="submit" className="btn primary sm">
-          筛选
-        </button>
-        <Link className="text-link" href={`/projects${scope.query}`}>
-          清空条件
-        </Link>
-
-        <div className="filter-spacer" />
-
-        <span className="small-note">
-          共 {visible.length} 个项目
-          {keyword === "" ? null : ` · 关键字「${keyword}」`}
-        </span>
-      </form>
-
-      <ProjectGrid projects={visible} keyword={keyword} query={scope.query} />
-
-      <div className="tip">
-        <div className="tip-icon" aria-hidden="true">
-          ⓘ
-        </div>
-        <div>
-          <b>依赖只维护在软件包记录</b>
-          <p>
-            项目清单里的软件都会参与提测，依赖关系来自软件包记录：清单内的依赖按拓扑顺序提交，
-            清单外的依赖不自动加入，也不扩展本次提测范围。
-          </p>
-        </div>
-      </div>
+      <ProjectsView
+        workspaceId={scope.active.id}
+        workspaceSlug={scope.active.slug}
+        workspaces={workspaceChoices}
+        showWorkspace={showWorkspace}
+        query={scope.query}
+        projects={visible}
+        totalCount={projects.length}
+        keyword={keyword}
+        managers={managers}
+        baselines={baselines.map((baseline) => ({
+          id: baseline.id,
+          name: baseline.name,
+          state: baseline.state,
+          stateLabel: baseline.stateLabel,
+        }))}
+        packages={packageChoices}
+        releasesByProject={releasesByProject}
+        initialNotice={query.notice ?? null}
+        initialError={query.error ?? null}
+      />
     </PageShell>
   );
 }

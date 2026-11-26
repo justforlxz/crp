@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import test from "node:test";
 
 import { createCrpClient } from "../lib/integrations/crp/client";
+import {
+  clearAllCachedTokens,
+  readCachedToken,
+  writeCachedToken as writeToken,
+} from "../lib/integrations/crp/tokenCache";
 import {
   CrpAuthError,
   CrpBusinessError,
@@ -14,6 +16,15 @@ import {
 } from "../lib/integrations/crp/errors";
 
 const TEST_TOKEN = "test.jwt.token";
+
+/** 造一个一小时后过期的 JWT：进程内缓存按 `exp` 判过期，非 JWT 会被当成过期直接丢掉。 */
+function jwtToken(label: string): string {
+  const payload = Buffer.from(
+    JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600, name: label }),
+  ).toString("base64url");
+
+  return `header.${payload}.sig`;
+}
 
 type Call = { url: string; method: string; headers: Record<string, string>; body?: unknown };
 
@@ -53,7 +64,7 @@ function mockClient(routes: Array<[string, () => Response | Promise<Response>] |
   const client = createCrpClient({
     baseUrl: "https://crp.example/api",
     token: TEST_TOKEN,
-    tokenPath: null,
+    tokenKey: null,
     fetchImpl,
     sleepImpl: async (ms) => {
       sleeps.push(ms);
@@ -86,16 +97,17 @@ test("取基线不带 Authorization，解析出 ID、名称与检查标记", asy
   );
 });
 
-test("登录把密码加密后 POST 到 /login，token 落到 0600 缓存并被后续请求使用", async () => {
-  const dir = mkdtempSync(join(homedir(), ".cache", "crp-tests", "client-"));
-  const tokenPath = join(dir, "jwt");
+test("登录把密码加密后 POST 到 /login，token 记进进程内缓存（按账号分键）并被后续请求使用", async () => {
+  clearAllCachedTokens();
+  const fresh = jwtToken("fresh");
+
   try {
     const calls: Call[] = [];
     const withLogin = createCrpClient({
       baseUrl: "https://crp.example/api",
       username: "tester",
       password: "secret",
-      tokenPath,
+      tokenKey: "user-a",
       fetchImpl: (async (input: string | URL | Request, init?: RequestInit) => {
         calls.push({
           url: String(input),
@@ -104,7 +116,7 @@ test("登录把密码加密后 POST 到 /login，token 落到 0600 缓存并被�
           body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
         });
         return String(input).endsWith("/login")
-          ? json({ Token: "fresh.jwt.token" })
+          ? json({ Token: fresh })
           : json({ Name: "crp-user" });
       }) as unknown as typeof fetch,
       sleepImpl: async () => {},
@@ -112,36 +124,37 @@ test("登录把密码加密后 POST 到 /login，token 落到 0600 缓存并被�
 
     const token = await withLogin.login();
 
-    assert.equal(token, "fresh.jwt.token");
+    assert.equal(token, fresh);
     const loginCall = calls.find((call) => call.url.endsWith("/login"));
     assert.ok(loginCall);
     assert.equal((loginCall.body as { userName: string }).userName, "tester");
     assert.match(String((loginCall.body as { password: string }).password), /^[A-Za-z0-9+/]+={0,2}$/);
-    assert.equal(readFileSync(tokenPath, "utf8"), "fresh.jwt.token");
-    assert.equal(statSync(tokenPath).mode & 0o777, 0o600);
+    // 令牌只放进程内存：按账号分键读得到，别的账号读不到。
+    assert.equal(readCachedToken("user-a"), fresh);
+    assert.equal(readCachedToken("user-b"), null);
 
     await withLogin.getCurrentUser();
     const userCall = calls.find((call) => call.url.endsWith("/user"));
-    assert.equal(userCall?.headers.Authorization, "Bearer fresh.jwt.token");
+    assert.equal(userCall?.headers.Authorization, `Bearer ${fresh}`);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    clearAllCachedTokens();
   }
 });
 
-test("磁盘上有可用 token 时不再登录", async () => {
-  const dir = mkdtempSync(join(homedir(), ".cache", "crp-tests", "cache-"));
-  const tokenPath = join(dir, "jwt");
+test("缓存里有这个账号的可用 token 时不再登录", async () => {
+  clearAllCachedTokens();
   const farFuture = Math.floor(Date.now() / 1000) + 3600;
   const cached = `header.${Buffer.from(JSON.stringify({ exp: farFuture })).toString("base64url")}.sig`;
+
   try {
-    writeFileSync(tokenPath, cached);
+    writeToken("user-b", cached);
 
     const { calls, fetchImpl } = makeFetch([["GET /user", json({ Name: "cached-user" })]]);
     const client = createCrpClient({
       baseUrl: "https://crp.example/api",
       username: "tester",
       password: "secret",
-      tokenPath,
+      tokenKey: "user-b",
       fetchImpl,
       sleepImpl: async () => {},
     });
@@ -152,7 +165,7 @@ test("磁盘上有可用 token 时不再登录", async () => {
     assert.equal(calls.some((call) => call.url.endsWith("/login")), false);
     assert.equal(calls[0]?.headers.Authorization, `Bearer ${cached}`);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    clearAllCachedTokens();
   }
 });
 
@@ -193,7 +206,7 @@ test("token 被拒绝但有凭据时换一次新 token 再重放原请求", asyn
     token: "stale.jwt",
     username: "tester",
     password: "secret",
-    tokenPath: null,
+    tokenKey: null,
     fetchImpl,
     sleepImpl: async () => {},
   });
@@ -285,7 +298,7 @@ test("连不上网络时重试后抛网络错误，消息说明是超时还是�
   const client = createCrpClient({
     baseUrl: "https://crp.example/api",
     token: TEST_TOKEN,
-    tokenPath: null,
+    tokenKey: null,
     retries: 1,
     sleepImpl: async () => {},
     fetchImpl: (async () => {
@@ -786,7 +799,7 @@ test("没有凭据也没有 token 时，需要认证的请求抛参数错误而�
   const { fetchImpl, calls } = makeFetch([]);
   const client = createCrpClient({
     baseUrl: "https://crp.example/api",
-    tokenPath: null,
+    tokenKey: null,
     fetchImpl,
     sleepImpl: async () => {},
   });
@@ -795,25 +808,52 @@ test("没有凭据也没有 token 时，需要认证的请求抛参数错误而�
   assert.equal(calls.length, 0);
 });
 
-test("创建 token 缓存目录时保持家目录以外不写文件", async () => {
-  const dir = mkdtempSync(join(homedir(), ".cache", "crp-tests", "mode-"));
+test("两个人各用各的令牌：A 登录之后 B 的客户端仍然要自己登录一次", async () => {
+  clearAllCachedTokens();
+  const calls: Call[] = [];
+  const tokenA = jwtToken("a");
+  const tokenB = jwtToken("b");
+  const queue = [tokenA, tokenB];
+  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    calls.push({
+      url,
+      method: init?.method ?? "GET",
+      headers: (init?.headers ?? {}) as Record<string, string>,
+    });
+
+    if (url.endsWith("/login")) {
+      return json({ Token: queue.shift() ?? "unexpected" });
+    }
+
+    return json({ Name: "whoever" });
+  }) as unknown as typeof fetch;
+
   try {
-    mkdirSync(join(dir, "nested"));
-    const { fetchImpl } = makeFetch([["POST /login", json({ Token: "t" })]]);
-    const client = createCrpClient({
+    const clientA = createCrpClient({
       baseUrl: "https://crp.example/api",
-      username: "u",
-      password: "p",
-      tokenPath: join(dir, "nested", "jwt"),
+      username: "a",
+      password: "pa",
+      tokenKey: "user-a",
+      fetchImpl,
+      sleepImpl: async () => {},
+    });
+    const clientB = createCrpClient({
+      baseUrl: "https://crp.example/api",
+      username: "b",
+      password: "pb",
+      tokenKey: "user-b",
       fetchImpl,
       sleepImpl: async () => {},
     });
 
-    await client.login();
-
-    assert.equal(statSync(join(dir, "nested", "jwt")).mode & 0o777, 0o600);
+    assert.equal(await clientA.login(), tokenA);
+    assert.equal(await clientB.login(), tokenB);
+    assert.equal(calls.filter((call) => call.url.endsWith("/login")).length, 2);
+    assert.equal(readCachedToken("user-a"), tokenA);
+    assert.equal(readCachedToken("user-b"), tokenB);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    clearAllCachedTokens();
   }
 });
 
@@ -916,7 +956,7 @@ test("每次请求都会回调观察者一次，带地址、状态码与耗时",
   const client = createCrpClient({
     baseUrl: "https://crp.example/api",
     token: TEST_TOKEN,
-    tokenPath: null,
+    tokenKey: null,
     fetchImpl,
     onRequest: (record) => {
       observations.push({
@@ -948,7 +988,7 @@ test("被 CRP 拒绝的请求照样留下记录，状态码与响应摘要都在
   const client = createCrpClient({
     baseUrl: "https://crp.example/api",
     token: TEST_TOKEN,
-    tokenPath: null,
+    tokenKey: null,
     fetchImpl,
     retries: 0,
     onRequest: (record) => {
@@ -987,7 +1027,7 @@ test("连不上时也留一条记录，状态码为空、摘要是失败原因",
   const client = createCrpClient({
     baseUrl: "https://crp.example/api",
     token: TEST_TOKEN,
-    tokenPath: null,
+    tokenKey: null,
     fetchImpl: networkFetch,
     retries: 0,
     onRequest: (record) => {
@@ -1010,7 +1050,7 @@ test("观察者自己抛错不影响这次请求", async () => {
   const client = createCrpClient({
     baseUrl: "https://crp.example/api",
     token: TEST_TOKEN,
-    tokenPath: null,
+    tokenKey: null,
     fetchImpl,
     onRequest: () => {
       throw new Error("记录写不进去");

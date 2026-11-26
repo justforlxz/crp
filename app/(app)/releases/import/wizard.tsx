@@ -298,7 +298,7 @@ export function ImportWizard({
 
   if (result !== null) {
     return (
-      <section className="card card--wide">
+      <section className="panel"><div className="panel-bd">
         <h2>导入完成</h2>
         <p>
           提测版本 <code>{result.version}</code>，状态 <code>{result.status}</code>，
@@ -321,7 +321,7 @@ export function ImportWizard({
           <dd>{result.addedToProject.length === 0 ? "没有" : result.addedToProject.join("、")}</dd>
         </dl>
         {result.locked ? (
-          <p className="alert alert--error" role="alert">
+          <p className="risk" role="alert">
             这个主题在 CRP 上已经转测，记录被标记为锁定，「更新提测」不可用。
           </p>
         ) : null}
@@ -331,12 +331,13 @@ export function ImportWizard({
           {" · "}
           <Link href={`/releases/new${workspaceQuery}`}>回到创建提测</Link>
         </p>
+        </div>
       </section>
     );
   }
 
   return (
-    <section className="card card--wide">
+    <section className="panel"><div className="panel-bd">
       <h2>从 CRP 导入已有提测主题</h2>
       <p className="hint">
         同事在 CRP 上直接建的主题、以及历史遗留的主题，不必重头再建一次。导入只读 CRP，
@@ -344,7 +345,7 @@ export function ImportWizard({
       </p>
 
       {error === null ? null : (
-        <p className="alert alert--error" role="alert">
+        <p className="risk" role="alert">
           {error}
           {existingReleaseId === null ? null : (
             <>
@@ -360,10 +361,10 @@ export function ImportWizard({
       {step === 1 ? (
         <>
           <h2>第一步：找主题</h2>
-          <label className="field-label" htmlFor="topic-id">
+          <label className="label" htmlFor="topic-id">
             输入 Topic ID
           </label>
-          <div className="row">
+          <div className="toolbar-actions">
             <input
               id="topic-id"
               className="input"
@@ -373,7 +374,7 @@ export function ImportWizard({
             />
             <button
               type="button"
-              className="btn btn-secondary btn-sm"
+              className="btn btn-sm"
               onClick={() => void readTopicById()}
               disabled={busy || topicIdText.trim() === ""}
             >
@@ -381,10 +382,10 @@ export function ImportWizard({
             </button>
           </div>
 
-          <label className="field-label" htmlFor="topic-baseline">
+          <label className="label" htmlFor="topic-baseline">
             基线（CRP 交付分支）：按名称搜索与「只看我的主题」都在这一条分支下找
           </label>
-          <div className="row">
+          <div className="toolbar-actions">
             <select
               id="topic-baseline"
               className="input"
@@ -430,11 +431,11 @@ export function ImportWizard({
           </p>
 
           {mineOnly ? null : (
-            <label className="field-label" htmlFor="topic-name">
+            <label className="label" htmlFor="topic-name">
               主题名关键字
             </label>
           )}
-          <div className="row">
+          <div className="toolbar-actions">
             {mineOnly ? null : (
               <input
                 id="topic-name"
@@ -446,7 +447,7 @@ export function ImportWizard({
             )}
             <button
               type="button"
-              className="btn btn-secondary btn-sm"
+              className="btn btn-sm"
               onClick={() => void loadTopics()}
               disabled={busy || baselineId === "" || (!mineOnly && keyword.trim() === "")}
             >
@@ -457,7 +458,7 @@ export function ImportWizard({
           {candidates === null ? null : (
             <>
               {listMeta !== null && listMeta.truncated ? (
-                <p className="alert alert--warn" role="status">
+                <p className="risk" role="status">
                   这条基线下命中 {listMeta.total} 个主题，只显示前 {candidates.length} 条（单次上限{" "}
                   {listMeta.limit} 条）。缩小范围能看全其余部分。
                 </p>
@@ -471,7 +472,7 @@ export function ImportWizard({
                 </p>
               ) : (
                 <div className="table-scroll">
-                  <table className="data-table">
+                  <table className="grid">
                     <thead>
                       <tr>
                         <th>Topic ID</th>
@@ -501,7 +502,7 @@ export function ImportWizard({
                           <td>
                             <button
                               type="button"
-                              className="btn btn-secondary btn-sm"
+                              className="btn btn-sm"
                               onClick={() => setTopic(item)}
                             >
                               选这个
@@ -516,7 +517,7 @@ export function ImportWizard({
             </>
           )}
           {topic === null ? null : (
-            <div className="section">
+            <div className="stack">
               <h3>已选主题</h3>
               <dl>
                 <dt>名称</dt>
@@ -552,7 +553,7 @@ export function ImportWizard({
             提测要挂在一个项目上。主题所在的 CRP 分支必须与项目基线一致，不一致的项目不能选。
           </p>
 
-          <label className="field-label" htmlFor="manager">
+          <label className="label" htmlFor="manager">
             项目经理
           </label>
           <select
@@ -573,7 +574,7 @@ export function ImportWizard({
             ))}
           </select>
 
-          <label className="field-label" htmlFor="project">
+          <label className="label" htmlFor="project">
             项目
           </label>
           <select
@@ -618,7 +619,7 @@ export function ImportWizard({
           </p>
 
           <p>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setStep(1)}>
+            <button type="button" className="btn btn-sm" onClick={() => setStep(1)}>
               上一步
             </button>{" "}
             <button
@@ -650,7 +651,7 @@ export function ImportWizard({
               </p>
 
               {preview.existing === null ? null : (
-                <p role="alert" className="alert alert--error">
+                <p role="alert" className="risk">
                   这个主题已经导入到项目「{preview.existing.projectName}」（提测版本{" "}
                   {preview.existing.version}），同一个主题只能导入一次。{" "}
                   <Link href={`/releases/${preview.existing.releaseId}/update${workspaceQuery}`}>
@@ -660,7 +661,7 @@ export function ImportWizard({
               )}
 
               <div className="table-scroll">
-                <table className="data-table">
+                <table className="grid">
                   <thead>
                     <tr>
                       <th>软件包</th>
@@ -720,20 +721,22 @@ export function ImportWizard({
               </div>
 
               {preview.blocked.length === 0 ? null : (
-                <div className="alert alert--error" role="alert">
-                  <p>这些包还不能导入，整次导入停在预览：</p>
-                  <ul>
-                    {preview.blocked.map((item) => (
-                      <li key={item.packageName}>
-                        {item.packageName}：{item.reason}
-                      </li>
-                    ))}
-                  </ul>
+                <div className="risk" role="alert">
+                  <div>
+                    <p>这些包还不能导入，整次导入停在预览：</p>
+                    <ul>
+                      {preview.blocked.map((item) => (
+                        <li key={item.packageName}>
+                          {item.packageName}：{item.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
               )}
 
               <p>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setStep(2)}>
+                <button type="button" className="btn btn-sm" onClick={() => setStep(2)}>
                   上一步
                 </button>{" "}
                 <button
@@ -750,13 +753,14 @@ export function ImportWizard({
 
           {preview === null && !busy ? (
             <p>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => void buildPreview()}>
+              <button type="button" className="btn btn-sm" onClick={() => void buildPreview()}>
                 重新生成预览
               </button>
             </p>
           ) : null}
         </>
       ) : null}
+      </div>
     </section>
   );
 }

@@ -45,7 +45,7 @@ export type ParseResult<T> =
 const NAME_PATTERN = /^[a-z0-9][a-z0-9+.-]*$/;
 
 /** 仓库路径：`deepin-kde/kwin` 这种形式，不允许首尾斜杠与空段。 */
-const REPO_PATH_PATTERN = /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/;
+export const REPO_PATH_PATTERN = /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/;
 
 /** 一次提交最多多少条，防止一个请求把库塞满。 */
 export const MAX_PAYLOAD_ITEMS = 200;

@@ -17,8 +17,6 @@ import {
   CRP_DEFAULT_BASE_URL,
   CRP_DEFAULT_RETRIES,
   CRP_DEFAULT_TIMEOUT_MS,
-  CRP_DEFAULT_TOKEN_PATH,
-  expandHomePath,
 } from "./config";
 import {
   CrpAuthError,
@@ -66,8 +64,13 @@ export type CrpTransportOptions = {
   password?: string;
   /** 直接给一个 token，跳过登录与缓存读取。 */
   token?: string;
-  /** token 缓存路径；`null` 表示不读写磁盘。写法支持 `~`。 */
-  tokenPath?: string | null;
+  /**
+   * 进程内令牌缓存的键（账号 ID）。
+   *
+   * 传了就按这个键缓存令牌，同一进程里不同人的令牌互不覆盖；不传就是不缓存，
+   * 每次新建客户端都要登录一次。**没有落盘选项**：共用文件会让 A 的令牌被 B 拿去用。
+   */
+  tokenKey?: string | null;
   /** 单次请求超时，毫秒。 */
   timeoutMs?: number;
   /** 失败重试次数，不含首次请求。 */
@@ -101,6 +104,22 @@ function sleepDefault(ms: number): Promise<void> {
   });
 }
 
+/**
+ * `Retry-After` → 秒数。
+ *
+ * 只认「秒」这一种写法（CRP 给的就是秒）。HTTP 规范还允许给一个日期，遇到那种写法返回
+ * `null`：宁可不显示等待时间，也不要显示一个编出来的数字。
+ */
+function parseRetryAfterSeconds(value: string | null): number | null {
+  if (value === null) {
+    return null;
+  }
+
+  const seconds = Number.parseInt(value.trim(), 10);
+
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
+}
+
 /** 把失败响应翻译成五类错误里合适的那一类。 */
 function toHttpError(
   init: CrpRequest,
@@ -128,6 +147,7 @@ function toHttpError(
     return new CrpRateLimitedError(`${label}：CRP 限流，请稍后重试${wait}`, {
       status,
       responseSnippet: snippet,
+      retryAfterSeconds: parseRetryAfterSeconds(retryAfter),
     });
   }
 
@@ -179,8 +199,6 @@ export function createCrpTransport(options: CrpTransportOptions = {}): CrpTransp
     timeoutMs,
     fetchImpl: options.fetchImpl ?? fetch,
   };
-  const rawTokenPath = options.tokenPath === undefined ? CRP_DEFAULT_TOKEN_PATH : options.tokenPath;
-
   const now = options.now ?? Date.now;
 
   /** 记一次请求。观察者自己出问题时只打进程日志，不影响这次调用。 */
@@ -200,8 +218,7 @@ export function createCrpTransport(options: CrpTransportOptions = {}): CrpTransp
     username: options.username,
     password: options.password,
     token: options.token,
-    // 调用方直接传进来的路径也展开 `~`，不只照顾环境变量那条路。
-    tokenPath: rawTokenPath === null ? null : expandHomePath(rawTokenPath),
+    tokenKey: options.tokenKey ?? null,
     now,
     postLogin: (body) =>
       request<{ Token?: unknown }>({

@@ -30,9 +30,16 @@ export async function renderBuildStatusBlock(
     return await load({ releaseId });
   } catch {
     return (
-      <section>
-        <h2>构建状态</h2>
-        <p className="alert alert--info" role="status">构建状态暂时读不到，提测的其他内容不受影响。</p>
+      <section className="panel">
+        <div className="panel-hd">
+          <h2>构建状态</h2>
+        </div>
+        <div className="panel-bd">
+          <div className="tip" role="status">
+            <span aria-hidden="true">ⓘ</span>
+            <div>构建状态暂时读不到，提测的其他内容不受影响。</div>
+          </div>
+        </div>
       </section>
     );
   }

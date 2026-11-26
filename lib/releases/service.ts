@@ -16,6 +16,7 @@
 
 import { Prisma } from "../../generated/prisma/client";
 import { getBaselineVersion, listBaselines } from "../baselines";
+import { CredentialError } from "../credentials/errors";
 import { baselineState, BASELINE_STATE_LABELS, type BaselineState } from "../baselines/status";
 import { prisma } from "../db";
 import { GerritError } from "../integrations/gerrit";
@@ -77,7 +78,21 @@ export type ReleaseProjectChoice = {
   name: string;
   managerId: string;
   managerName: string;
-  baseline: { id: string; name: string; state: BaselineState; stateLabel: string };
+  /**
+   * 项目绑定的 CRP 基线。
+   *
+   * `description` / `repoType` 来自 CRP 分支本身：描述通常是系统版本名（例如「桌面专业版 V25」），
+   * 分支名才是 CRP 侧的那个标识（例如 `eagle-1071`）。创建提测的第 1 步要把这两件事分开显示，
+   * 「目标系统仓库」看描述，「项目 CRP 基线」看分支名。
+   */
+  baseline: {
+    id: string;
+    name: string;
+    description: string | null;
+    repoType: string | null;
+    state: BaselineState;
+    stateLabel: string;
+  };
   /** 清单里的软件包数。 */
   packageCount: number;
   /** 清单内部的依赖边数。 */
@@ -154,10 +169,11 @@ export async function listReleaseProjectChoices(
     listProjectCards(workspaceId),
     listBaselines(),
   ]);
-  const stateById = new Map(baselines.map((baseline) => [baseline.id, baseline.state]));
+  const baselineById = new Map(baselines.map((baseline) => [baseline.id, baseline]));
 
   return cards.map((card) => {
-    const state = stateById.get(card.baseline.id) ?? "unsynced";
+    const full = baselineById.get(card.baseline.id);
+    const state = full?.state ?? "unsynced";
     const readiness = evaluateReleaseReadiness({
       baseline: { name: card.baseline.name, state },
       entries: card.software.entries,
@@ -172,6 +188,8 @@ export async function listReleaseProjectChoices(
       baseline: {
         id: card.baseline.id,
         name: card.baseline.name,
+        description: full?.description ?? null,
+        repoType: full?.repoType ?? null,
         state,
         stateLabel: BASELINE_STATE_LABELS[state],
       },
@@ -369,6 +387,12 @@ async function collectSnapshots(
       try {
         codeVersion = await reader.readCodeVersion(pkg.repoPath, submitted.commitSha);
       } catch (error) {
+        // 凭据问题要原样抛出去：这一层翻成「读代码版本失败」会把「去我的账号配置」这条
+        // 唯一能让人自助解决的指引吞掉（CRED-6 要求未配置时说清去哪儿配）。
+        if (error instanceof CredentialError) {
+          throw error;
+        }
+
         return { ok: false as const, error: toReleaseError(error, packageName) };
       }
 

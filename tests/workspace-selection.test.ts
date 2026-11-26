@@ -13,12 +13,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { pickActiveWorkspace } from "../lib/auth/workspaces";
+import { pickActiveWorkspace, showsWorkspaceSwitcher } from "../lib/auth/workspaces";
 
 const WORKSPACES = [
-  { id: "ws-security", slug: "security", name: "安全组" },
-  { id: "ws-desktop", slug: "desktop-core", name: "桌面核心组" },
-  { id: "ws-system", slug: "system-apps", name: "系统应用组" },
+  { id: "ws-security", slug: "security", name: "测试工作区" },
+  { id: "ws-desktop", slug: "desktop-core", name: "我的工作区" },
+  { id: "ws-system", slug: "system-apps", name: "备用工作区" },
 ] as const;
 
 test("查询串点名的优先于会话记住的", () => {
@@ -61,4 +61,14 @@ test("一个工作区都没有时返回 null", () => {
     pickActiveWorkspace([], { requestedSlug: "security", sessionWorkspaceId: null }),
     null,
   );
+});
+
+test("只有一个工作区时不渲染切换器（MKACG-1017）", () => {
+  assert.equal(showsWorkspaceSwitcher([]), false);
+  assert.equal(showsWorkspaceSwitcher([WORKSPACES[0]]), false);
+});
+
+test("两个以上工作区时才渲染切换器，页面上才有得切", () => {
+  assert.equal(showsWorkspaceSwitcher([WORKSPACES[0], WORKSPACES[1]]), true);
+  assert.equal(showsWorkspaceSwitcher(WORKSPACES), true);
 });

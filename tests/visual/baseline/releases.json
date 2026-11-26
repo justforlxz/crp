@@ -13,48 +13,48 @@
           "position": "static",
           "margin": "0px",
           "padding": "0px 16px",
-          "fontSize": "12px",
-          "fontWeight": "400",
-          "lineHeight": "14.4px",
-          "color": "rgb(50, 105, 232)",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "lineHeight": "20.15px",
+          "color": "rgb(52, 64, 84)",
           "backgroundColor": "rgb(255, 255, 255)",
           "border": "1px solid rgb(134, 140, 149)",
           "borderRadius": "8px",
           "boxShadow": "none",
-          "width": "98.7812px",
+          "width": "104.172px",
           "height": "40px"
         },
         "box": {
-          "x": 1043.61,
-          "y": 24,
-          "width": 98.78,
+          "x": 1026.83,
+          "y": 7.5,
+          "width": 104.17,
           "height": 40
         }
       }
     ],
-    "releases.intro": [
+    "releases.table": [
       {
         "style": {
           "display": "block",
           "position": "static",
-          "margin": "0px 0px 12px",
+          "margin": "0px",
           "padding": "0px",
-          "fontSize": "14px",
+          "fontSize": "13px",
           "fontWeight": "400",
-          "lineHeight": "22.4px",
-          "color": "rgb(32, 43, 60)",
-          "backgroundColor": "rgba(0, 0, 0, 0)",
-          "border": "0px none rgb(32, 43, 60)",
-          "borderRadius": "0px",
-          "boxShadow": "none",
-          "width": "984px",
-          "height": "44.7812px"
+          "lineHeight": "20.15px",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgb(255, 255, 255)",
+          "border": "1px solid rgb(227, 232, 239)",
+          "borderRadius": "12px",
+          "boxShadow": "rgba(16, 24, 40, 0.04) 0px 1px 2px 0px",
+          "width": "1000px",
+          "height": "476.281px"
         },
         "box": {
-          "x": 264,
+          "x": 248,
           "y": 80,
-          "width": 984,
-          "height": 44.78
+          "width": 1000,
+          "height": 476.28
         }
       }
     ],
@@ -63,24 +63,24 @@
         "style": {
           "display": "flex",
           "position": "static",
-          "margin": "0px 0px 16px",
-          "padding": "0px",
-          "fontSize": "14px",
+          "margin": "0px",
+          "padding": "0px 16px",
+          "fontSize": "13px",
           "fontWeight": "400",
-          "lineHeight": "22.4px",
-          "color": "rgb(32, 43, 60)",
+          "lineHeight": "20.15px",
+          "color": "rgb(16, 24, 40)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
           "border": "",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "984px",
-          "height": "35.7969px"
+          "width": "998px",
+          "height": "48px"
         },
         "box": {
-          "x": 264,
-          "y": 136.78,
-          "width": 984,
-          "height": 35.8
+          "x": 249,
+          "y": 81,
+          "width": 998,
+          "height": 48
         }
       }
     ],
@@ -89,24 +89,24 @@
         "style": {
           "display": "flex",
           "position": "static",
-          "margin": "0px 0px 16px",
-          "padding": "0px",
-          "fontSize": "14px",
+          "margin": "0px",
+          "padding": "12px 16px",
+          "fontSize": "13px",
           "fontWeight": "400",
-          "lineHeight": "22.4px",
-          "color": "rgb(32, 43, 60)",
+          "lineHeight": "20.15px",
+          "color": "rgb(16, 24, 40)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
-          "border": "0px none rgb(32, 43, 60)",
+          "border": "",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "984px",
-          "height": "40px"
+          "width": "998px",
+          "height": "67px"
         },
         "box": {
-          "x": 264,
-          "y": 188.58,
-          "width": 984,
-          "height": 40
+          "x": 249,
+          "y": 129,
+          "width": 998,
+          "height": 67
         }
       }
     ],
@@ -119,120 +119,94 @@
           "padding": "0px",
           "fontSize": "12px",
           "fontWeight": "400",
-          "lineHeight": "19.2px",
-          "color": "rgb(93, 104, 117)",
+          "lineHeight": "18.6px",
+          "color": "rgb(102, 112, 133)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
-          "border": "0px none rgb(93, 104, 117)",
+          "border": "0px none rgb(102, 112, 133)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "62.4219px",
-          "height": "19.1875px"
+          "width": "100.828px",
+          "height": "18.5938px"
         },
         "box": {
-          "x": 1185.58,
-          "y": 198.98,
-          "width": 62.42,
-          "height": 19.19
-        }
-      }
-    ],
-    "releases.table": [
-      {
-        "style": {
-          "display": "block",
-          "position": "static",
-          "margin": "0px",
-          "padding": "0px",
-          "fontSize": "14px",
-          "fontWeight": "400",
-          "lineHeight": "22.4px",
-          "color": "rgb(32, 43, 60)",
-          "backgroundColor": "rgb(255, 255, 255)",
-          "border": "1px solid rgb(232, 237, 242)",
-          "borderRadius": "12px",
-          "boxShadow": "rgba(35, 50, 75, 0.024) 0px 2px 7px 0px",
-          "width": "984px",
-          "height": "257.484px"
-        },
-        "box": {
-          "x": 264,
-          "y": 244.58,
-          "width": 984,
-          "height": 257.48
+          "x": 975,
+          "y": 152.7,
+          "width": 100.83,
+          "height": 18.59
         }
       }
     ],
     "releases.row-status": [
       {
         "style": {
-          "display": "table-cell",
+          "display": "inline-flex",
           "position": "static",
           "margin": "0px",
-          "padding": "8px 12px",
-          "fontSize": "13px",
+          "padding": "0px",
+          "fontSize": "12px",
           "fontWeight": "400",
-          "lineHeight": "19.5px",
-          "color": "rgb(32, 43, 60)",
+          "lineHeight": "18.6px",
+          "color": "rgb(180, 35, 24)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
-          "border": "",
+          "border": "0px none rgb(180, 35, 24)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "111.312px",
-          "height": "59.5px"
+          "width": "39px",
+          "height": "18.5938px"
         },
         "box": {
-          "x": 789.05,
-          "y": 278.88,
-          "width": 111.31,
-          "height": 59.5
+          "x": 923.52,
+          "y": 283,
+          "width": 39,
+          "height": 18.59
         }
       },
       {
         "style": {
-          "display": "table-cell",
+          "display": "inline-flex",
           "position": "static",
           "margin": "0px",
-          "padding": "8px 12px",
-          "fontSize": "13px",
+          "padding": "0px",
+          "fontSize": "12px",
           "fontWeight": "400",
-          "lineHeight": "19.5px",
-          "color": "rgb(32, 43, 60)",
+          "lineHeight": "18.6px",
+          "color": "rgb(15, 122, 82)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
-          "border": "",
+          "border": "0px none rgb(15, 122, 82)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "111.312px",
-          "height": "59.5px"
+          "width": "39px",
+          "height": "18.5938px"
         },
         "box": {
-          "x": 789.05,
-          "y": 338.38,
-          "width": 111.31,
-          "height": 59.5
+          "x": 923.52,
+          "y": 388.56,
+          "width": 39,
+          "height": 18.59
         }
       },
       {
         "style": {
-          "display": "table-cell",
+          "display": "inline-flex",
           "position": "static",
           "margin": "0px",
-          "padding": "8px 12px",
-          "fontSize": "13px",
+          "padding": "0px",
+          "fontSize": "12px",
           "fontWeight": "400",
-          "lineHeight": "19.5px",
-          "color": "rgb(32, 43, 60)",
+          "lineHeight": "18.6px",
+          "color": "rgb(91, 100, 114)",
           "backgroundColor": "rgba(0, 0, 0, 0)",
-          "border": "0px none rgb(32, 43, 60)",
+          "border": "0px none rgb(91, 100, 114)",
           "borderRadius": "0px",
           "boxShadow": "none",
-          "width": "111.312px",
-          "height": "59px"
+          "width": "51px",
+          "height": "18.5938px"
         },
         "box": {
-          "x": 789.05,
-          "y": 397.88,
-          "width": 111.31,
-          "height": 59
+          "x": 923.52,
+          "y": 494.13,
+          "width": 51,
+          "height": 18.59
         }
       }
     ]

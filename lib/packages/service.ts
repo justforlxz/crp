@@ -9,7 +9,7 @@
 
 import { prisma } from "../db";
 import { Prisma } from "../../generated/prisma/client";
-import { createGerritClient, readGerritConfig } from "../integrations/gerrit";
+import { createGerritClientForCurrentUser } from "../integrations/gerrit";
 import {
   findDependencyCycle,
   formatCycle,
@@ -390,7 +390,7 @@ export async function syncPackageMetadata(id: string) {
   }
 
   const metadata = await fetchPackageMetadata(
-    createGerritClient(readGerritConfig()),
+    await createGerritClientForCurrentUser(),
     pkg,
   );
 
