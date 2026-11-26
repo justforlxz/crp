@@ -10,7 +10,7 @@ import {
 } from "../lib/webhook/validation";
 
 test("端点名称去掉首尾空白，空名与超长名被拒绝", () => {
-  assert.equal(validateEndpointName("  桌面核心组  "), "桌面核心组");
+  assert.equal(validateEndpointName("  我的工作区  "), "我的工作区");
   assert.throws(() => validateEndpointName("   "), WebhookInputError);
   assert.throws(() => validateEndpointName("件".repeat(101)), WebhookInputError);
   assert.equal(validateEndpointName("件".repeat(100)).length, 100);

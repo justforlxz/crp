@@ -36,10 +36,10 @@ test("即使上游记录多带了哈希，对外形态也不会把它带出去",
 });
 
 test("工作区与项目对外形态逐字段挑取，不多带字段", () => {
-  assert.deepEqual(publicWorkspace({ id: "ws-1", slug: "desktop-core", name: "桌面核心组" }, "reader"), {
+  assert.deepEqual(publicWorkspace({ id: "ws-1", slug: "desktop-core", name: "我的工作区" }, "reader"), {
     id: "ws-1",
     slug: "desktop-core",
-    name: "桌面核心组",
+    name: "我的工作区",
     role: "reader",
   });
 

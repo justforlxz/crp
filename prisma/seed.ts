@@ -73,9 +73,9 @@ const BASELINES = [
 ] as const;
 
 const WORKSPACES = [
-  { slug: "desktop-core", name: "桌面核心组" },
-  { slug: "system-apps", name: "系统应用组" },
-  { slug: "security", name: "安全组" },
+  { slug: "desktop-core", name: "我的工作区" },
+  { slug: "system-apps", name: "备用工作区" },
+  { slug: "security", name: "测试工作区" },
 ] as const;
 
 const USERS = [
@@ -698,21 +698,21 @@ type WebhookEndpointSeed = {
 const WEBHOOK_ENDPOINTS: readonly WebhookEndpointSeed[] = [
   {
     workspaceSlug: "desktop-core",
-    name: "桌面核心组提测结果",
+    name: "我的工作区提测结果",
     url: "https://hooks.example.com/crp/desktop-core",
     secret: "seed-webhook-secret-desktop-core",
     eventTypes: ["release.created", "build.succeeded", "build.failed"],
     enabled: true,
-    description: "桌面核心组的提测结果通知",
+    description: "我的工作区的提测结果通知",
   },
   {
     workspaceSlug: "system-apps",
-    name: "系统应用组构建失败",
+    name: "备用工作区构建失败",
     url: "https://hooks.example.com/crp/system-apps",
     secret: "seed-webhook-secret-system-apps",
     eventTypes: ["build.failed"],
     enabled: false,
-    description: "系统应用组只订阅失败事件",
+    description: "备用工作区只订阅失败事件",
   },
 ];
 

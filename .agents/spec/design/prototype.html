@@ -2569,7 +2569,7 @@ function persistBasicDraft() {
 /* ---- 项目经理：新建 / 编辑 ---- */
 function managerFormModal(name) {
   const isNew = !name;
-  const m = isNew ? { name: '', mail: '', ws: '桌面核心组' } : MANAGERS.find((x) => x.name === name);
+  const m = isNew ? { name: '', mail: '', ws: '我的工作区' } : MANAGERS.find((x) => x.name === name);
   if (!m) return;
 
   openModal(`
@@ -2586,7 +2586,7 @@ function managerFormModal(name) {
       </div>
       <label class="field"><span class="label">所属工作区</span>
         <select class="select" id="mf-ws">
-          ${['桌面核心组', '系统应用组', '安全组'].map((w) => `<option ${w === m.ws ? 'selected' : ''}>${w}</option>`).join('')}
+          ${['我的工作区', '备用工作区', '测试工作区'].map((w) => `<option ${w === m.ws ? 'selected' : ''}>${w}</option>`).join('')}
         </select>
       </label>
       <div class="tip">${icon('info')}<div><b>同一个工作区内不能重名。</b>改名只改姓名，不动工作区归属，也不动名下项目。</div></div>
