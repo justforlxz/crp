@@ -15,8 +15,8 @@
  * 鉴权用用户会话：工作区从提测归属查出，不采信请求里传来的工作区。读取要「只读」及以上，
  * 推进、重投、取消要「开发者」及以上 —— 这三个动作会真的向 CRP 建 Topic、发 Release。
  *
- * 这里只做一次推进（`advanceRelease` 一次只往前走一步）。后续推进由外部定时器反复
- * 调 `/api/jobs/build-dispatch`，所以响应里会说明这次走到哪一步、下一步该等什么。
+ * 这里只做一次推进（`advanceRelease` 一次只往前走一步）。后续推进由 worker 每 2 分钟调一次
+ * `runBuildDispatch()` 接着做，所以响应里会说明这次走到哪一步、下一步该等什么。
  */
 
 import { NextResponse } from "next/server";

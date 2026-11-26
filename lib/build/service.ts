@@ -19,7 +19,7 @@
  *
  * 进程重启不丢进度：进度只存在数据库里（`release`、`release_package_snapshot`、
  * `release_repository_record`、`build_task`），下一轮从库里读出来继续推。
- * 外部定时器反复 `POST /api/jobs/build-dispatch`，用户手动触发走
+ * worker 每 2 分钟调一次 `runBuildDispatch()`，用户手动触发走
  * `POST /api/releases/{id}/dispatch`，两条入口调的是同一个 `advanceRelease`。
  *
  * 投递参数全部取自快照（分支、Commit、提测版本），不回查仓库当前状态（MUST）：
@@ -295,7 +295,7 @@ const FINAL_RELEASE_STATES: ReadonlySet<ReleaseStateName> = new Set<ReleaseState
   "abandoned",
 ]);
 
-/** 还要继续推进的提测状态：外部定时器按这三个状态挑活干。 */
+/** 还要继续推进的提测状态：worker 的 `build-dispatch` 作业按这三个状态挑活干。 */
 export const ACTIVE_RELEASE_STATES: readonly ReleaseStateName[] = [
   "pending",
   "dispatching",

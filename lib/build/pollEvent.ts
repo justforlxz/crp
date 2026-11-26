@@ -17,7 +17,7 @@
  * | `dispatch_failed` | 其它投递失败（CRP 拒绝、服务端出错、本地参数不合法）时写 | 重发同一份请求没有用，要改参数或配置 |
  *
  * 流水只追加、不改，所以必须有人管老行：`prunePollEvents()` 按保留期删掉过期的，
- * 由 `runBuildPoll()` 每轮调一次（仓库没有常驻调度进程，轮询本身就是那只手）。
+ * 由 `runBuildPoll()` 每轮调一次：轮询本身就是那只手，不再单独引入定时器或新依赖。
  * 保留期见 `POLL_EVENT_RETENTION_DAYS` 与 `docs/DATA_MODEL.md` 4.22。
  */
 

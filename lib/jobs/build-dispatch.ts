@@ -1,8 +1,8 @@
 /**
- * 构建投递的推进逻辑：给外部定时器一个「把在跑的提测都往前推一步」的入口。
+ * 构建投递的推进逻辑：给 worker 与手动触发一个「把在跑的提测都往前推一步」的入口。
  *
- * 本仓库没有常驻调度进程，也不引入队列：由外部定时器（cron 或 systemd timer）每隔几分钟
- * POST 一次 `/api/jobs/build-dispatch`。用户手动触发的 `POST /api/releases/{id}/dispatch`
+ * 调度由常驻的 `pnpm worker` 进程自己维护：`build-dispatch` 作业每 2 分钟直接调用
+ * `runBuildDispatch()` 一次。用户手动触发的 `POST /api/releases/{id}/dispatch`
  * 调的是同一个 `advanceRelease()`，没有第二份推进逻辑。
  *
  * 每次只把每条在跑的提测往前推一步，原因见 `lib/build/service.ts`：一步一落库，
