@@ -12,9 +12,19 @@ import { PageShell } from "@/components/page-shell";
  * 受保护页面，与 `(app)` 下其它页面同一道关口：未登录由 `resolveWorkspaceScope()` 跳
  * `/login?next=/packages/new`，登录用户照旧看到表单。软件包记录没有工作区归属
  * （`docs/DATA_MODEL.md` §4.8），所以表单本身不需要按工作区取数。
+ *
+ * 三个字段可以被网址带进来（MKACG-996）：软件包页的「从 CRP 查项目」查到项目后，
+ * 用 `?name=&repoPath=&crpProjectName=` 打开这一页，这里把它们填进对应输入框。**跟踪分支
+ * 永远不由外部带**：CRP 里没有「这个包跟踪我们哪条分支」这件事，只能由人自己选。
+ * 带进来的值照旧要过分校（`parsePackageInput`），预填不等于可信。
  */
 type NewPackagePageProps = {
-  searchParams: Promise<{ workspace?: string }>;
+  searchParams: Promise<{
+    workspace?: string;
+    name?: string;
+    repoPath?: string;
+    crpProjectName?: string;
+  }>;
 };
 
 export default async function NewPackagePage({ searchParams }: NewPackagePageProps) {
@@ -38,17 +48,25 @@ export default async function NewPackagePage({ searchParams }: NewPackagePagePro
         <Link href="/packages">返回软件包列表</Link>
       </p>
 
+      {/* 从 CRP 查到的项目带进来时说明一句：跟踪分支还得自己选，别让人以为可以直接保存。 */}
+      {query.name !== undefined || query.crpProjectName !== undefined ? (
+        <p className="hint">
+          名称、仓库路径与 CRP 项目名来自刚才在 CRP 里查到的项目。跟踪分支要自己选：CRP 不知道
+          这个包在我们这边跟哪条分支。
+        </p>
+      ) : null}
+
       <ActionForm action={createPackageAction} submitLabel="保存">
         <p>
           <label>
             名称
-            <input name="name" required placeholder="kwin" />
+            <input name="name" required placeholder="kwin" defaultValue={query.name ?? ""} />
           </label>
         </p>
         <p>
           <label>
             仓库路径
-            <input name="repoPath" required placeholder="deepin-kde/kwin" />
+            <input name="repoPath" required placeholder="deepin-kde/kwin" defaultValue={query.repoPath ?? ""} />
           </label>
         </p>
         <p>
@@ -66,7 +84,7 @@ export default async function NewPackagePage({ searchParams }: NewPackagePagePro
         <p>
           <label>
             CRP 项目名（可不填）
-            <input name="crpProjectName" placeholder="deepin-kde_kwin" />
+            <input name="crpProjectName" placeholder="deepin-kde_kwin" defaultValue={query.crpProjectName ?? ""} />
           </label>
         </p>
         <p className="hint">
