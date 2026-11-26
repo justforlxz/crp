@@ -29,6 +29,13 @@ function htmlOf(node: ReactNode): string {
   return renderToStaticMarkup(createElement(Fragment, null, node));
 }
 
+/**
+ * 卡片上的两个动作：打开项目弹窗、空态里的新建。
+ *
+ * 这一层只断言结构，点下去发生什么要真浏览器，由验收在页面上点，所以给空实现。
+ */
+const NO_ACTIONS = { onOpen: () => undefined, onCreate: () => undefined };
+
 /** 数一段 HTML 里出现了几次某个 class：只数 `class="…"` 里与它逐字相同的 token。 */
 function countClass(html: string, name: string): number {
   let total = 0;
@@ -103,7 +110,7 @@ test("按项目名过滤：片段命中、大小写不敏感、清空后恢复",
 
 test("项目列表是网格里的卡片，不是表格行", () => {
   const html = htmlOf(
-    createElement(ProjectGrid, {
+    createElement(ProjectGrid, { ...NO_ACTIONS,
       projects: [project({ name: "UOS 主线" }), project({ name: "教育行业版" })],
       keyword: "",
       query: "?workspace=desktop-core",
@@ -115,9 +122,30 @@ test("项目列表是网格里的卡片，不是表格行", () => {
   assert.doesNotMatch(html, /<table/);
 });
 
-test("项目卡结构依次是 pc-hd、pc-body（pc-facts + pc-chips）、pc-ft", () => {
+test("整张卡就是入口，卡上没有「...」与单独的「编辑」按钮", () => {
   const html = htmlOf(
     createElement(ProjectGrid, {
+      ...NO_ACTIONS,
+      projects: [project({ name: "UOS 主线" })],
+      keyword: "",
+      query: "?workspace=desktop-core",
+    }),
+  );
+
+  // 卡本身是一个可聚焦的按钮：点它、按回车或空格都开弹窗（MKACG-1010）。
+  assert.match(html, /<div class="project-card" role="button" tabindex="0" aria-label="编辑项目 UOS 主线">/u);
+  // 二级入口取消：卡上不再有指向项目详情页的链接，也没有「...」菜单。
+  assert.doesNotMatch(html, /href="\/projects\//u);
+  assert.doesNotMatch(html, />编辑</u);
+  assert.doesNotMatch(html, /…|\.\.\./u);
+  // 「发起提测」仍留在卡片底部，是卡上唯一的另一个动作。
+  assert.equal(countClass(html, "btn-sm"), 1);
+  assert.match(html, /<a class="btn btn-sm" href="\/releases\/new\?workspace=desktop-core">发起提测<\/a>/u);
+});
+
+test("项目卡结构依次是 pc-hd、pc-body（pc-facts + pc-chips）、pc-ft", () => {
+  const html = htmlOf(
+    createElement(ProjectGrid, { ...NO_ACTIONS,
       projects: [project({ name: "UOS 主线" })],
       keyword: "",
       query: "",
@@ -139,7 +167,7 @@ test("项目卡结构依次是 pc-hd、pc-body（pc-facts + pc-chips）、pc-ft"
 
 test("软件包胶囊数量与项目清单一致，并带顺序号", () => {
   const html = htmlOf(
-    createElement(ProjectGrid, {
+    createElement(ProjectGrid, { ...NO_ACTIONS,
       projects: [
         project({
           name: "UOS 主线",
@@ -170,7 +198,7 @@ test("软件包超过 6 个时只摆 6 个，剩下的折成「还有 N 个」",
   const names = ["a", "b", "c", "d", "e", "f", "g", "h"];
 
   const html = htmlOf(
-    createElement(ProjectGrid, {
+    createElement(ProjectGrid, { ...NO_ACTIONS,
       projects: [
         project({
           name: "包很多的项目",
@@ -196,7 +224,7 @@ test("软件包超过 6 个时只摆 6 个，剩下的折成「还有 N 个」",
 
 test("清单为空的项目写「尚未添加软件包」，不留空胶囊区", () => {
   const html = htmlOf(
-    createElement(ProjectGrid, { projects: [project({ name: "空项目" })], keyword: "", query: "" }),
+    createElement(ProjectGrid, { ...NO_ACTIONS, projects: [project({ name: "空项目" })], keyword: "", query: "" }),
   );
 
   assert.equal(countClass(html, "pc-chips"), 1);
@@ -205,7 +233,7 @@ test("清单为空的项目写「尚未添加软件包」，不留空胶囊区",
 
 test("依赖有环时在胶囊里点名环上的包", () => {
   const html = htmlOf(
-    createElement(ProjectGrid, {
+    createElement(ProjectGrid, { ...NO_ACTIONS,
       projects: [
         project({
           name: "有环项目",
@@ -229,7 +257,7 @@ test("依赖有环时在胶囊里点名环上的包", () => {
 });
 
 test("没有项目时渲染空态，有关键字时空态给「清除筛选」动作", () => {
-  const empty = htmlOf(createElement(ProjectGrid, { projects: [], keyword: "", query: "" }));
+  const empty = htmlOf(createElement(ProjectGrid, { ...NO_ACTIONS, projects: [], keyword: "", query: "" }));
   assert.equal(countClass(empty, "project-grid"), 0);
   assert.equal(countClass(empty, "empty"), 1);
   assert.equal(countClass(empty, "empty-t"), 1);
@@ -237,7 +265,7 @@ test("没有项目时渲染空态，有关键字时空态给「清除筛选」�
   assert.match(empty, /还没有项目/u);
   assert.match(empty, /新建项目/u);
 
-  const noMatch = htmlOf(createElement(ProjectGrid, { projects: [], keyword: "uos", query: "" }));
+  const noMatch = htmlOf(createElement(ProjectGrid, { ...NO_ACTIONS, projects: [], keyword: "uos", query: "" }));
   assert.equal(countClass(noMatch, "empty"), 1);
   assert.match(noMatch, /没有名称含「uos」的项目/u);
   assert.match(noMatch, /清除筛选/u);
