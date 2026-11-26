@@ -26,7 +26,7 @@
  * 不建宽表、不建缓存表（MUST NOT）：每次进页面现算，数据量由「未完结提测」与「最近 5 条」自然收敛。
  */
 
-import { loadBuildQueue } from "../build";
+import { loadBuildQueue, type QueueTaskRow } from "../build";
 import { prisma } from "../db";
 import { findDependencyCycle, formatCycle, type DependencyEdge } from "../packages";
 import { releaseSourceLabel, releaseStatusLabel, releaseStatusTone } from "../releases";
@@ -63,23 +63,14 @@ export type RecentReleaseRow = {
   createdAt: Date;
 };
 
-/** 构建队列摘要的一行：一个包的排队情况。 */
-export type QueueSummaryRow = {
-  snapshotId: string;
-  releaseId: string;
-  /** 提测版本，与项目名一起标识这条提测。 */
-  releaseVersion: string;
-  projectName: string;
-  packageName: string;
-  /** 阶段名，例如「等待依赖」「构建中」。 */
-  stage: string;
-  /** 构建进度，例如「1/2 个架构完成」；还没开始构建时为空。 */
-  progress: string | null;
-  /** 同上进度的百分比（0–100）；没有作业时为空。页面画进度条用它。 */
-  progressPercent: number | null;
-  /** 耗时（毫秒），页面用 `formatDuration` 显示。 */
-  durationMs: number | null;
-};
+/**
+ * 构建队列摘要的一行：一个包的排队情况。
+ *
+ * 就是队列页那一行的全部字段（`QueueTaskRow`）再加一个项目名 —— 工作台只列几条，
+ * 不显示依赖拓扑，但点开作业详情弹窗要看的东西（架构、Topic、耗时、阻断原因）一个都不少，
+ * 所以两页交给同一个组件，形状也就不能各写一份。
+ */
+export type QueueSummaryRow = QueueTaskRow & { projectName: string };
 
 /**
  * 项目提测概况的一行。
@@ -249,17 +240,8 @@ export async function loadDashboard(
     })),
     queueTasks: queue.releases
       .flatMap((release) =>
-        release.tasks.map((task) => ({
-          snapshotId: task.snapshotId,
-          releaseId: release.releaseId,
-          releaseVersion: release.version,
-          projectName: release.projectName,
-          packageName: task.packageName,
-          stage: task.stage,
-          progress: task.progress,
-          progressPercent: task.progressPercent,
-          durationMs: task.durationMs,
-        })),
+// 行形状与队列页一致（`QueueTaskRow`），只多一个项目名：两页的作业详情弹窗用同一个组件。
+        release.tasks.map((task) => ({ ...task, projectName: release.projectName })),
       )
       .slice(0, QUEUE_SUMMARY_LIMIT),
     projects: projectRows.map((project) => {

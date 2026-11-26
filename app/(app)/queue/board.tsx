@@ -12,6 +12,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { DepQueueRow, JobQueueItem } from "@/components/job-detail";
+import { DEP_ROW_TONE, DOT_TONE, shortStageLabel } from "@/components/task-display";
 import { formatDuration } from "@/lib/build";
 import type {
   BuildPollEventRow,
@@ -20,7 +22,6 @@ import type {
   DispatchFailureKind,
   QueueReleaseView,
   QueueTaskRow,
-  StagePhase,
 } from "@/lib/build";
 
 /**
@@ -112,27 +113,7 @@ const DISPATCH_FAILURE_STYLE: Record<
   },
 };
 
-/** 依赖流里一行的状态色：原型只有「已完成 / 失败 / 等待」三档。 */
-const DEP_ROW_TONE: Record<StagePhase, string> = {
-  success: "is-done",
-  failed: "is-fail",
-  waiting: "is-wait",
-  queued: "is-wait",
-  // 构建中既不是等待也不是终态：原型没给这一档配色，保持序号节点的默认样子，
-  // 状态由右侧的色点说明。
-  running: "",
-  other: "is-wait",
-};
-
-/** 状态点的色档。构建中用强调色，与「等待」区分开。 */
-const DOT_TONE: Record<StagePhase, string> = {
-  success: "is-ok",
-  failed: "is-bad",
-  running: "is-run",
-  waiting: "is-wait",
-  queued: "is-wait",
-  other: "is-wait",
-};
+/* 依赖流与状态点的色档在 `components/task-display.ts`：作业详情弹窗也用同一份。 */
 
 /**
  * 一条提测的状态色档。与任务的 `StagePhase` 不是一套取值：
@@ -158,19 +139,6 @@ function formatTime(value: Date | null): string {
 
 function eventLabel(event: string): string {
   return EVENT_LABELS[event] ?? event;
-}
-
-/**
- * 状态点里的文字。
- *
- * `.dot` 是 `white-space: nowrap` 的一行：文字一长，`.dep-row` 的第三列就按最长内容撑开，
- * 中间的包名被挤成一列（375 宽度下实测过）。所以状态点只放状态词 ——
- * 「已阻断（上游 kwin 失败）」截在括号前，括号里的细节留给 `.dep-note` 与作业说明。
- */
-function dotLabel(stage: string): string {
-  const cut = stage.indexOf("（");
-
-  return cut === -1 ? stage : stage.slice(0, cut);
 }
 
 /** 一个包的完整上游名单：拓扑视图要的是全部上游，不只是还没成功的那些。 */
@@ -215,19 +183,30 @@ function depRow(
   index: number,
   byPackage: ReadonlyMap<string, QueueTaskRow>,
 ) {
+  const note = depNote(release, task, byPackage);
+
   return (
-    <div className={`dep-row ${DEP_ROW_TONE[task.phase]}`} key={task.snapshotId}>
+    <DepQueueRow
+      key={task.snapshotId}
+      className={`dep-row ${DEP_ROW_TONE[task.phase]}`}
+      packageName={task.packageName}
+      position={index + 1}
+      upstreams={upstreamsOf(release, task.packageName)}
+      stage={task.stage}
+      phase={task.phase}
+      note={note}
+    >
       <div className="dep-n num" aria-hidden="true">
         {index + 1}
       </div>
       <div>
         <div className="dep-name">{task.packageName}</div>
-        <div className="dep-note">{depNote(release, task, byPackage)}</div>
+        <div className="dep-note">{note}</div>
       </div>
       <div>
-        <span className={`dot ${DOT_TONE[task.phase]}`}>{dotLabel(task.stage)}</span>
+        <span className={`dot ${DOT_TONE[task.phase]}`}>{shortStageLabel(task.stage)}</span>
       </div>
-    </div>
+    </DepQueueRow>
   );
 }
 
@@ -243,7 +222,7 @@ function taskDesc(release: QueueReleaseView, task: QueueTaskRow) {
 
   return (
     <div className="qi-desc">
-      {release.projectName} · {task.progress ?? dotLabel(task.stage)}
+      {release.projectName} · {task.progress ?? shortStageLabel(task.stage)}
       {task.reason === null ? null : <> · {task.reason}</>}
       {style === null ? null : (
         <>
@@ -260,7 +239,7 @@ function queueItem(release: QueueReleaseView, task: QueueTaskRow) {
   const percent = task.progressPercent;
 
   return (
-    <div className="queue-item" key={task.snapshotId}>
+    <JobQueueItem job={task} key={task.snapshotId} className="queue-item is-clickable">
       <div className="qi-ico" aria-hidden="true">
         {ICONS.box}
       </div>
@@ -281,9 +260,9 @@ function queueItem(release: QueueReleaseView, task: QueueTaskRow) {
       </div>
       <div className="qi-meta">
         <b>{formatDuration(task.durationMs)}</b>
-        <small>{dotLabel(task.stage)}</small>
+        <small>{shortStageLabel(task.stage)}</small>
       </div>
-    </div>
+    </JobQueueItem>
   );
 }
 

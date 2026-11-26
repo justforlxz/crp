@@ -102,11 +102,21 @@ function LogoutButton() {
   );
 }
 
-/** 侧栏底部的账号区：头像、账号名、角色与退出登录。 */
+/**
+ * 侧栏底部的账号区：头像、账号名、角色与退出登录。
+ *
+ * 账号块本身是**去凭据页的入口**（`/settings/credentials`）：CRP 与 Gerrit 凭据按人存放，
+ * 配置与验证都在那一页（MKACG-986）。原型把它画成一个弹窗，是因为原型只有一个 HTML 文件；
+ * 实现里那一页已经存在，这里只补入口，不再把表单复制一份进来（MKACG-1012）。
+ */
 function SidebarAccount({ account }: { account: SidebarAccountInfo }) {
   return (
     <div className="sidebar-foot" data-style-anchor="sidebar.account">
-      <div className="account" title={account.email}>
+      <Link
+        className="account"
+        href="/settings/credentials"
+        title={`${account.email} · 我的账号`}
+      >
         <span className="avatar" aria-hidden="true">
           {avatarText(account)}
         </span>
@@ -114,7 +124,7 @@ function SidebarAccount({ account }: { account: SidebarAccountInfo }) {
           <div className="account-name">{account.displayName}</div>
           <div className="account-role">{account.roleLabel}</div>
         </div>
-      </div>
+      </Link>
       <LogoutButton />
     </div>
   );
