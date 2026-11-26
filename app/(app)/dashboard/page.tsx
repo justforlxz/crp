@@ -30,6 +30,7 @@ import { listWorkspacesForAccount } from "@/lib/auth/store";
 import { pickActiveWorkspace } from "@/lib/auth/workspaces";
 import { formatDuration } from "@/lib/build";
 import { loadDashboard, type DashboardCards } from "@/lib/stats";
+import { showsWorkspaceSwitcher } from "../workspaceScope";
 import { InviteMemberForm, WorkspaceSwitcher } from "./controls";
 
 export const metadata: Metadata = { title: "工作台 · CRP 提测平台" };
@@ -159,16 +160,18 @@ export default async function DashboardPage() {
         </div>
       ) : (
         <div className="stack">
-          <div className="filters" data-style-anchor="dashboard.workspace-bar">
-            <WorkspaceSwitcher
-              workspaces={workspaces.map((workspace) => ({
-                id: workspace.id,
-                name: workspace.name,
-                role: workspace.role,
-              }))}
-              activeId={active.id}
-            />
-          </div>
+          {showsWorkspaceSwitcher(workspaces) ? (
+            <div className="filters" data-style-anchor="dashboard.workspace-bar">
+              <WorkspaceSwitcher
+                workspaces={workspaces.map((workspace) => ({
+                  id: workspace.id,
+                  name: workspace.name,
+                  role: workspace.role,
+                }))}
+                activeId={active.id}
+              />
+            </div>
+          ) : null}
 
           <div className="stats" data-style-anchor="dashboard.stats">
             {statsOf(stats.cards).map((card) => (

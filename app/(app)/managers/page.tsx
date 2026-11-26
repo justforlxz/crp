@@ -1,14 +1,18 @@
 /**
- * 项目经理页（MKACG-971 / MKACG-984 按原型重做）。
+ * 项目经理页（MKACG-971 / MKACG-984 按原型重做，MKACG-1017 去掉工作区分组）。
  *
  * 分区照 `.agents/spec/design/prototype.html` 的项目经理页与 `design.md` 第七节：
  *
  *   `.manager-grid` 经理卡 → `.panel` 清单表（头部「新建项目经理」按钮打开 `.modal` 弹窗）
  *
- * 卡片与项目页共用 `ManagerGrid`，两处的「名下项目」数来自同一次查询（FUNC-13）。
- * 清单表承担改名这类逐行操作，卡片只负责扫读。
+ * 卡片与项目页共用同构的 `ManagerGrid`，两处的第二行都是邮箱（MKACG-1017）。
+ * 清单表四列：姓名 / 邮箱 / 名下项目 / 进行中提测 —— 没有「工作区」「平台账号」「改名」列；
+ * 改名与邮箱都在点卡片打开的编辑弹窗里。
  *
- * 字段全部来自 `listManagers()` 已有的数据（姓名、平台账号是否绑定、名下项目数），
+ * 工作区只在账号属于两个以上时才出现切换器（MKACG-1017）：工作区是数据层的多租户边界，
+ * 不是界面上的分组维度，只有一个工作区时页面上不写工作区名。
+ *
+ * 字段全部来自 `listManagers()` 已有的数据（姓名、邮箱、名下项目数、进行中提测数），
  * 不为这张页面新增查询字段。
  */
 
@@ -17,9 +21,8 @@ import Link from "next/link";
 import { PageShell } from "@/components/page-shell";
 import { Toast } from "@/components/toast";
 import { listManagers } from "@/lib/projects";
-import { resolveWorkspaceScope } from "../workspaceScope";
-import { renameManagerAction } from "./actions";
-import { ManagerGrid } from "./managerGrid";
+import { resolveWorkspaceScope, showsWorkspaceSwitcher } from "../workspaceScope";
+import { ManagerGridWithDialog } from "./managerGridDialog";
 import { NewManagerDialog } from "./newManagerDialog";
 
 // 项目经理与项目数随配置变化，页面不做静态化。
@@ -42,6 +45,8 @@ export default async function ManagersPage({ searchParams }: ManagersPageProps) 
   }
 
   const managers = await listManagers(scope.active.id);
+  const workspaceId = scope.active.id;
+  const workspaceSlug = scope.active.slug;
 
   return (
     <PageShell title="项目经理">
@@ -58,7 +63,11 @@ export default async function ManagersPage({ searchParams }: ManagersPageProps) 
           />
         </div>
 
-        <ManagerGrid managers={managers} />
+        <ManagerGridWithDialog
+          managers={managers}
+          workspaceId={workspaceId}
+          workspaceSlug={workspaceSlug}
+        />
 
         <div className="panel">
           <div className="panel-hd">
@@ -68,28 +77,31 @@ export default async function ManagersPage({ searchParams }: ManagersPageProps) 
             <Link className="text-link" href={`/projects${scope.query}`}>
               返回项目列表 →
             </Link>
-            <NewManagerDialog workspaceId={scope.active.id} workspaceSlug={scope.active.slug} />
+            <NewManagerDialog workspaceId={workspaceId} workspaceSlug={workspaceSlug} />
           </div>
 
-          <form method="get" action="/managers" className="filters">
-            <select
-              className="select"
-              name="workspace"
-              defaultValue={scope.active.slug}
-              aria-label="工作区"
-            >
-              {scope.workspaces.map((workspace) => (
-                <option key={workspace.id} value={workspace.slug}>
-                  {workspace.name}
-                </option>
-              ))}
-            </select>
-            <button type="submit" className="btn btn-sm">
-              切换工作区
-            </button>
-            <div className="spacer" />
-            <span className="result-n">共 {managers.length} 位项目经理</span>
-          </form>
+          {showsWorkspaceSwitcher(scope.workspaces) ? (
+            <form method="get" action="/managers" className="filters">
+              <select
+                className="select"
+                name="workspace"
+                defaultValue={workspaceSlug}
+                aria-label="工作区"
+              >
+                {scope.workspaces.map((workspace) => (
+                  <option key={workspace.id} value={workspace.slug}>
+                    {workspace.name}
+                  </option>
+                ))}
+              </select>
+              <button type="submit" className="btn btn-sm">
+                切换工作区
+              </button>
+              <div className="spacer" />
+              <span className="result-n">共 {managers.length} 位项目经理</span>
+            </form>
+          ) : null}
+
           {managers.length === 0 ? (
             <div className="panel-bd">
               <div className="empty">
@@ -104,9 +116,9 @@ export default async function ManagersPage({ searchParams }: ManagersPageProps) 
                 <thead>
                   <tr>
                     <th>姓名</th>
-                    <th>平台账号</th>
+                    <th>邮箱</th>
                     <th className="num">名下项目</th>
-                    <th>改名</th>
+                    <th className="num">进行中提测</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -115,29 +127,11 @@ export default async function ManagersPage({ searchParams }: ManagersPageProps) 
                       <td>
                         <strong>{manager.name}</strong>
                       </td>
-                      <td>{manager.userId === null ? "未绑定账号" : "已绑定账号"}</td>
-                      <td className="num">{manager.projectCount}</td>
-                      <td>
-                        <form action={renameManagerAction} className="tag-actions">
-                          <input type="hidden" name="managerId" value={manager.id} />
-                          <input
-                            type="hidden"
-                            name="workspaceSlug"
-                            value={scope.active?.slug ?? ""}
-                          />
-                          <input
-                            className="input-sm"
-                            name="name"
-                            required
-                            defaultValue={manager.name}
-                            aria-label={`把 ${manager.name} 改名`}
-                            size={12}
-                          />
-                          <button type="submit" className="btn btn-sm">
-                            改名
-                          </button>
-                        </form>
+                      <td className="col-mono">
+                        {manager.email === null || manager.email === "" ? "未填写邮箱" : manager.email}
                       </td>
+                      <td className="num">{manager.projectCount}</td>
+                      <td className="num">{manager.activeReleaseCount}</td>
                     </tr>
                   ))}
                 </tbody>

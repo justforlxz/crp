@@ -22,7 +22,7 @@ import { listWebhookEndpoints } from "@/lib/webhook/endpoints";
 import { isWebhookEventType, WEBHOOK_EVENT_LABELS } from "@/lib/webhook/events";
 import { listRecentDeliveries } from "@/lib/webhook/service";
 
-import { resolveWorkspaceScope } from "../workspaceScope";
+import { resolveWorkspaceScope, showsWorkspaceSwitcher } from "../workspaceScope";
 import { sendTestEventAction, toggleEndpointAction } from "./actions";
 import { NewEndpointDialog } from "./newEndpointDialog";
 
@@ -92,27 +92,37 @@ export default async function WebhooksPage({ searchParams }: WebhooksPageProps) 
             <NewEndpointDialog workspaceId={workspace.id} workspaceSlug={workspace.slug} />
           </div>
 
-          <form method="get" action="/webhooks" className="filters">
-            <select
-              className="select"
-              name="workspace"
-              defaultValue={workspace.slug}
-              aria-label="工作区"
-            >
-              {scope.workspaces.map((item) => (
-                <option key={item.id} value={item.slug}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-            <button type="submit" className="btn btn-sm">
-              切换工作区
-            </button>
-            <div className="spacer" />
-            <span className="result-n">
-              共 {endpoints.length} 个端点，显示最近 {deliveries.length} 条投递
-            </span>
-          </form>
+          {showsWorkspaceSwitcher(scope.workspaces) ? (
+            <form method="get" action="/webhooks" className="filters">
+              <select
+                className="select"
+                name="workspace"
+                defaultValue={workspace.slug}
+                aria-label="工作区"
+              >
+                {scope.workspaces.map((item) => (
+                  <option key={item.id} value={item.slug}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+              <button type="submit" className="btn btn-sm">
+                切换工作区
+              </button>
+              <div className="spacer" />
+              <span className="result-n">
+                共 {endpoints.length} 个端点，显示最近 {deliveries.length} 条投递
+              </span>
+            </form>
+          ) : (
+            // 只有一个工作区时没有可切换的，但这两个计数还得留着：它们是这一页唯一的合计。
+            <div className="filters">
+              <div className="spacer" />
+              <span className="result-n">
+                共 {endpoints.length} 个端点，显示最近 {deliveries.length} 条投递
+              </span>
+            </div>
+          )}
 
           {endpoints.length === 0 ? (
             <div className="empty">

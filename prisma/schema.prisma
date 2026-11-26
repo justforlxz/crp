@@ -250,6 +250,8 @@ model ProjectManager {
   workspaceId String    @map("workspace_id")
   userId      String?   @map("user_id")
   name        String
+  /// 联系邮箱。项目经理卡与清单表显示它；未填时界面显示「未填写邮箱」。
+  email       String?
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 

@@ -115,8 +115,9 @@ test("订阅事件是 .pick + aria-pressed，不是裸 checkbox", () => {
 test("两个表单都用 .field + .label 包住控件", () => {
   assert.equal(countClass(WEBHOOK_FORM, "field"), 5);
   assert.equal(countClass(WEBHOOK_FORM, "label"), 5);
-  assert.equal(countClass(MANAGER_FORM, "field"), 1);
-  assert.equal(countClass(MANAGER_FORM, "label"), 1);
+  // 项目经理表单只有姓名与邮箱两个输入，没有工作区选择（MKACG-1017）。
+  assert.equal(countClass(MANAGER_FORM, "field"), 2);
+  assert.equal(countClass(MANAGER_FORM, "label"), 2);
 });
 
 test("弹窗挂在 .modal-root 里，压得住表格吸顶表头", () => {

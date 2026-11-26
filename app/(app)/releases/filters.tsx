@@ -26,6 +26,8 @@ export type FilterOption = { value: string; label: string };
 export type ReleaseFiltersProps = {
   /** 工作区下拉的候选项。 */
   workspaces: FilterOption[];
+  /** 是否渲染工作区下拉：账号属于两个以上工作区时才出现（MKACG-1017）。 */
+  showWorkspace: boolean;
   /** 项目下拉的候选项；第一个是「全部项目」。 */
   projects: FilterOption[];
   /** 当前条件，来自网址。 */
@@ -50,6 +52,7 @@ function csvFilename(): string {
 
 export function ReleaseFilters({
   workspaces,
+  showWorkspace,
   projects,
   workspace,
   project,
@@ -107,19 +110,21 @@ export function ReleaseFilters({
         />
       </label>
 
-      <select
-        className="select"
-        aria-label="工作区"
-        value={workspace}
-        disabled={pending}
-        onChange={(event) => setParam("workspace", event.target.value)}
-      >
-        {workspaces.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+      {showWorkspace ? (
+        <select
+          className="select"
+          aria-label="工作区"
+          value={workspace}
+          disabled={pending}
+          onChange={(event) => setParam("workspace", event.target.value)}
+        >
+          {workspaces.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      ) : null}
 
       <select
         className="select"

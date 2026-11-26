@@ -53,3 +53,9 @@ export async function resolveWorkspaceScope(
     query: active === null ? "" : `?workspace=${encodeURIComponent(active.slug)}`,
   };
 }
+
+/**
+ * 「是否渲染工作区切换器」的唯一一份判定活在 `lib/auth/workspaces.ts` 里（纯函数，能单测）。
+ * 这里原样转出，页面继续只从本文件取受保护页面共用的东西。
+ */
+export { showsWorkspaceSwitcher } from "@/lib/auth/workspaces";

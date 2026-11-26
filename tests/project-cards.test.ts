@@ -80,8 +80,10 @@ function chip(name: string, deps: string[] = []) {
 function manager(overrides: Partial<ManagerCardData> & { name: string }): ManagerCardData {
   return {
     id: `manager-${overrides.name}`,
+    email: null,
     userId: null,
     projectCount: 0,
+    activeReleaseCount: 0,
     ...overrides,
   };
 }
@@ -275,7 +277,7 @@ test("项目经理是网格里的一张卡一个人", () => {
   const html = htmlOf(
     createElement(ManagerGrid, {
       managers: [
-        manager({ name: "林小志", projectCount: 2, userId: "user-1" }),
+        manager({ name: "林小志", projectCount: 2, email: "linxiaozhi@uniontech.com" }),
         manager({ name: "郭垚", projectCount: 1 }),
       ],
     }),
@@ -288,14 +290,17 @@ test("项目经理是网格里的一张卡一个人", () => {
   assert.equal(countClass(html, "manager-n"), 2);
   assert.match(html, /林小志/u);
   assert.match(html, /<b class="num">2<\/b><span>个项目<\/span>/u);
-  assert.match(html, /已绑定平台账号/u);
-  assert.match(html, /未绑定平台账号/u);
+  // 第二行是邮箱，不是绑定状态，也不是工作区（MKACG-1017）。
+  assert.match(html, /linxiaozhi@uniontech\.com/u);
+  assert.match(html, /未填写邮箱/u);
+  assert.doesNotMatch(html, /已绑定平台账号/u);
+  assert.doesNotMatch(html, /未绑定平台账号/u);
   assert.doesNotMatch(html, /<table/);
 });
 
 test("项目页顶部的经理卡与项目经理页结构一致，两张卡同样渲染", () => {
   const managers = [
-    manager({ name: "林小志", projectCount: 2, userId: "user-1" }),
+    manager({ name: "林小志", projectCount: 2, email: "linxiaozhi@uniontech.com" }),
     manager({ name: "郭垚", projectCount: 1 }),
   ];
 

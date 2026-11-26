@@ -404,7 +404,10 @@ async function createManagerAndProject(
   step("1. 建项目经理");
 
   const managerName = `演练经理-${options.stamp}`;
-  const manager = await createManager(env.workspaceId, { name: managerName });
+  const manager = await createManager(env.workspaceId, {
+    name: managerName,
+    email: "e2e-manager@uniontech.com",
+  });
   log(`项目经理：${managerName}（${manager.id}）`);
 
   step("2. 建项目");

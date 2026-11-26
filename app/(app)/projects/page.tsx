@@ -18,7 +18,7 @@ import { PageShell } from "@/components/page-shell";
 import { listPackages } from "@/lib/packages";
 import { listManagers, listProjectCards, listBaselineChoices } from "@/lib/projects";
 import { loadReleaseList } from "@/lib/releases";
-import { resolveWorkspaceScope } from "../workspaceScope";
+import { resolveWorkspaceScope, showsWorkspaceSwitcher } from "../workspaceScope";
 import { filterProjectsByName } from "./filter";
 import { groupReleasesByProject, type PackageChoice } from "./modalModel";
 import { ProjectsView } from "./projectsView";
@@ -66,15 +66,21 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
   }));
 
   const releasesByProject = groupReleasesByProject(releaseList.rows);
+
+  // 只有一个工作区时不给筛选条传候选项：不渲染下拉，页面上（含传给客户端的 props）
+  // 也就不会出现工作区名（MKACG-1017）。
+  const showWorkspace = showsWorkspaceSwitcher(scope.workspaces);
+  const workspaceChoices = showWorkspace
+    ? scope.workspaces.map((workspace) => ({ slug: workspace.slug, name: workspace.name }))
+    : [];
+
   return (
     <PageShell title="项目">
       <ProjectsView
         workspaceId={scope.active.id}
         workspaceSlug={scope.active.slug}
-        workspaces={scope.workspaces.map((workspace) => ({
-          slug: workspace.slug,
-          name: workspace.name,
-        }))}
+        workspaces={workspaceChoices}
+        showWorkspace={showWorkspace}
         query={scope.query}
         projects={visible}
         totalCount={projects.length}

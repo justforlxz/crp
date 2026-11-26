@@ -31,6 +31,8 @@ export type ProjectsViewProps = {
   workspaceSlug: string;
   /** 这个账号能进的工作区，写在筛选条的下拉里。 */
   workspaces: readonly { slug: string; name: string }[];
+  /** 是否渲染工作区下拉：账号属于两个以上工作区时才出现（MKACG-1017）。 */
+  showWorkspace: boolean;
   /** 带当前工作区的查询串，链接与「清空条件」都用它。 */
   query: string;
   /** 工作区里的全部项目（已按搜索结果过滤过）。 */
@@ -55,6 +57,7 @@ export function ProjectsView({
   workspaceId,
   workspaceSlug,
   workspaces,
+  showWorkspace,
   query,
   projects,
   totalCount,
@@ -130,18 +133,20 @@ export function ProjectsView({
               />
             </label>
 
-            <select
-              className="select"
-              name="workspace"
-              defaultValue={workspaceSlug}
-              aria-label="工作区"
-            >
-              {workspaces.map((workspace) => (
-                <option key={workspace.slug} value={workspace.slug}>
-                  {workspace.name}
-                </option>
-              ))}
-            </select>
+            {showWorkspace ? (
+              <select
+                className="select"
+                name="workspace"
+                defaultValue={workspaceSlug}
+                aria-label="工作区"
+              >
+                {workspaces.map((workspace) => (
+                  <option key={workspace.slug} value={workspace.slug}>
+                    {workspace.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
 
             <button type="submit" className="btn btn-sm">
               筛选

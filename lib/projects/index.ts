@@ -37,9 +37,9 @@ export {
   listProjectCards,
   ProjectError,
   removeProjectSoftware,
-  renameManager,
+  updateManager,
   softDeleteProject,
   updateProject,
   updateProjectSoftwareBranch,
 } from "./service";
-export type { ProjectCard } from "./service";
+export type { ManagerCardData, ProjectCard } from "./service";
