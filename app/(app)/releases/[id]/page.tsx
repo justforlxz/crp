@@ -1,27 +1,31 @@
 /**
- * 提测详情（A13 / MKACG-984 按原型重做）。
+ * 提测详情（A13 / MKACG-984 按原型重做，MKACG-1011 补四个整单操作与行级重投）。
  *
  * 结构照 `.agents/spec/design/prototype.html` 的提测详情与 `design.md` 第七节：
  *
- *   `.summary-strip`（4 个 `.summary-cell`，依次是提测记录、状态、基线、CRP 主题）
+ *   顶栏：`提测记录 / 25.0.3 · 项目名` 面包屑（`.crumb`）+ 三件整单操作（刷新仓库记录 / 导出快照 /
+ *     撤回），没有「返回列表」按钮（`design.md` 第九节）
+ *   → `.summary-strip`（4 个 `.summary-cell`，依次是提测记录、状态、基线、CRP 主题）
  *   → 仓库记录 `.panel` + `table.grid`
- *   → 软件包快照 `.panel` + `table.grid`
+ *   → 软件包快照 `.panel` + `table.grid`（最后一列「操作」是行级重新投递）
  *   → 构建状态 `.panel`
  *   → `.detail-cols` 双栏（左「提测信息」用 `.project-card` 结构，右「状态时间线」用
  *     `.risk`（条件）+ `.timeline`）
  *   → `.tip`
- *   → 危险操作 `.panel`
  *
  * 这一页只挂 class，不写样式、不写内联 `style`：样式表由 MKACG-983 按原型重写。
  *
- * 两条硬约束落在页面上：
+ * 三条硬约束落在页面上：
  *
- * - 快照表只读（MUST NOT）：这里没有任何改快照的入口，唯一的变更路径是「更新提测」，
- *   它走 A17 的追加轮次；
+ * - 快照表只读（MUST NOT）：唯一的变更路径是「更新提测」（走 A17 的追加轮次）与行级
+ *   「重新投递」（只重投那一个包，不改快照参数）；
  * - 「更新提测」在转测之后置灰并给出原因（AC5）：原因是 A17 判定的同一句话，
- *   页面不解自己的版本。同一句话也进 `.risk` —— 页面上「现在改不了」的原因只有一处来源。
+ *   页面不解自己的版本。同一句话也进 `.risk` —— 页面上「现在改不了」的原因只有一处来源；
+ * - 撤回被锁时按钮禁用，原因**常驻**在 `.risk`（不做 hover 提示）。撤回按来源分流：
+ *   `platform` → 「取消提测」（删平台记录 + 放弃主题），`imported` → 「放弃主题」（只放弃主题，
+ *   一条 Release 都不删）。
  *
- * `.risk` 只在真有问题时渲染（FUNC-08）：有软件包没构建通过，或者这条提测现在改不了。
+ * `.risk` 只在真有问题时渲染（FUNC-08）：有软件包没构建通过，或者这条提测现在改不了、撤不回。
  * 包为 0、没有构建记录的提测不会出现空壳。
  *
  * 跨工作区一律 404：按 id 直接查库，所以这一处判断就是跨工作区读取的唯一关口。
@@ -30,9 +34,10 @@ import Link from "next/link";
 
 import { notFound } from "next/navigation";
 
+import { Icon } from "@/components/icons";
 import { PageShell } from "@/components/page-shell";
 import { Toast } from "@/components/toast";
-import { findReleaseScope } from "@/lib/build";
+import { findReleaseScope, loadReleaseBuildStatus } from "@/lib/build";
 import { getProject } from "@/lib/projects";
 import {
   abandonTopicLockReason,
@@ -53,11 +58,14 @@ import {
   abandonTopicAction,
   cancelReleaseAction,
   refreshRepositoryRecordsAction,
+  retryPackageAction,
 } from "./actions";
 import { BuildStatusSection } from "./buildStatusSection";
 import { CancelReleaseForm } from "./cancelReleaseForm";
 import { CopyValue } from "./copyValue";
 import { buildRiskItems, buildTimeline, formatTime, statusDotTone } from "./detailView";
+import { RetryPackageForm } from "./retryPackageForm";
+import { packageActionState, UNKNOWN_PACKAGE_STAGE } from "./retryState";
 
 // CRP 进度与构建状态一直在变，页面不做静态化。
 export const dynamic = "force-dynamic";
@@ -138,35 +146,103 @@ export default async function ReleaseDetailPage({
   );
 
   const commitErrors = detail.packages.filter((item) => item.commitError !== null);
-  // 危险操作按来源只显示一个：平台创建的走「取消提测」，从 CRP 导入的才显示「放弃提测主题」。
+  // 快照表「操作」列要逐包的阶段：这里**另读一次**（构建状态区块自己也会读一遍，两次都是
+  // `loadReleaseBuildStatus`，同一份口径）。两处各查一次库，但判断不会分叉。
+  const buildStatus = await loadReleaseBuildStatus(detail.releaseId);
+  const taskByName = new Map(
+    (buildStatus?.tasks ?? []).map((task) => [task.packageName, task] as const),
+  );
+  // 撤回按来源只出现一个：平台创建的走「取消提测」，从 CRP 导入的才显示「放弃主题」。
   // 能不能点、不能点时为什么，两个分支各只有一个纯函数判定，页面与服务端用的是同一份。
   const abandonLockReason = abandonTopicLockReason(detail);
   const cancelLockReason = cancelReleaseLockReason(detail);
   // 只有真的要渲染确认框时才有下面两次读取：别的读路径（例如导出 CSV）不必付这次往返与这条查询。
-  const needDangerConfirmation =
+  const needRetractConfirmation =
     detail.source === "imported" ? abandonLockReason === null : cancelLockReason === null;
   // 确认框要写明主题名；读不到就退回本地记录的提测版本。
-  const dangerTopicName = needDangerConfirmation
+  const retractTopicName = needRetractConfirmation
     ? await loadCrpTopicName(detail.crpTopicId, undefined)
     : null;
   // 取消提测会逐个删 Release，确认框必须写清删几条；口径与 cancelRelease 一致，只数当前轮。
   const cancelReleaseCount =
-    needDangerConfirmation && detail.source !== "imported"
+    needRetractConfirmation && detail.source !== "imported"
       ? await loadCancelableReleaseCount(detail.releaseId)
       : 0;
 
+  // 撤回按来源分流：平台创建的走「取消提测」，从 CRP 导入的走「放弃主题」（只放弃，删不到别人的记录）。
+  const retractLabel = detail.source === "imported" ? "放弃主题" : "取消提测";
+  const retractLockReason = detail.source === "imported" ? abandonLockReason : cancelLockReason;
+
   // 时间线与风险提示的判定都在 `detailView.ts` 里（纯函数，单测直接喂数据）。
+  // 撤回被锁的原因也走这里：它要常驻显示在时间线区域，不是 hover 提示。
   const timeline = buildTimeline(detail);
-  const riskItems = buildRiskItems(detail);
+  const riskItems = buildRiskItems({
+    ...detail,
+    retract:
+      retractLockReason === null ? null : { label: retractLabel, reason: retractLockReason },
+  });
   const statusLabel = releaseStatusLabel(detail.status);
 
   return (
     <PageShell
-      title="提测详情"
+      title={
+        // 面包屑代替标题（`design.md` 第九节「详情页返回」）：顶栏这一格放面包屑，页面上就没有
+        // 「返回列表」按钮了。外壳在 `components/page-shell.tsx`，另一张单在改它，这里只用已有槽位。
+        <span className="crumb">
+          <Link className="text-link" href={`/releases${scope.query}`}>
+            提测记录
+          </Link>
+          <span className="crumb-sep" aria-hidden="true">
+            /
+          </span>
+          <b>
+            {detail.version} · {detail.project.name}
+          </b>
+        </span>
+      }
       actions={
-        <a className="btn btn-primary" href={`/api/releases/${detail.releaseId}/export`}>
-          导出提测单
-        </a>
+        <>
+          {/* 刷新仓库记录：点了直接查 CRP，不做二次确认（design.md 第九节）。 */}
+          <form action={refreshRepositoryRecordsAction}>
+            <input type="hidden" name="releaseId" value={detail.releaseId} />
+            <button type="submit" className="btn">
+              <Icon name="refresh" />
+              刷新仓库记录
+            </button>
+          </form>
+          <a className="btn" href={`/api/releases/${detail.releaseId}/export`}>
+            <Icon name="download" />
+            导出快照
+          </a>
+          {retractLockReason === null ? (
+            detail.source === "imported" ? (
+              <AbandonTopicForm
+                label={retractLabel}
+                releaseId={detail.releaseId}
+                topicId={detail.crpTopicId ?? ""}
+                topicName={retractTopicName ?? detail.version}
+                packageCount={detail.packages.length}
+                hasCrpReleases={detail.repositoryRecords.length > 0}
+                action={abandonTopicAction}
+              />
+            ) : (
+              <CancelReleaseForm
+                label={retractLabel}
+                releaseId={detail.releaseId}
+                topicId={detail.crpTopicId}
+                topicName={retractTopicName ?? detail.version}
+                releaseCount={cancelReleaseCount}
+                action={cancelReleaseAction}
+              />
+            )
+          ) : (
+            // 锁定时按钮禁用，原因常驻在时间线区域的 `.risk`（design.md 第九节）。
+            <button type="button" className="btn btn-danger" disabled>
+              <Icon name="x" />
+              {retractLabel}
+            </button>
+          )}
+        </>
       }
     >
       <div className="stack">
@@ -219,11 +295,6 @@ export default async function ReleaseDetailPage({
           <div className="panel-hd">
             <h2>仓库记录</h2>
             <span className="hint">每个软件包在当前提测里对应一条，最近一次同步：{formatTime(detail.repositorySyncedAt)}</span>
-            <div className="spacer" />
-            <form action={refreshRepositoryRecordsAction}>
-              <input type="hidden" name="releaseId" value={detail.releaseId} />
-              <button type="submit" className="btn btn-sm">刷新</button>
-            </form>
           </div>
           {detail.repositoryRecords.length === 0 ? (
             <div className="panel-bd">
@@ -308,11 +379,15 @@ export default async function ReleaseDetailPage({
                       {column}
                     </th>
                   ))}
+                  <th className="nowrap">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {detail.packages.map((item, index) => {
                   const cells = snapshotRowCells(item, index + 1);
+                  // 能不能单独重投由逐包阶段判定（与构建状态区块同一份读取），不能时写下原因。
+                  const stage = taskByName.get(item.packageName) ?? UNKNOWN_PACKAGE_STAGE;
+                  const action = packageActionState(stage);
 
                   return (
                     <tr key={item.packageName}>
@@ -335,6 +410,22 @@ export default async function ReleaseDetailPage({
                           </td>
                         );
                       })}
+                      <td>
+                        {action.retryable ? (
+                          <RetryPackageForm
+                            releaseId={detail.releaseId}
+                            packageName={item.packageName}
+                            action={retryPackageAction}
+                          />
+                        ) : (
+                          <>
+                            <button type="button" className="btn btn-sm" disabled>
+                              重新投递
+                            </button>
+                            <span className="cell-sub">{action.reason}</span>
+                          </>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -344,7 +435,8 @@ export default async function ReleaseDetailPage({
           <div className="panel-bd">
             <p>
               这张表只读；要改只能走「更新提测」，改出来的结果是新一轮快照，历史轮次不动。
-              「导出提测单」的列与这张表一致，行数与软件包数一致。
+              「操作」列的「重新投递」一次只重投这一个包；顶栏的「导出快照」按这张表的包逐个
+              导出一行，另外带上 CRP 仓库版本、架构与构建结果。
             </p>
             {commitErrors.length === 0 ? null : (
               <div className="tip">
@@ -536,70 +628,6 @@ export default async function ReleaseDetailPage({
           </div>
         </div>
 
-        <div className="panel" data-style-anchor="release-detail.danger-zone">
-          <div className="panel-hd">
-            <h2>危险操作</h2>
-            <span className="hint">二次确认后才会执行，不能撤销</span>
-          </div>
-          <div className="panel-bd">
-            {detail.source === "imported" ? (
-              <>
-                <p>
-                  「放弃提测主题」把 CRP 上的这个 Topic 标记为「已放弃」，用来就地清理演练与验收留下的主题。
-                  它与投递页的「取消提测」是两个动作：放弃主题一条 Release 都不删，也不改任何快照；
-                  取消提测才会逐个删 Release。
-                </p>
-                <p>
-                  放弃之后不能撤销，CRP 上也不会再接受往这个主题里投递。已经转测（CRP 工作流进度 ≥ 20）的
-                  主题不能放弃，服务端会再判一次，不只靠这里的禁用。
-                </p>
-                {abandonLockReason === null ? (
-                  <AbandonTopicForm
-                    releaseId={detail.releaseId}
-                    topicId={detail.crpTopicId ?? ""}
-                    topicName={dangerTopicName ?? detail.version}
-                    packageCount={detail.packages.length}
-                    hasCrpReleases={detail.repositoryRecords.length > 0}
-                    action={abandonTopicAction}
-                  />
-                ) : (
-                  <p>
-                    <button type="button" className="btn btn-danger" disabled>
-                      放弃提测主题
-                    </button>
-                    {"　"}
-                    <span role="status">{abandonLockReason}</span>
-                  </p>
-                )}
-              </>
-            ) : (
-              <>
-                <p>
-                  这条提测是在平台上创建的，它自己的 Release 要连同主题一起清理，走「取消提测」。
-                  「放弃提测主题」只用于从 CRP 导入的提测：导入主题里的 Release 是别人投的，不能删。
-                </p>
-                {/* 与上面那一支互斥：平台创建的提测不显示「放弃提测主题」，只显示「取消提测」。 */}
-                {cancelLockReason === null ? (
-                  <CancelReleaseForm
-                    releaseId={detail.releaseId}
-                    topicId={detail.crpTopicId}
-                    topicName={dangerTopicName ?? detail.version}
-                    releaseCount={cancelReleaseCount}
-                    action={cancelReleaseAction}
-                  />
-                ) : (
-                  <p>
-                    <button type="button" className="btn btn-danger" disabled>
-                      取消提测
-                    </button>
-                    {"　"}
-                    <span role="status">{cancelLockReason}</span>
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-        </div>
       </div>
     </PageShell>
   );

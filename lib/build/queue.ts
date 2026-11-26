@@ -391,6 +391,10 @@ export type BuildStatusTaskView = {
   releaseVersion: string;
   /** 阶段名，与队列页同一套说法。 */
   stage: string;
+  /** 阶段分类（与队列页统计卡同一份），详情页判定「能不能单独重投」用它。 */
+  phase: StagePhase;
+  /** 被哪个上游阻断；不是被阻断的为 `null`。 */
+  blockedBy: string | null;
   /** CRP 侧 Release ID；还没投递时为空。 */
   crpReleaseId: string | null;
   /** Shuttle 侧构建任务 ID；还没查到时为空。 */
@@ -494,19 +498,24 @@ export async function loadReleaseBuildStatus(
       const waitingFor = (upstreams.get(snapshot.packageName) ?? []).filter(
         (name) => statusByName.get(name) !== "success",
       );
+      // 阻断原因与阶段名用的是同一个上游包名，算一次就好。
+      const blockedBy =
+        blockedBySnapshotId === null
+          ? null
+          : (packageNameBySnapshotId.get(blockedBySnapshotId) ?? "未知上游");
+      const stage = queueStageOf({
+        snapshotStatus: snapshot.status,
+        upstreamReady: waitingFor.length === 0,
+        blockedBy,
+      });
 
       return {
         snapshotId: snapshot.id,
         packageName: snapshot.packageName,
         releaseVersion: snapshot.releaseVersion,
-        stage: queueStageOf({
-          snapshotStatus: snapshot.status,
-          upstreamReady: waitingFor.length === 0,
-          blockedBy:
-            blockedBySnapshotId === null
-              ? null
-              : (packageNameBySnapshotId.get(blockedBySnapshotId) ?? "未知上游"),
-        }).name,
+        stage: stage.name,
+        phase: stage.phase,
+        blockedBy,
         crpReleaseId: snapshot.repositoryRecord?.crpReleaseId ?? null,
         shuttleTaskId: snapshot.buildTask?.shuttleTaskId ?? null,
         arches: (snapshot.buildTask?.jobs ?? []).map((job) => ({

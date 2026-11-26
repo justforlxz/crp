@@ -200,12 +200,20 @@ export function buildTimeline(detail: TimelineInput): DetailTimelineEntry[] {
   ];
 }
 
-type RiskInput = Pick<ReleaseDetail, "status" | "lockReason">;
+type RiskInput = Pick<ReleaseDetail, "status" | "lockReason"> & {
+  /**
+   * 撤回按钮被锁时的样子：按钮文案 + 不能点的原因。能撤回时传 `null` 或不传。
+   *
+   * 原因要**常驻显示**在时间线区域（`design.md` 第九节「撤回被锁定时」），不做 hover 提示 ——
+   * 灰掉的按钮上悬停看不出来为什么不能点，而这是用户下一步该做什么的唯一线索。
+   */
+  retract?: { label: string; reason: string } | null;
+};
 
 /**
- * `.risk` 的内容：构建没通过、现在改不了。两样都没有就返回空数组，页面整块不渲染。
+ * `.risk` 的内容：构建没通过、现在改不了、现在撤不回。都没有就返回空数组，页面整块不渲染。
  *
- * 包为 0、没有构建记录的提测状态是「待投递」，两样都不成立，所以不会出现空壳（FUNC-08）。
+ * 包为 0、没有构建记录的提测状态是「待投递」，三条都不成立，所以不会出现空壳（FUNC-08）。
  */
 export function buildRiskItems(detail: RiskInput): DetailRiskItem[] {
   const items: DetailRiskItem[] = [];
@@ -223,6 +231,17 @@ export function buildRiskItems(detail: RiskInput): DetailRiskItem[] {
       key: "lock",
       title: "现在不能更新这条提测",
       body: detail.lockReason,
+    });
+  }
+
+  // 撤回被锁：原因常驻在这里，按钮在顶栏灰掉。标题用按钮自己的文案，读的人对得上点的是哪个。
+  const retract = detail.retract ?? null;
+
+  if (retract !== null) {
+    items.push({
+      key: "retract",
+      title: `现在不能${retract.label}`,
+      body: retract.reason,
     });
   }
 

@@ -21,10 +21,20 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { BuildError, findReleaseScope, pollReleaseBuilds, type CancelResult } from "@/lib/build";
+import {
+  BuildError,
+  findReleaseScope,
+  loadReleaseBuildStatus,
+  pollReleaseBuilds,
+  retryFailedTasks,
+  type CancelResult,
+  type RetryResult,
+} from "@/lib/build";
 import { requireRole } from "@/lib/auth/server";
 import { CrpError } from "@/lib/integrations/crp";
 import { abandonReleaseTopic, cancelPlatformRelease, ReleaseError } from "@/lib/releases";
+
+import { packageActionState } from "./retryState";
 
 /** 刷新只读 CRP、只改本地的构建状态，因此只读成员也可以触发。 */
 const REFRESH_ROLE = "reader" as const;
@@ -256,4 +266,126 @@ export async function cancelReleaseAction(formData: FormData): Promise<void> {
   // 不带查询串：提测记录列表页不渲染 notice / error（那是详情页的机制），
   // 带上去只会是一个没人读的参数。这条提测在列表里显示为已放弃，本身就是结果。
   redirect("/releases");
+}
+
+/**
+ * 重新投递**一个**软件包（MKACG-1011）。
+ *
+ * 与接口上的 `action=retry` 的区别只有一个，但很关键：那个是把这条提测里所有失败的包一起重投，
+ * 这个只动点名的那个包 —— 详情页快照表一行一个按钮，点谁就只重投谁，不许退化成整单重投。
+ *
+ * 能不能重投现读一次判定（与页面同一份 `packageActionState`）：页面上的禁用只是提示，
+ * 直接提交这个表单也绕不过「已成功的包不用重投」「被上游阻断的包先重投上游」。
+ *
+ * 它自己的下游（因它失败而被阻断的包）会跟着放开，因为那些包自己没构建过。与它无关的失败包一根不动。
+ *
+ * 结果回详情页用轻提示说清楚，四种情况不重叠：
+ *
+ * - 旧 Release 已作废、这次推进就把它重新投出去了；
+ * - 旧 Release 已作废，但调度器按依赖顺序稍后再投；
+ * - 同一提测里还有别的包失败，调度器不会再投递任何包（这时必须说清楚，不能谎报「已重投」）；
+ * - 它本来就在等上游，这次只是把调度推进了一格。
+ */
+export async function retryPackageAction(formData: FormData): Promise<void> {
+  const releaseId = String(formData.get("releaseId") ?? "").trim();
+  const packageName = String(formData.get("packageName") ?? "").trim();
+
+  if (releaseId === "") {
+    redirect("/releases");
+  }
+
+  if (packageName === "") {
+    back(releaseId, null, "没有指定要重投的软件包。");
+  }
+
+  // 工作区从提测归属查出，不采信页面传来的工作区。
+  const scope = await findReleaseScope(releaseId);
+
+  if (scope === null) {
+    redirect(`/releases?error=${encodeURIComponent("提测记录不存在，或你没有看它的权限。")}`);
+  }
+
+  const guard = await requireRole({
+    scope: "workspace",
+    workspaceId: scope.workspaceId,
+    role: DANGER_ROLE,
+  });
+
+  if (!guard.ok) {
+    redirect(`/releases?error=${encodeURIComponent("提测记录不存在，或你没有看它的权限。")}`);
+  }
+
+  const buildStatus = await loadReleaseBuildStatus(releaseId);
+  const task = buildStatus?.tasks.find((item) => item.packageName === packageName);
+
+  if (task === undefined) {
+    back(
+      releaseId,
+      null,
+      `这一轮快照里没有软件包 ${packageName}：它可能刚被换掉，刷新页面重试。`,
+    );
+  }
+
+  const state = packageActionState(task);
+
+  if (!state.retryable) {
+    back(releaseId, null, `${packageName} 现在不能重投：${state.reason ?? "当前状态不允许"}。`);
+  }
+
+  let result: RetryResult;
+
+  try {
+    result = await retryFailedTasks(releaseId, {
+      actorUserId: guard.auth.account.id,
+      packageNames: [packageName],
+    });
+  } catch (error) {
+    // BuildError / CrpError 的消息本来就是写给用户看的，原样显示；其余留给服务端日志。
+    if (error instanceof BuildError || error instanceof CrpError) {
+      back(releaseId, null, error.message);
+    }
+
+    console.error(`[releases/${releaseId}] 重新投递 ${packageName} 失败`, error);
+    back(releaseId, null, "重新投递失败，请查看服务端日志后重试。");
+  }
+
+  revalidatePath(`/releases/${releaseId}`);
+
+  const failed = result.failures.find((item) => item.packageName === packageName);
+
+  if (failed !== undefined) {
+    back(releaseId, null, `重新投递 ${packageName} 失败：${failed.reason}。`);
+  }
+
+  // 同一提测里还有别的包失败着：调度器不会在失败之后继续投递任何包，这一轮推进会把刚重置的包
+  // 再标成阻断。这句话必须说出来，不能谎报「已重投」。
+  const blockedNow = result.advance.blocked.find((item) => item.packageName === packageName);
+
+  if (blockedNow !== undefined && result.resetPackageNames.includes(packageName)) {
+    back(
+      releaseId,
+      null,
+      `已重置 ${packageName} 的快照，但同一提测里 ${blockedNow.blockedByName} 还失败着，` +
+        "调度器现在不会再投递它：先把失败的包都重投一遍。",
+    );
+  }
+
+  if (result.advance.action === "dispatched" && result.advance.packageName === packageName) {
+    back(releaseId, `已重新投递 ${packageName}。`, null);
+  }
+
+  if (result.resetPackageNames.includes(packageName)) {
+    back(
+      releaseId,
+      `已重置 ${packageName}：旧 Release 已作废，调度器会按依赖顺序把它重新投递。`,
+      null,
+    );
+  }
+
+  // 走到这里说明这个包在等上游：这次操作只推进了调度，没有东西可重投。
+  back(
+    releaseId,
+    `${packageName} 还在等上游，上游构建成功后会自动投递；这次只把调度推进了一格。`,
+    null,
+  );
 }

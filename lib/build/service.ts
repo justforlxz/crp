@@ -1364,6 +1364,12 @@ export type RetryResult = {
   advance: AdvanceResult;
 };
 
+/** 重投的入参。`packageNames` 点名单个包：详情页一次只重投一个包，不许退化成整单重投。 */
+export type RetryOptions = BuildOptions & {
+  /** 只处理这些包；不给就是整包（原有行为，接口的 `action=retry` 走这一支）。 */
+  packageNames?: readonly string[];
+};
+
 /**
  * 重投失败的构建任务。
  *
@@ -1379,10 +1385,13 @@ export type RetryResult = {
  * 一次提测里可能有多个失败包，逐个处理、逐个记账：某个包的旧 Release 删不掉（CRP 连不上、
  * 已经被人手工删了）不中断其它包，原因汇总到返回体的 `failures` 里。提测状态在处理前就放回
  * `dispatching`，所以哪怕中途出意外，定时器也会继续推进它，不会卡在终局状态里。
+ *
+ * 给了 `packageNames` 就只在点名的包里做上面三步：详情页的「重新投递」一次只处理一个包。
+ * 一个可重置的包都没有时不算失败，推进一次就返回（那个包可能还在等上游，等上游成功会自动投递）。
  */
 export async function retryFailedTasks(
   releaseId: string,
-  options: BuildOptions = {},
+  options: RetryOptions = {},
 ): Promise<RetryResult> {
   const resolved = await resolveClients(releaseId, options);
   const release = await loadRelease(releaseId);
@@ -1392,19 +1401,49 @@ export async function retryFailedTasks(
   }
 
   // 先只挑出要做的事，不动任何数据：一个可重试的包都没有时，状态不该有任何变化。
+  // 点名了包就只在这些包里挑：详情页的「重新投递」一次只处理一个包，不能退化成整单重投。
+  const only = options.packageNames === undefined ? null : new Set(options.packageNames);
+  const inScope = (snapshot: { packageName: string }): boolean =>
+    only === null || only.has(snapshot.packageName);
+
   const failedTargets = release.snapshots.filter(
     (snapshot) =>
+      inScope(snapshot) &&
       snapshot.buildTask !== null &&
       snapshot.buildTask.blockedBySnapshotId === null &&
       snapshot.buildTask.status === "failed",
   );
-  const blockedTargets = release.snapshots.filter(
-    (snapshot) =>
-      snapshot.buildTask !== null && snapshot.buildTask.blockedBySnapshotId !== null,
-  );
+
+  // 被阻断的包要跟着放开：它们自己没构建过，卡住只是因为上游这个包失败。
+  // 点名时放开的是**被点名那些包的下游** —— 只重投一个包时，跟它无关的失败链路一根都不能动。
+  const retriedSnapshotIds = new Set(failedTargets.map((snapshot) => snapshot.id));
+  const blockedTargets = release.snapshots.filter((snapshot) => {
+    const blockedBy = snapshot.buildTask?.blockedBySnapshotId ?? null;
+
+    if (blockedBy === null) {
+      return false;
+    }
+
+    return only === null || retriedSnapshotIds.has(blockedBy);
+  });
 
   if (failedTargets.length === 0 && blockedTargets.length === 0) {
-    throw new BuildError("这次提测没有失败的构建任务，不需要重试。", 409);
+    if (only === null) {
+      throw new BuildError("这次提测没有失败的构建任务，不需要重试。", 409);
+    }
+
+    // 点名了包却没东西可重置（例如这个包还在等上游）：不是错误，直接推进一次，
+    // 上游这段时间刚好成功的话它会被投出去；没有就原样等着。调用方按推进结果给出提示。
+    return {
+      releaseId,
+      resetPackageNames: [],
+      unblockedPackageNames: [],
+      failures: [],
+      advance: await advanceRelease(releaseId, {
+        network: options.network,
+        actorUserId: options.actorUserId,
+      }),
+    };
   }
 
   const now = new Date();

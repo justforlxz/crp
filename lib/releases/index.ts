@@ -128,9 +128,11 @@ export {
 
 export {
   buildSnapshotCsv,
+  buildSnapshotDetailCsv,
   crpTopicUrl,
   loadReleaseDetail,
   SNAPSHOT_COLUMNS,
+  SNAPSHOT_DETAIL_COLUMNS,
   snapshotRowCells,
   type CommitInfoReader,
   type GerritCommitInfo,
