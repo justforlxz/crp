@@ -1,5 +1,7 @@
+"use client";
+
 /**
- * 项目卡片网格（MKACG-971 / MKACG-984 按原型重做）。
+ * 项目卡片网格（MKACG-971 / MKACG-984 按原型重做，MKACG-1010 改成「点卡片开弹窗」）。
  *
  * 结构与 class 名照 `.agents/spec/design/prototype.html` 的项目页：
  *
@@ -8,10 +10,14 @@
  *     → `.pc-body`（`.pc-facts` 三项事实 + `.pc-chips` 软件胶囊）
  *     → `.pc-ft`（基线状态点 + 右侧「发起提测」）。
  *
+ * **整张卡就是入口**（MKACG-1010）：原型把卡写成 `data-act="project:edit:<key>"`，这里换成
+ * 卡上的点击与 Enter / 空格 —— 原型取消了「...」二级菜单，全部操作收进弹窗的四个 tab，
+ * 卡上只剩「发起提测」一个独立动作，它要挡住冒泡，否则点它会连带把弹窗也开出来。
+ *
  * 软件包按拓扑顺序用 `.chip` 列出，超过 6 个折成「还有 N 个」（界面用例 FUNC-11）。
  * 依赖环在胶囊里点名，空清单写「尚未添加软件包」—— 卡片只表达清单构成，不摊成表格行。
  *
- * 项目说明不在卡片上（原型没有这一块），完整说明在项目详情页。
+ * 项目说明不在卡片上（原型没有这一块），完整说明在项目弹窗的基本信息 tab。
  */
 
 import Link from "next/link";
@@ -28,9 +34,13 @@ type ProjectGridProps = {
   keyword: string;
   /** 带当前工作区的查询串，卡片里的链接不丢工作区。 */
   query: string;
+  /** 点卡片：打开这个项目的编辑弹窗。 */
+  onOpen: (project: ProjectCardData) => void;
+  /** 空态里的新建动作：与卡片同一个弹窗。 */
+  onCreate: () => void;
 };
 
-export function ProjectGrid({ projects, keyword, query }: ProjectGridProps) {
+export function ProjectGrid({ projects, keyword, query, onOpen, onCreate }: ProjectGridProps) {
   if (projects.length === 0) {
     return (
       <div className="empty">
@@ -41,9 +51,15 @@ export function ProjectGrid({ projects, keyword, query }: ProjectGridProps) {
         <div className="empty-d">
           {keyword === "" ? "先新建一个项目，再把软件包挂上去。" : "换个关键词试试。"}
         </div>
-        <Link className="btn btn-sm" href={keyword === "" ? `/projects/new${query}` : `/projects${query}`}>
-          {keyword === "" ? "新建项目" : "清除筛选"}
-        </Link>
+        {keyword === "" ? (
+          <button type="button" className="btn btn-sm" onClick={onCreate}>
+            新建项目
+          </button>
+        ) : (
+          <Link className="btn btn-sm" href={`/projects${query}`}>
+            清除筛选
+          </Link>
+        )}
       </div>
     );
   }
@@ -51,31 +67,57 @@ export function ProjectGrid({ projects, keyword, query }: ProjectGridProps) {
   return (
     <div className="project-grid">
       {projects.map((project) => (
-        <ProjectCard key={project.id} project={project} query={query} />
+        <ProjectCard
+          key={project.id}
+          project={project}
+          query={query}
+          onOpen={() => onOpen(project)}
+        />
       ))}
     </div>
   );
 }
 
-function ProjectCard({ project, query }: { project: ProjectCardData; query: string }) {
-  const href = `/projects/${project.id}${query}`;
+function ProjectCard({
+  project,
+  query,
+  onOpen,
+}: {
+  project: ProjectCardData;
+  query: string;
+  onOpen: () => void;
+}) {
   const hidden = project.software.entries.length - CHIP_LIMIT;
 
   return (
-    <div className="project-card">
+    <div
+      className="project-card"
+      role="button"
+      tabIndex={0}
+      aria-label={`编辑项目 ${project.name}`}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        // 只认落在卡片本身上的按键。卡里的「发起提测」链接收到回车时，keydown 会冒泡到这里；
+        // 若在这里 preventDefault 并开弹窗，键盘用户就再也用不了那个链接（鼠标点击带
+        // stopPropagation，自动化点击测不出来）。判断写法与 `components/modal.tsx` 的遮罩一致。
+        if (event.target !== event.currentTarget) {
+          return;
+        }
+
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+    >
       <div className="pc-hd">
         <div className="pc-ico" aria-hidden="true">
           {project.name.slice(0, 1)}
         </div>
         <div className="pc-title">
-          <div className="pc-name">
-            <Link href={href}>{project.name}</Link>
-          </div>
+          <div className="pc-name">{project.name}</div>
           <div className="pc-key">{project.key}</div>
         </div>
-        <Link className="btn btn-sm" href={href} aria-label="编辑项目">
-          编辑
-        </Link>
       </div>
 
       <div className="pc-body">
@@ -125,7 +167,14 @@ function ProjectCard({ project, query }: { project: ProjectCardData; query: stri
           {project.baseline.syncedAt === null ? "（未同步）" : null}
         </span>
         <div className="spacer" />
-        <Link className="btn btn-sm" href={`/releases/new${query}`}>
+        <Link
+          className="btn btn-sm"
+          href={`/releases/new${query}`}
+          onClick={(event) => {
+            // 卡上的第二个动作：不挡住冒泡就会连编辑弹窗一起打开。
+            event.stopPropagation();
+          }}
+        >
           发起提测
         </Link>
       </div>

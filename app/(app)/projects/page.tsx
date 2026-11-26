@@ -1,5 +1,5 @@
 /**
- * 项目页（MKACG-971 / MKACG-984 按原型重做）。
+ * 项目页（MKACG-971 / MKACG-984 按原型重做，MKACG-1010 换成四 tab 弹窗）。
  *
  * 分区照 `.agents/spec/design/prototype.html` 的项目页与 `design.md` 第七节：
  *
@@ -8,19 +8,20 @@
  * 项目与项目经理都以卡片呈现，页面里没有承载这两类数据的 table 元素（FUNC-10）。
  * 卡片的字段全部来自 `listProjectCards()` / `listManagers()` 已有的数据，不为这张页面新增查询字段。
  *
- * 工作区切换放在筛选条里（`.select`）：原型没有额外的切换控件，但一个账号可能属于多个工作区，
- * 这个能力不能丢，收进筛选条比在页面上摊一排链接干净。
+ * 这一页只取数，交互在 `projectsView.tsx`（客户端）：点项目卡直接打开四 tab 的宽版弹窗，
+ * 卡上不再有「...」或「编辑」二级入口。弹窗的提测记录 tab 要「只列这个项目的提测」，
+ * 所以这里用 `loadReleaseList()` 取一次工作区的全部提测，按 `projectId` 分好组再交下去 ——
+ * 与提测记录列表同一份数据、同一套状态口径，tab 上的计数不会和点进去看到的行对不上。
  */
 
-import Link from "next/link";
-
 import { PageShell } from "@/components/page-shell";
-import { Toast } from "@/components/toast";
-import { listManagers, listProjectCards } from "@/lib/projects";
-import { ProjectManagerGrid } from "./projectManagerGrid";
+import { listPackages } from "@/lib/packages";
+import { listManagers, listProjectCards, listBaselineChoices } from "@/lib/projects";
+import { loadReleaseList } from "@/lib/releases";
 import { resolveWorkspaceScope } from "../workspaceScope";
 import { filterProjectsByName } from "./filter";
-import { ProjectGrid } from "./projectGrid";
+import { groupReleasesByProject, type PackageChoice } from "./modalModel";
+import { ProjectsView } from "./projectsView";
 
 // 项目数据随配置与提测变化，页面不做静态化。
 export const dynamic = "force-dynamic";
@@ -44,96 +45,52 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
     );
   }
 
-  const [projects, managers] = await Promise.all([
+  const [projects, managers, baselines, packages, releaseList] = await Promise.all([
     listProjectCards(scope.active.id),
     listManagers(scope.active.id),
+    listBaselineChoices(),
+    listPackages(),
+    loadReleaseList({ workspaceId: scope.active.id, tab: "all" }),
   ]);
   const keyword = query.q?.trim() ?? "";
   const visible = filterProjectsByName(projects, keyword);
 
+  // 软件包清单 tab 只用得到这几列：弹窗里逐行画「分支 · 当前版本 · 上次提测」，
+  // 整行 Prisma 记录（含时间戳与计数）不必过客户端边界。
+  const packageChoices: PackageChoice[] = packages.map((item) => ({
+    id: item.id,
+    name: item.name,
+    repoPath: item.repoPath,
+    currentVersion: item.currentVersion,
+    defaultBranch: item.defaultBranch,
+  }));
+
+  const releasesByProject = groupReleasesByProject(releaseList.rows);
   return (
     <PageShell title="项目">
-      <div className="stack">
-        <div className="toast-stack">
-          <Toast
-            className="toast bad"
-            role="alert"
-            message={query.error === undefined ? null : `操作失败：${query.error}`}
-          />
-          <Toast
-            className="toast ok"
-            message={query.notice === undefined ? null : query.notice}
-          />
-        </div>
-
-        <div>
-          <div className="sec-hd">
-            <h3>项目经理</h3>
-            <span className="hint">创建提测时必须先选一位，再从他负责的项目里选</span>
-          </div>
-          <ProjectManagerGrid managers={managers} />
-        </div>
-
-        <div>
-          <div className="sec-hd">
-            <h3>项目</h3>
-            <span className="hint">一个项目就是一个提测归属单位</span>
-            <div className="spacer" />
-            <Link className="btn btn-primary" href={`/projects/new${scope.query}`}>
-              新建项目
-            </Link>
-          </div>
-
-          <form method="get" action="/projects" className="filters">
-            <label className="search">
-              <span aria-hidden="true">⌕</span>
-              <input
-                type="search"
-                name="q"
-                defaultValue={keyword}
-                aria-label="搜索项目"
-                placeholder="搜索项目名"
-                autoComplete="off"
-              />
-            </label>
-
-            <select
-              className="select"
-              name="workspace"
-              defaultValue={scope.active.slug}
-              aria-label="工作区"
-            >
-              {scope.workspaces.map((workspace) => (
-                <option key={workspace.id} value={workspace.slug}>
-                  {workspace.name}
-                </option>
-              ))}
-            </select>
-
-            <button type="submit" className="btn btn-sm">
-              筛选
-            </button>
-            <Link className="text-link" href={`/projects${scope.query}`}>
-              清空条件
-            </Link>
-
-            <div className="spacer" />
-            <span className="result-n">
-              共 {projects.length} 个，显示 {visible.length} 个
-            </span>
-          </form>
-
-          <ProjectGrid projects={visible} keyword={keyword} query={scope.query} />
-        </div>
-
-        <div className="tip">
-          <span aria-hidden="true">ⓘ</span>
-          <div>
-            <b>一个软件包只登记一次。</b>
-            依赖关系写在软件包上，项目只做引用。改依赖会影响所有引用该包的项目，改之前先看「引用」列。
-          </div>
-        </div>
-      </div>
+      <ProjectsView
+        workspaceId={scope.active.id}
+        workspaceSlug={scope.active.slug}
+        workspaces={scope.workspaces.map((workspace) => ({
+          slug: workspace.slug,
+          name: workspace.name,
+        }))}
+        query={scope.query}
+        projects={visible}
+        totalCount={projects.length}
+        keyword={keyword}
+        managers={managers}
+        baselines={baselines.map((baseline) => ({
+          id: baseline.id,
+          name: baseline.name,
+          state: baseline.state,
+          stateLabel: baseline.stateLabel,
+        }))}
+        packages={packageChoices}
+        releasesByProject={releasesByProject}
+        initialNotice={query.notice ?? null}
+        initialError={query.error ?? null}
+      />
     </PageShell>
   );
 }
